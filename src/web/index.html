@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>DCC Lite — FTP, Terminal &amp; Live screen</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d9488'/%3E%3Cpath d='M8 11l6 5-6 5M17 21h7' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/vendor/xterm.js" defer></script>
+  <script src="/js/dccimport.js" defer></script>
+  <script src="/js/core.js" defer></script>
+  <script src="/js/devices.js" defer></script>
+  <script src="/js/files.js" defer></script>
+  <script src="/js/bouquets.js" defer></script>
+  <script src="/js/tools.js" defer></script>
+  <script src="/js/transfers.js" defer></script>
+  <script src="/js/terminal.js" defer></script>
+  <script src="/js/remote-control.js" defer></script>
+  <script src="/js/screen.js" defer></script>
+  <script src="/js/power.js" defer></script>
+  <script src="/js/channels.js" defer></script>
+  <script src="/js/remote-access.js" defer></script>
+  <script src="/js/main.js" defer></script>
+</head>
+<body data-view="devices">
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-devices" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="i-files" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-4.5L4 9M4 4v5h5M4 13a8 8 0 0 0 14 4.5L20 15M20 20v-5h-5"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 10v10h12V10"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7 9l5-5 5 5M5 20h14"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M20 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-newfolder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9 13h6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l12 8-12 8z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-paste" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M9 12h6M9 16h4"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M4 16l9-9 6 6-6 6H8zM9 21h11"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-collapse" viewBox="0 0 24 24"><path d="m10 14-6 6M4 15v5h5M14 10l6-6M20 9V4h-5"/></symbol>
+    <symbol id="i-remote" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="7" r="1.2"/><path d="M10 12h4M10 15.5h4M10 19h4"/></symbol>
+    <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 3l3 3 3-3"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M4 15l4 4 4-4M16 19V5M12 9l4-4 4 4"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark"><svg class="ic"><use href="#i-terminal"/></svg></span><span class="brand-name">DCC <b>Lite</b></span></div>
+  <nav class="tabs" id="mainTabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" data-view="devices" aria-selected="true"><svg class="ic"><use href="#i-devices"/></svg><span>Devices</span></button>
+    <button class="tab" role="tab" data-view="files" aria-selected="false"><svg class="ic"><use href="#i-files"/></svg><span>Files</span></button>
+    <button class="tab" role="tab" data-view="terminal" aria-selected="false"><svg class="ic"><use href="#i-terminal"/></svg><span>Terminal</span></button>
+    <button class="tab" role="tab" data-view="screen" aria-selected="false"><svg class="ic"><use href="#i-screen"/></svg><span>Screen</span></button>
+  </nav>
+  <div class="device-picker">
+    <span class="dot" id="deviceDot" data-state="unknown" title="Device status"></span>
+    <label class="sr-only" for="deviceSelect">Device</label>
+    <select id="deviceSelect"><option value="">No devices yet</option></select>
+  </div>
+  <button class="icon-btn" id="themeToggle" type="button" title="Switch light / dark theme" aria-label="Switch light or dark theme"><svg class="ic"><use href="#i-sun"/></svg></button>
+  <button class="btn sm" id="logoutButton" type="button" title="Sign out of remote access" hidden>Sign out</button>
+</header>
+
+<main>
+  <!-- DEVICES -->
+  <section class="view" id="view-devices" aria-label="Devices">
+    <div class="view-head">
+      <div>
+        <h1>Devices</h1>
+        <p class="muted">Save a device once. Files and Terminal sign in automatically with the saved account.</p>
+      </div>
+      <div class="view-actions">
+        <button class="btn" id="devicesRefresh" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Check all</button>
+        <button class="btn" id="remoteAccessBtn" type="button" title="Open DCC Lite from another computer or phone" hidden><svg class="ic"><use href="#i-lock"/></svg>Remote access</button>
+        <button class="btn" id="devicesScan" type="button" title="Search the local network for receivers"><svg class="ic"><use href="#i-search"/></svg>Find devices</button>
+        <button class="btn" id="devicesImport" type="button"><svg class="ic"><use href="#i-upload"/></svg>Import</button>
+        <button class="btn" id="devicesExport" type="button"><svg class="ic"><use href="#i-download"/></svg>Export</button>
+        <button class="btn primary" id="deviceAdd" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add device</button>
+        <input type="file" id="devicesImportFile" accept="application/json,.json" hidden>
+      </div>
+    </div>
+    <div id="deviceGrid" class="device-grid" aria-live="polite"></div>
+    <div id="deviceEmpty" class="empty" hidden>
+      <svg class="ic xl"><use href="#i-devices"/></svg>
+      <h2>Add your first device</h2>
+      <p>Enter the IP address of your receiver or server. New devices use <code>root</code> / <code>dreambox</code> unless you change them.</p>
+      <button class="btn primary" id="deviceAddEmpty" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add device</button>
+    </div>
+  </section>
+
+  <!-- FILES -->
+  <section class="view" id="view-files" aria-label="Files" hidden>
+    <div class="connbar" id="fileConnBar">
+      <div class="seg" id="fileProtocol" role="radiogroup" aria-label="File protocol">
+        <button type="button" role="radio" data-protocol="ftp" aria-checked="true">FTP</button>
+      </div>
+      <label class="field-inline">Port <input id="filePort" type="number" min="1" max="65535" value="21" inputmode="numeric"></label>
+      <button class="btn primary" id="fileConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
+      <button class="btn" id="fileDisconnect" type="button" hidden><svg class="ic"><use href="#i-stop"/></svg>Disconnect</button>
+      <span class="status-pill" id="fileStatus" data-state="idle">Not connected</span>
+      <span class="spacer"></span>
+      <button class="btn" id="fileTerminalHere" type="button" title="Open a terminal in the current remote folder"><svg class="ic"><use href="#i-terminal"/></svg><span>Terminal here</span></button>
+      <button class="btn" id="fileRun" type="button" title="Run the selected remote file in a terminal"><svg class="ic"><use href="#i-play"/></svg><span>Run…</span></button>
+    </div>
+    <p class="notice" id="fileNotice">FTP sends the password and files without encryption. Use it on a trusted network.</p>
+
+    <div class="pane-switch" id="paneSwitch" role="tablist" aria-label="Panel">
+      <button type="button" role="tab" data-pane="remote" aria-selected="true">Remote</button>
+      <button type="button" role="tab" data-pane="local" aria-selected="false">This computer</button>
+    </div>
+
+    <div class="commander" id="commander" data-active-pane="remote">
+      <section class="pane" id="remotePane" data-kind="remote" aria-label="Remote files">
+        <header class="pane-head">
+          <div class="pane-title"><span class="pane-badge remote">Remote</span><span id="remoteHost" class="muted ellipsis">—</span></div>
+          <div class="pathbar">
+            <button class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
+            <button class="icon-btn" data-act="root" title="Root folder" aria-label="Root folder"><svg class="ic"><use href="#i-home"/></svg></button>
+            <button class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <input class="path-input" id="remotePath" type="text" spellcheck="false" autocomplete="off" aria-label="Remote path" value="/">
+            <button class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic"><use href="#i-star"/></svg></button>
+          </div>
+          <div class="filterbar">
+            <svg class="ic sm"><use href="#i-search"/></svg>
+            <input class="filter-input" id="remoteFilter" type="search" placeholder="Filter this folder" aria-label="Filter remote files">
+            <label class="check"><input type="checkbox" data-role="hidden"> Hidden</label>
+          </div>
+        </header>
+        <div class="table-wrap" id="remoteTable" tabindex="0" aria-label="Remote file list">
+          <table class="files">
+            <thead><tr><th data-sort="name">Name</th><th data-sort="size" class="num">Size</th><th data-sort="modified" class="hide-sm">Modified</th><th data-sort="mode" class="hide-sm">Perm</th></tr></thead>
+            <tbody id="remoteRows"></tbody>
+          </table>
+          <div class="pane-empty" id="remoteEmpty" hidden></div>
+        </div>
+        <footer class="pane-foot"><span id="remoteSummary">—</span></footer>
+      </section>
+
+      <div class="bridge" aria-label="Transfer">
+        <button class="btn bridge-btn" id="btnDownload" type="button" title="Download selected remote items to this computer (F5)"><svg class="ic"><use href="#i-right"/></svg><span>Download</span></button>
+        <button class="btn bridge-btn" id="btnUpload" type="button" title="Upload selected local items to the remote folder (F5)"><svg class="ic"><use href="#i-left"/></svg><span>Upload</span></button>
+      </div>
+
+      <section class="pane" id="localPane" data-kind="local" aria-label="Local files">
+        <header class="pane-head">
+          <div class="pane-title"><span class="pane-badge local">Local</span><span id="localRoot" class="muted ellipsis">Home folder</span></div>
+          <div class="pathbar">
+            <button class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
+            <button class="icon-btn" data-act="root" title="Home folder" aria-label="Home folder"><svg class="ic"><use href="#i-home"/></svg></button>
+            <button class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <input class="path-input" id="localPath" type="text" spellcheck="false" autocomplete="off" aria-label="Local path" value=".">
+            <button class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic"><use href="#i-star"/></svg></button>
+          </div>
+          <div class="filterbar">
+            <svg class="ic sm"><use href="#i-search"/></svg>
+            <input class="filter-input" id="localFilter" type="search" placeholder="Filter this folder" aria-label="Filter local files">
+            <label class="check"><input type="checkbox" data-role="hidden"> Hidden</label>
+          </div>
+        </header>
+        <div class="table-wrap" id="localTable" tabindex="0" aria-label="Local file list">
+          <table class="files">
+            <thead><tr><th data-sort="name">Name</th><th data-sort="size" class="num">Size</th><th data-sort="modified" class="hide-sm">Modified</th><th data-sort="mode" class="hide-sm">Perm</th></tr></thead>
+            <tbody id="localRows"></tbody>
+          </table>
+          <div class="pane-empty" id="localEmpty" hidden></div>
+        </div>
+        <footer class="pane-foot"><span id="localSummary">—</span></footer>
+      </section>
+    </div>
+
+    <div class="actionbar" role="toolbar" aria-label="File actions">
+      <button class="btn sm" data-cmd="mkdir" type="button"><svg class="ic"><use href="#i-newfolder"/></svg>New folder <kbd>F7</kbd></button>
+      <button class="btn sm" data-cmd="bouquets" type="button" title="Edit the channel list (bouquets) of an Enigma2 receiver"><svg class="ic"><use href="#i-bolt"/></svg>Bouquets</button>
+      <button class="btn sm" data-cmd="tools" type="button" title="Backup and restore the channel list, install .ipk plugins"><svg class="ic"><use href="#i-save"/></svg>Tools</button>
+      <button class="btn sm" data-cmd="edit" type="button" title="Edit the selected device file as text (Shift+F4: new text file)"><svg class="ic"><use href="#i-file"/></svg>Edit <kbd>F4</kbd></button>
+      <button class="btn sm" data-cmd="rename" type="button"><svg class="ic"><use href="#i-edit"/></svg>Rename <kbd>F2</kbd></button>
+      <button class="btn sm" data-cmd="chmod" type="button"><svg class="ic"><use href="#i-lock"/></svg>Permissions <kbd>F9</kbd></button>
+      <button class="btn sm danger" data-cmd="delete" type="button"><svg class="ic"><use href="#i-trash"/></svg>Delete <kbd>F8</kbd></button>
+      <button class="btn sm" data-cmd="copypath" type="button"><svg class="ic"><use href="#i-copy"/></svg>Copy path</button>
+      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic"><use href="#i-check"/></svg>Select all</button>
+      <button class="btn sm primary only-mobile" id="btnTransferActive" data-cmd="transfer" type="button"><svg class="ic"><use href="#i-download"/></svg><span id="transferActiveLabel">Download</span></button>
+      <span class="spacer"></span>
+      <span class="hint">Tip: drag items between the panels, or press <kbd>F5</kbd> to transfer.</span>
+    </div>
+
+    <section class="queue" id="queuePanel" aria-label="Transfers">
+      <header class="queue-head">
+        <h2>Transfers</h2>
+        <span class="muted" id="transferSummary">No transfers yet</span>
+        <span class="spacer"></span>
+        <button class="btn sm" id="transferClear" type="button"><svg class="ic"><use href="#i-eraser"/></svg>Clear finished</button>
+      </header>
+      <div id="transferList" class="transfer-list" tabindex="0" aria-live="polite"></div>
+    </section>
+  </section>
+
+  <!-- TERMINAL -->
+  <section class="view" id="view-terminal" aria-label="Terminal" hidden>
+    <div class="termtabs">
+      <div class="termtabs-list" id="terminalTabs" role="tablist" aria-label="Terminal tabs"></div>
+      <button class="icon-btn" id="terminalNewTab" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab"><svg class="ic"><use href="#i-plus"/></svg></button>
+      <button class="icon-btn" id="terminalTabList" type="button" title="All terminal tabs by name (Alt+1…9 switches)" aria-label="List terminal tabs"><svg class="ic"><use href="#i-sort"/></svg></button>
+    </div>
+    <div class="connbar" id="terminalBar">
+      <div class="seg" id="terminalProtocol" role="radiogroup" aria-label="Terminal protocol">
+        <button type="button" role="radio" data-protocol="telnet" aria-checked="true">Telnet</button>
+      </div>
+      <label class="field-inline">Port <input id="terminalPort" type="number" min="1" max="65535" value="23" inputmode="numeric"></label>
+      <button class="btn primary" id="terminalConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
+      <button class="btn" id="terminalDisconnect" type="button" hidden><svg class="ic"><use href="#i-stop"/></svg>Disconnect</button>
+      <span class="status-pill" id="terminalStatus" data-state="idle">No session</span>
+      <span class="spacer"></span>
+      <button class="btn" id="terminalFiles" type="button" title="Open this device in Files"><svg class="ic"><use href="#i-files"/></svg><span>Files</span></button>
+    </div>
+    <p class="notice" id="terminalNotice">Telnet is unencrypted. Use it on a trusted network.</p>
+
+    <div class="termframe" id="terminalFrame" data-theme="midnight">
+      <div class="termtools" role="toolbar" aria-label="Terminal tools">
+        <button class="icon-btn" id="termSnippets" type="button" title="Saved commands" aria-label="Saved commands"><svg class="ic"><use href="#i-bolt"/></svg></button>
+        <button class="icon-btn" id="termHistory" type="button" title="Previous commands (Ctrl+Shift+H)" aria-label="Previous commands"><svg class="ic"><use href="#i-history"/></svg></button>
+        <span class="vr"></span>
+        <button class="icon-btn" id="termCopy" type="button" title="Copy selection (Ctrl+Shift+C), or all output" aria-label="Copy"><svg class="ic"><use href="#i-copy"/></svg></button>
+        <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic"><use href="#i-paste"/></svg></button>
+        <button class="icon-btn" id="termClear" type="button" title="Clear screen" aria-label="Clear screen"><svg class="ic"><use href="#i-eraser"/></svg></button>
+        <button class="icon-btn" id="termSave" type="button" title="Save output to a file" aria-label="Save output"><svg class="ic"><use href="#i-save"/></svg></button>
+        <span class="vr"></span>
+        <button class="icon-btn" id="termFontDown" type="button" title="Smaller text" aria-label="Smaller text"><svg class="ic"><use href="#i-minus"/></svg></button>
+        <span class="font-size" id="termFontLabel">13</span>
+        <button class="icon-btn" id="termFontUp" type="button" title="Larger text" aria-label="Larger text"><svg class="ic"><use href="#i-plus"/></svg></button>
+        <label class="sr-only" for="termTheme">Terminal theme</label>
+        <select id="termTheme" class="mini-select" title="Terminal theme">
+          <option value="midnight">Midnight</option><option value="black">Black</option><option value="light">Light</option>
+        </select>
+        <span class="spacer"></span>
+        <div class="filterbar compact">
+          <svg class="ic sm"><use href="#i-search"/></svg>
+          <input id="termFind" class="filter-input" type="search" placeholder="Find in output" aria-label="Find in terminal output">
+        </div>
+        <button class="icon-btn" id="termFullscreen" type="button" title="Full screen" aria-label="Full screen"><svg class="ic"><use href="#i-expand"/></svg></button>
+      </div>
+      <div class="screens" id="terminalScreens"></div>
+      <div class="quickkeys" id="quickKeys" aria-label="Quick keys">
+        <button type="button" data-key="ctrl-c">Ctrl+C</button><button type="button" data-key="ctrl-d">Ctrl+D</button>
+        <button type="button" data-key="tab">Tab</button><button type="button" data-key="escape">Esc</button>
+        <button type="button" data-key="up" aria-label="Up">↑</button><button type="button" data-key="down" aria-label="Down">↓</button>
+        <button type="button" data-key="left" aria-label="Left">←</button><button type="button" data-key="right" aria-label="Right">→</button>
+        <button type="button" data-key="home">Home</button><button type="button" data-key="end">End</button>
+        <button type="button" data-key="pageup">PgUp</button><button type="button" data-key="pagedown">PgDn</button>
+      </div>
+    </div>
+  </section>
+  <!-- SCREEN -->
+  <section class="view" id="view-screen" aria-label="Live screen" hidden>
+    <div class="screen-head">
+      <h2 id="screenTitle">Live screen</h2><code id="screenSub" class="ellipsis"></code>
+    </div>
+    <div class="screen-tools">
+      <label class="field-inline">Show
+        <select id="screenMode"><option value="all">Video + menus</option><option value="video">Video only</option><option value="osd">Menus only</option></select>
+      </label>
+      <label class="field-inline">Size
+        <select id="screenWidth"><option value="480">Small</option><option value="720">Medium</option><option value="1280">Large</option><option value="1920">Full HD</option></select>
+      </label>
+      <label class="field-inline">Speed
+        <select id="screenSpeed"><option value="400">Fast</option><option value="1000">Normal</option><option value="3000">Slow</option></select>
+      </label>
+      <span class="spacer"></span>
+      <button class="btn sm" id="remoteShow" type="button" hidden><svg class="ic"><use href="#i-remote"/></svg>Remote</button>
+      <button class="btn sm" id="channelShow" type="button" hidden><svg class="ic"><use href="#i-list"/></svg>Channels</button>
+      <button class="btn sm" id="screenPause" type="button"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
+      <button class="btn sm" id="screenFull" type="button" title="Full screen (F)"><svg class="ic"><use href="#i-expand"/></svg>Full screen</button>
+      <button class="btn sm" id="screenSave" type="button"><svg class="ic"><use href="#i-download"/></svg>Save picture</button>
+    </div>
+    <div class="screen-body">
+      <aside class="remote" id="remotePad" aria-label="Receiver remote control">
+        <header class="remote-head">
+          <h3>Remote</h3>
+          <span class="spacer"></span>
+          <button class="remote-top" id="remotePower" type="button" title="Power (standby)" aria-label="Power"><svg class="ic"><use href="#i-power"/></svg></button>
+          <button class="remote-top" id="remoteText" type="button" title="Type text on the receiver (search box, keyboard)" aria-label="Type text on the receiver"><svg class="ic"><use href="#i-edit"/></svg></button>
+          <button class="remote-top" id="remoteMessage" type="button" title="Show a message on the TV" aria-label="Send a message to the TV"><svg class="ic"><use href="#i-mail"/></svg></button>
+          <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic"><use href="#i-collapse"/></svg></button>
+        </header>
+        <div class="remote-keys" id="remoteKeys"></div>
+        <p class="remote-hint">Shift + click, or hold a key, for a long press</p>
+        <label class="remote-refresh"><input type="checkbox" id="remoteRefresh" checked> Refresh the picture after each key</label>
+        <p class="form-error" id="remoteError" role="alert" hidden></p>
+      </aside>
+      <div class="screen-main">
+        <div class="nowbar" id="nowBar" hidden>
+          <span class="picon" id="nowPicon" aria-hidden="true"></span>
+          <div class="now-text">
+            <div class="now-ch ellipsis" id="nowChannel"></div>
+            <div class="now-ev ellipsis" id="nowTitle"></div>
+            <div class="now-next ellipsis" id="nowNext"></div>
+          </div>
+          <button class="btn sm primary" id="nowStandby" type="button" hidden>In standby · Wake up</button>
+          <div class="now-time" id="nowTime"></div>
+          <div class="now-progress" aria-hidden="true"><span id="nowProgress"></span></div>
+        </div>
+        <div class="screen-stage" id="screenStage">
+          <img id="screenImg" alt="Live picture of the receiver's screen" hidden>
+          <p class="muted" id="screenWait">Waiting for the first picture…</p>
+        </div>
+        <p class="form-error" id="screenError" role="alert" hidden></p>
+        <p class="muted small" id="screenStats" role="status" aria-live="off"></p>
+      </div>
+      <aside class="channels" id="channelPane" aria-label="Channels">
+        <header class="remote-head">
+          <h3>Channels</h3>
+          <span class="spacer"></span>
+          <button class="remote-top" id="channelWatch" type="button" title="Watch the current channel on this computer (opens a playlist in VLC or your player)" aria-label="Watch the current channel on this computer"><svg class="ic"><use href="#i-play"/></svg></button>
+          <button class="remote-top" id="channelReload" type="button" title="Reload the channel list" aria-label="Reload the channel list"><svg class="ic"><use href="#i-refresh"/></svg></button>
+          <button class="remote-top" id="channelHide" type="button" title="Hide the channel list" aria-label="Hide the channel list"><svg class="ic"><use href="#i-collapse"/></svg></button>
+        </header>
+        <div class="ch-tools">
+          <div class="seg" id="channelKind" role="radiogroup" aria-label="List type">
+            <button type="button" role="radio" data-kind="tv" aria-checked="true">TV</button>
+            <button type="button" role="radio" data-kind="radio" aria-checked="false">Radio</button>
+          </div>
+          <label class="sr-only" for="channelBouquet">Bouquet</label>
+          <select id="channelBouquet"></select>
+          <div class="filterbar">
+            <svg class="ic sm"><use href="#i-search"/></svg>
+            <input class="filter-input" id="channelFilter" type="search" placeholder="Search, or type a number + Enter" aria-label="Search channels" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="ch-list" id="channelList" role="listbox" aria-label="Channels" tabindex="0"></div>
+        <p class="ch-status muted small" id="channelStatus" role="status" aria-live="polite"></p>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<!-- Device dialog -->
+<dialog id="deviceDialog" aria-labelledby="deviceDialogTitle">
+  <form method="dialog" id="deviceForm" class="dialog-card" autocomplete="off">
+    <h2 id="deviceDialogTitle">Add device</h2>
+    <label class="field"><span>Name</span><input id="devName" required maxlength="64" placeholder="Living room"></label>
+    <label class="field"><span>IP address or host name</span><input id="devHost" required maxlength="253" placeholder="192.168.1.20" spellcheck="false" inputmode="url"></label>
+    <div class="grid2">
+      <label class="field"><span>Username</span><input id="devUser" maxlength="128" value="root" spellcheck="false"></label>
+      <label class="field"><span>Password</span>
+        <span class="input-row"><input id="devPass" type="password" maxlength="4096" placeholder="dreambox" spellcheck="false"><button class="icon-btn" id="devPassToggle" type="button" title="Show or hide password" aria-label="Show or hide password"><svg class="ic"><use href="#i-search"/></svg></button></span>
+      </label>
+    </div>
+    <p class="muted small" id="devPassHint">Leave empty to use the default password <code>dreambox</code>.</p>
+    <details class="advanced">
+      <summary>Ports</summary>
+      <div class="grid3">
+        <label class="field"><span>FTP</span><input id="devFtp" type="number" min="1" max="65535" placeholder="21"></label>
+        <label class="field"><span>Telnet</span><input id="devTelnet" type="number" min="1" max="65535" placeholder="23"></label>
+        <label class="field"><span>Web (live screen)</span><input id="devWeb" type="number" min="1" max="65535" placeholder="80"></label>
+      </div>
+      <label class="check"><input id="devWebHttps" type="checkbox"> The receiver's web interface uses HTTPS</label>
+    </details>
+    <p class="form-error" id="deviceError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button class="btn danger-text" id="devClearPass" type="button" hidden>Clear saved password</button>
+      <span class="spacer"></span>
+      <button class="btn" id="deviceCancel" type="button">Cancel</button>
+      <button class="btn primary" id="deviceSave" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<input type="file" id="dccScriptFile" accept=".ini,text/plain" hidden>
+
+<!-- Terminal: previous commands -->
+<dialog id="histDialog" aria-labelledby="histTitle">
+  <div class="dialog-card">
+    <h2 id="histTitle">Previous commands</h2>
+    <p class="muted small" id="histSub"></p>
+    <input id="histFilter" class="filter-input" type="search" placeholder="Search commands" aria-label="Search previous commands" autocomplete="off" spellcheck="false">
+    <div class="hist-list" id="histList" role="list"></div>
+    <p class="muted small">Click a command to type it into the terminal. Enter types the first match, Shift+Enter runs it. A command starting with a space, or typed while nothing is echoed (passwords), is never saved.</p>
+    <div class="dialog-actions">
+      <button class="btn danger" id="histClear" type="button">Clear history</button>
+      <span class="spacer"></span>
+      <button class="btn" id="histClose" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Terminal: paste box (browsers block the clipboard on plain HTTP) -->
+<dialog id="pasteDialog" aria-labelledby="pasteTitle">
+  <form class="dialog-card" id="pasteForm" method="dialog">
+    <h2 id="pasteTitle">Paste into the terminal</h2>
+    <p class="muted small">This browser does not let the page read the clipboard (it needs HTTPS). Press <b>Ctrl+V</b> in the box below, then Send. You can also press Ctrl+V or Ctrl+Shift+V directly in the terminal.</p>
+    <textarea id="pasteText" rows="6" spellcheck="false" autocomplete="off" aria-label="Text to paste"></textarea>
+    <div class="dialog-actions"><span class="spacer"></span>
+      <button class="btn" id="pasteCancel" type="button">Cancel</button>
+      <button class="btn primary" type="submit">Send</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Remote access (HTTPS) -->
+<dialog id="raDialog" aria-labelledby="raTitle">
+  <form id="raForm" class="dialog-card" autocomplete="off">
+    <h2 id="raTitle">Remote access</h2>
+    <p class="muted small">Open DCC Lite from another computer or phone over HTTPS, protected by a password. Anyone who knows the password can use your devices and their saved passwords: choose a strong one and prefer a LAN or VPN over the open internet.</p>
+    <p id="raState" class="ra-state" role="status"></p>
+    <label class="check"><input id="raEnabled" type="checkbox"> Allow access from other devices</label>
+    <label class="field"><span>Listen address</span><input id="raListen" maxlength="100" placeholder="0.0.0.0:8788" spellcheck="false"></label>
+    <label class="field"><span>Connection</span>
+      <select id="raMode">
+        <option value="https">HTTPS — encrypted (recommended)</option>
+        <option value="http">HTTP — not encrypted</option>
+      </select>
+    </label>
+    <p class="ra-warn" id="raPlainWarn" role="note" hidden><b>Not encrypted.</b> With HTTP, the password, the saved device passwords and everything you do in the terminal and file manager can be read by anyone on the path between you and this computer (café Wi-Fi, your provider, a compromised router). Use it only if you accept that, with a long random password.</p>
+    <label class="field"><span>Public IP address or No-IP / dynamic DNS name</span><input id="raHosts" maxlength="600" placeholder="myname.ddns.net, 105.105.220.122" spellcheck="false"></label>
+    <p class="muted small" id="raHostsHint">Used for the links shown below and, with HTTPS, added to the certificate. The remote device opens <code>http(s)://name-or-IP:port</code>. You must also forward this port in your router (and allow it in the firewall) to this computer; DCC Lite cannot do that for you.</p>
+    <div id="raInfo" class="ra-info" hidden>
+      <div><b>Open from another device</b><ul id="raUrls"></ul></div>
+      <div id="raCert" class="ra-cert">
+        <div><b>Certificate SHA-256</b> <span id="raFingerprint" class="ra-fp"></span></div>
+        <p class="muted small">The browser warns once about the self-signed certificate. Compare this fingerprint before accepting.</p>
+      </div>
+    </div>
+    <details class="advanced">
+      <summary>Password</summary>
+      <p class="muted small" id="raPassState"></p>
+      <label class="field"><span>New password (at least 10 characters)</span>
+        <span class="input-row"><input id="raPass" type="password" maxlength="256" spellcheck="false"><button class="btn" id="raPassSet" type="button">Set</button></span>
+      </label>
+      <button class="btn" id="raPassGen" type="button">Generate a random password</button>
+    </details>
+    <div id="raSecret" class="ra-secret" hidden>
+      <p><b>New password — shown only once:</b></p>
+      <div class="input-row"><input id="raSecretValue" readonly spellcheck="false"><button class="btn" id="raSecretCopy" type="button"><svg class="ic"><use href="#i-copy"/></svg>Copy</button></div>
+    </div>
+    <p class="form-error" id="raError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" id="raClose" type="button">Close</button>
+      <button class="btn primary" id="raSave" type="submit">Apply</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Network scan -->
+<dialog id="scanDialog" aria-labelledby="scanTitle">
+  <div class="dialog-card scan-card">
+    <h2 id="scanTitle">Find devices on your network</h2>
+    <p class="muted">Looks for receivers answering on FTP (21) or Telnet (23) in a private address range.</p>
+    <form id="scanForm" class="scan-form">
+      <label class="field"><span>Address range</span><input id="scanRange" list="scanRanges" placeholder="192.168.1.0/24 or 192.168.1.10-50" spellcheck="false" autocomplete="off"></label>
+      <datalist id="scanRanges"></datalist>
+      <button class="btn primary" id="scanStart" type="submit">Scan</button>
+    </form>
+    <p class="form-error" id="scanError" role="alert" hidden></p>
+    <p class="muted" id="scanStatus" role="status" aria-live="polite"></p>
+    <ul class="scan-results" id="scanResults"></ul>
+    <div class="dialog-actions"><span class="spacer"></span><button class="btn" id="scanClose" type="button">Close</button></div>
+  </div>
+</dialog>
+
+<!-- Bouquet editor -->
+<dialog id="bouquetDialog" aria-labelledby="bqTitle">
+  <div class="dialog-card bq-card">
+    <header class="editor-head">
+      <div class="editor-title"><h2 id="bqTitle">Bouquet editor</h2><code id="bqSub" class="ellipsis"></code></div>
+      <label class="field-inline">Settings folder <input id="bqDir" value="/etc/enigma2" spellcheck="false" autocomplete="off"></label>
+      <button class="btn sm" id="bqLoad" type="button">Load</button>
+    </header>
+    <p class="notice">A wrong channel list can confuse Enigma2. Make a backup copy of the settings folder first, and reload the lists on the receiver after saving.</p>
+    <div class="bq-body">
+      <aside class="bq-side">
+        <div class="seg" id="bqKind" role="radiogroup" aria-label="List type">
+          <button type="button" role="radio" data-kind="tv" aria-checked="true">TV</button>
+          <button type="button" role="radio" data-kind="radio" aria-checked="false">Radio</button>
+        </div>
+        <ul class="bq-list" id="bqBouquets" role="listbox" aria-label="Bouquets"></ul>
+        <div class="bq-actions">
+          <button class="btn sm" id="bqNew" type="button">New…</button>
+          <button class="btn sm" id="bqListUp" type="button" title="Move bouquet up in the list" aria-label="Move bouquet up">▲</button>
+          <button class="btn sm" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down">▼</button>
+          <button class="btn sm danger" id="bqListRemove" type="button" title="Remove from the list (the file stays on the receiver)">Remove</button>
+        </div>
+      </aside>
+      <section class="bq-main">
+        <div class="bq-toolbar">
+          <input id="bqName" aria-label="Bouquet name" placeholder="Bouquet name" maxlength="120" disabled>
+          <input id="bqFilter" type="search" aria-label="Filter channels" placeholder="Filter channels" disabled>
+        </div>
+        <ul class="bq-entries" id="bqEntries" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Channels"></ul>
+        <div class="bq-toolbar">
+          <button class="btn sm" id="bqUp" type="button" title="Move up (Alt+↑)">▲ Up</button>
+          <button class="btn sm" id="bqDown" type="button" title="Move down (Alt+↓)">▼ Down</button>
+          <button class="btn sm danger" id="bqDelete" type="button" title="Remove from this bouquet (Delete)">Delete</button>
+          <button class="btn sm" id="bqMarker" type="button">+ Marker</button>
+          <span class="spacer"></span><span class="muted" id="bqCount"></span>
+        </div>
+      </section>
+    </div>
+    <p id="bqStatus" class="editor-status" role="status" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button class="btn" id="bqReload" type="button" title="Ask the receiver to re-read the channel lists (needs its web interface)">Reload on receiver</button>
+      <span class="spacer"></span>
+      <button class="btn" id="bqClose" type="button">Close</button>
+      <button class="btn primary" id="bqSave" type="button" disabled>Save <kbd>Ctrl+S</kbd></button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Remote text editor -->
+<dialog id="editorDialog" aria-labelledby="editorTitle">
+  <div class="dialog-card editor-card">
+    <header class="editor-head">
+      <div class="editor-title">
+        <h2 id="editorTitle">File</h2>
+        <code id="editorPath" class="ellipsis"></code>
+      </div>
+      <span class="badge" id="editorMeta"></span>
+    </header>
+    <p class="form-error" id="editorNotice" role="status" hidden></p>
+    <textarea id="editorText" class="editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File content"></textarea>
+    <div class="editor-foot">
+      <span id="editorStatus" class="editor-status" role="status" aria-live="polite"></span>
+      <span id="editorCursor" class="editor-cursor"></span>
+      <label class="check"><input type="checkbox" id="editorWrap"> Wrap lines</label>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn" id="editorReload" type="button">Reload</button>
+      <span class="spacer"></span>
+      <button class="btn" id="editorClose" type="button">Close</button>
+      <button class="btn primary" id="editorSave" type="button">Save <kbd>Ctrl+S</kbd></button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Receiver power -->
+<dialog id="powerDialog" aria-labelledby="powerTitle">
+  <div class="dialog-card power-card">
+    <header class="power-head">
+      <h2 id="powerTitle">Receiver power</h2>
+      <span class="spacer"></span>
+      <span class="badge" id="powerState"></span>
+    </header>
+    <div class="power-body">
+      <div class="power-col" role="group" aria-labelledby="powerActionsTitle">
+        <h3 id="powerActionsTitle">Power</h3>
+        <div class="power-slots" id="powerActions"></div>
+      </div>
+      <div class="power-col" role="group" aria-labelledby="powerBootTitle">
+        <h3 id="powerBootTitle">MultiBoot slots</h3>
+        <div class="power-slots" id="powerSlots"></div>
+        <p class="power-note" id="powerSlotsNote"></p>
+      </div>
+    </div>
+    <p class="form-error" id="powerError" hidden></p>
+    <div class="dialog-actions">
+      <button class="btn" id="powerReload" type="button">Reload channel lists</button>
+      <button class="btn" id="powerKey" type="button">Power key</button>
+      <span class="spacer"></span>
+      <button class="btn primary" id="powerClose" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="toolsDialog" aria-labelledby="toolsTitle">
+  <div class="dialog-card tools-card">
+    <header class="power-head">
+      <h2 id="toolsTitle">Device tools</h2>
+      <span class="spacer"></span>
+      <span class="badge" id="toolsDevice"></span>
+    </header>
+    <div class="tools-body">
+      <section class="tools-sec" aria-labelledby="toolsBackupTitle">
+        <h3 id="toolsBackupTitle">Backup the channel list</h3>
+        <p class="muted small">Saves lamedb and the bouquets of the receiver (folder /etc/enigma2) as a .zip file on this computer.</p>
+        <div class="tools-row">
+          <div class="seg" id="toolsScope" role="radiogroup" aria-label="What to back up">
+            <button type="button" role="radio" data-scope="channels" aria-checked="true">Channel list</button>
+            <button type="button" role="radio" data-scope="all" aria-checked="false">All files in the folder</button>
+          </div>
+          <button class="btn primary" id="toolsBackup" type="button">Download backup</button>
+        </div>
+      </section>
+      <section class="tools-sec" aria-labelledby="toolsRestoreTitle">
+        <h3 id="toolsRestoreTitle">Restore the channel list</h3>
+        <p class="muted small">Puts the channel list files of a backup back on the receiver and reloads them. Other files in the backup (such as settings) are ignored. Download a backup of the current list first if you may want it back.</p>
+        <div class="tools-row">
+          <input type="file" id="toolsRestoreFile" accept=".zip,application/zip" aria-label="Backup .zip file">
+          <button class="btn" id="toolsRestore" type="button">Restore…</button>
+        </div>
+        <p class="small" id="toolsRestoreResult" role="status" hidden></p>
+      </section>
+      <section class="tools-sec" aria-labelledby="toolsIpkTitle">
+        <h3 id="toolsIpkTitle">Install a plugin (.ipk)</h3>
+        <p class="muted small">Uploads the package to /tmp on the receiver and installs it with opkg in a Terminal tab, so you see the whole result.</p>
+        <div class="tools-row">
+          <input type="file" id="toolsIpkFile" accept=".ipk" aria-label="Package .ipk file">
+          <button class="btn" id="toolsIpk" type="button">Upload and install…</button>
+        </div>
+      </section>
+      <div class="tools-progress" id="toolsProgress" hidden>
+        <div class="tools-bar"><span></span></div>
+        <span class="small" id="toolsProgressText"></span>
+      </div>
+    </div>
+    <p class="form-error" id="toolsError" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn primary" id="toolsClose" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Generic dialogs -->
+<dialog id="askDialog" aria-labelledby="askTitle">
+  <form method="dialog" id="askForm" class="dialog-card">
+    <h2 id="askTitle">Title</h2>
+    <p id="askMessage" class="ask-message"></p>
+    <label class="field" id="askField"><span id="askLabel">Name</span><input id="askInput" spellcheck="false" autocomplete="off"></label>
+    <p class="form-error" id="askError" role="alert" hidden></p>
+    <div class="dialog-actions"><span class="spacer"></span>
+      <button class="btn" id="askCancel" type="button">Cancel</button>
+      <button class="btn primary" id="askOk" type="submit">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="menu" id="menu" role="menu" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

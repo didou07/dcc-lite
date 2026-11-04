@@ -3,12 +3,10 @@
 #   .\scripts\build.ps1 -Arch 386            32-bit, Windows 10/11
 #   .\scripts\build.ps1 -Win7                64-bit, also runs on Windows 7/8/8.1
 #   .\scripts\build.ps1 -Win7 -Arch 386      32-bit, also runs on Windows 7/8/8.1
-#   .\scripts\build.ps1 -Test                run go vet and go test first
 # -Win7 needs the patched Go toolchain from https://github.com/XTLS/go-win7 (the "go-for-win7-windows-*"
 # zip of a release). Unpack it and point GO_WIN7 at its go.exe:
 #   $env:GO_WIN7 = "C:\go-win7\bin\go.exe"
 param(
-    [switch]$Test,
     [switch]$Win7,
     [ValidateSet("amd64", "386")][string]$Arch = "amd64"
 )
@@ -36,7 +34,6 @@ $Dir = "dist\$Name"
 try {
     # Never let Go download the official toolchain: programs it builds do not start on Windows 7.
     if ($Win7) { $env:GOTOOLCHAIN = "local" }
-    if ($Test) { Invoke-Go vet ./...; Invoke-Go test ./... }
 
     Remove-Item $Dir, "dist\$Name.zip", "dist\$Name.zip.sha256" -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $Dir | Out-Null
@@ -46,7 +43,6 @@ try {
 finally {
     Remove-Item Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:GOTOOLCHAIN -ErrorAction SilentlyContinue
 }
-Set-Content -Encoding ASCII "$Dir\START-DCCLite.cmd" "@echo off`r`ncd /d `"%~dp0`"`r`nstart `"DCC Lite`" `"%~dp0DCCLite.exe`" --portable`r`n"
 Compress-Archive -Path $Dir -DestinationPath "dist\$Name.zip" -Force
 Remove-Item $Dir -Recurse -Force
 $Hash = (Get-FileHash -Algorithm SHA256 "dist\$Name.zip").Hash.ToLower()

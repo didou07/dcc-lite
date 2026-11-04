@@ -4,7 +4,7 @@ A light, local web tool for Enigma2 receivers: devices, FTP files, Telnet termin
 (multiple tabs), live screen with remote keys, channel list with logos and
 "on now" programmes, bouquet editor, power actions.
 
-- Run `DCCLite` (on Windows the release package also has `START-DCCLite.cmd`); it opens in your browser.
+- Run `DCCLite` ; it opens in your browser.
 - Data lives in the user config folder `DCCLite` (or `data/` beside the program with `--portable`).
   Folders from earlier builds (`DCCNext`, `BoxDeck`) are moved automatically on first start.
 - Channel logos are looked up on the receiver like OpenWebif does: service reference,
@@ -20,7 +20,7 @@ A light, local web tool for Enigma2 receivers: devices, FTP files, Telnet termin
   restore it (only channel list files are written, bouquet index last, then the receiver reloads),
   and install an `.ipk`: it is uploaded to `/tmp` and `opkg install` runs in a Terminal tab.
 
-Build: `scripts/build.sh` (all platforms) or `scripts\build.ps1` (Windows). Tests: see below.
+Build: see Packages below. Tests: see Tests.
 
 ## Project layout
 
@@ -86,9 +86,9 @@ echo 1.0.1 > VERSION
 git commit -am "Release 1.0.1" && git push
 ```
 
-The `Release` workflow runs the tests, builds every package and creates the release `v1.0.1` with
+The `Release` workflow builds every package and creates the release `v1.0.1` with
 the `.zip` files and `SHA256SUMS.txt` attached. If that release already exists nothing happens; a
-number with a dash (`1.1.0-rc1`) becomes a pre-release. Pushes and pull requests run the `CI` workflow.
+number with a dash (`1.1.0-rc1`) becomes a pre-release.
 
 ## Tests
 
@@ -98,29 +98,36 @@ node test/dccimport.test.js   # script import
 bash test/integration.sh      # builds and runs the program, checks pages and security rules
 ```
 
-## 32-bit systems and Windows 7
+## Packages
 
 Download the package that matches the computer:
 
 | System | Package |
 | --- | --- |
-| Windows 7 / 8 / 8.1, 32-bit | `windows-386-win7` |
-| Windows 7 / 8 / 8.1, 64-bit | `windows-amd64-win7` |
 | Windows 10 / 11, 64-bit | `windows-amd64` |
-| Linux 32-bit PC | `linux-386` |
-| Linux 32-bit ARM (Raspberry Pi 2 and newer) | `linux-arm` |
+| Windows 10, 32-bit | `windows-386` |
+| Windows 7 / 8 / 8.1, 64-bit | `windows-amd64-win7` |
+| Windows 7 / 8 / 8.1, 32-bit | `windows-386-win7` |
+| Linux PC, 64-bit | `linux-amd64` |
+| Linux PC, 32-bit | `linux-386` |
+| Linux ARM 64-bit (Raspberry Pi 3/4/5 with a 64-bit system) | `linux-arm64` |
+| Linux ARM 32-bit (Raspberry Pi 2 and newer) | `linux-arm` |
+| macOS, Apple silicon | `darwin-arm64` |
+| macOS, Intel | `darwin-amd64` |
 
 The `-win7` packages also run on Windows 10 and 11. Windows 7 needs Service Pack 1 and the
-Convenience Rollup (KB3125574) installed. Windows XP and Vista cannot run any current Go program.
-On Windows 7 the newest browsers are Chrome 109 and Firefox ESR 115.
+Convenience Rollup (KB3125574). Windows XP and Vista cannot run any current Go program. On Windows 7
+the newest browsers are Chrome 109 and Firefox ESR 115.
 
-Building the Windows 7 packages needs the patched Go toolchain from
-[XTLS/go-win7](https://github.com/XTLS/go-win7) (programs built with the official Go 1.21+ do not start
-on Windows 7):
+Build one yourself: `scripts/build.sh linux/amd64` (or `scripts\build.ps1` on Windows).
+
+The Windows 7 packages are built with the patched Go toolchain from
+[XTLS/go-win7](https://github.com/XTLS/go-win7), because programs made with the official Go 1.21+ do
+not start on Windows 7:
 
 ```
-export GO_WIN7="$(scripts/setup-go-win7.sh)"   # downloads it
-scripts/build.sh windows7/386 windows7/amd64         # or scripts/build.sh, which then includes them
+export GO_WIN7="$(scripts/setup-go-win7.sh)"          # downloads it
+scripts/build.sh windows7/386 windows7/amd64          # or scripts/build.sh: it then includes them
 ```
 
 On Windows: `$env:GO_WIN7 = "C:\go-win7\bin\go.exe"; .\scripts\build.ps1 -Win7 -Arch 386`.

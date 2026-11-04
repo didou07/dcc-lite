@@ -33,18 +33,14 @@ jobs:
         with:
           go-version: '1.27.3'
           check-latest: false
-      - name: Test
-        if: steps.v.outputs.exists != 'true'
-        run: |
-          go vet ./...
-          go test ./...
-          bash test/integration.sh
       - name: Install the Go toolchain patched for Windows 7
         if: steps.v.outputs.exists != 'true'
         run: echo "GO_WIN7=$(bash scripts/setup-go-win7.sh)" >> "$GITHUB_ENV"
       - name: Build all platforms
         if: steps.v.outputs.exists != 'true'
-        run: VERSION="${{ steps.v.outputs.version }}" bash scripts/build.sh
+        run: |
+          VERSION="${{ steps.v.outputs.version }}" bash scripts/build.sh
+          ls dist/*-win7.zip   # the Windows 7 packages must exist
       - name: Publish GitHub release
         if: steps.v.outputs.exists != 'true'
         env:

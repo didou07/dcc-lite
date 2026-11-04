@@ -20,7 +20,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 VERSION="${VERSION:-$(tr -d '[:space:]' < VERSION)}"
 TARGETS=("$@")
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
-  TARGETS=(windows/amd64 linux/amd64 linux/386 linux/arm64 linux/arm darwin/amd64 darwin/arm64)
+  TARGETS=(windows/amd64 windows/386 linux/amd64 linux/386 linux/arm64 linux/arm darwin/amd64 darwin/arm64)
   [[ -z "${GO_WIN7:-}" ]] || TARGETS+=(windows7/amd64 windows7/386)
 fi
 
@@ -41,9 +41,6 @@ for target in "${TARGETS[@]}"; do
   mkdir -p "dist/${name}"
   env CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" ${extra[@]+"${extra[@]}"} \
     "$gobin" build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "dist/${name}/DCCLite${ext}" ./src/dcclite
-  if [[ "$os" == windows ]]; then
-    printf '@echo off\r\ncd /d "%%~dp0"\r\nstart "DCC Lite" "%%~dp0DCCLite.exe" --portable\r\n' > "dist/${name}/START-DCCLite.cmd"
-  fi
   (cd dist && zip -qr "${name}.zip" "${name}" && rm -rf "${name}")
 done
 (cd dist && { sha256sum *.zip 2>/dev/null || shasum -a 256 *.zip; } > SHA256SUMS.txt)

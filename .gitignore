@@ -1,0 +1,25 @@
+# Build output
+/dist/
+/DCCLite
+*.exe
+*.zip
+*.test
+*.out
+
+# Local data (device profiles contain passwords)
+/data/
+profiles.json
+remote.json
+remote-access.json
+known_hosts*
+/tls/
+
+# Misc
+go.work
+go.work.sum
+*.log
+*.tmp
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

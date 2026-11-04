@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+      - name: Verify formatting
+        shell: bash
+        run: |
+          files="$(gofmt -l ./cmd ./internal)"
+          if [[ -n "$files" ]]; then
+            echo "$files"
+            exit 1
+          fi
+      - name: Static analysis
+        run: go vet ./...
+      - name: Unit and API tests
+        run: go test ./...
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          for f in src/web/js/*.js src/web/login.js; do node --check "$f"; done
+          node test/dccimport.test.js
+      - name: Shell syntax
+        shell: bash
+        run: bash -n scripts/build.sh scripts/setup-go-win7.sh test/integration.sh
+      - name: Race detector and integration
+        if: runner.os == 'Linux'
+        run: |
+          go test -race ./...
+          bash test/integration.sh
+      - name: Build and run the executable
+        shell: bash
+        run: |
+          ext=""; [[ "$RUNNER_OS" == "Windows" ]] && ext=".exe"
+          go build -trimpath -ldflags "-s -w -X main.version=$(cat VERSION)" -o "DCCLite${ext}" ./src/dcclite
+          "./DCCLite${ext}" --version
+
+  vulnerability-scan:
+    name: Go vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+      - name: Scan reachable vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
+
+  windows7-and-32bit:
+    name: Windows 7 and 32-bit builds
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+      - name: Vet and test as a 32-bit program
+        run: |
+          GOOS=windows GOARCH=386 go vet ./...
+          GOARCH=386 CGO_ENABLED=0 go test ./...
+      - name: Install the Go toolchain patched for Windows 7
+        run: echo "GO_WIN7=$(bash scripts/setup-go-win7.sh)" >> "$GITHUB_ENV"
+      - name: Build the Windows 7 executables
+        run: |
+          for arch in 386 amd64; do
+            CGO_ENABLED=0 GOOS=windows GOARCH=$arch GOTOOLCHAIN=local \
+              "$GO_WIN7" build -trimpath -o "dcclite-$arch.exe" ./src/dcclite
+          done
+          file dcclite-386.exe dcclite-amd64.exe
+          file dcclite-386.exe | grep -q 'PE32 executable'
+          file dcclite-amd64.exe | grep -q 'PE32+ executable'
+      - name: Build the release packages
+        run: bash scripts/build.sh windows7/386 windows7/amd64 linux/386 linux/arm

@@ -21,3 +21,18 @@ api("/api/v1/system").then((info) => {
     window.location.assign("/login");
   });
 }).catch(() => {});
+
+/* "/" jumps to the search box of the current page; Esc inside it clears the search. */
+document.addEventListener("keydown", (event) => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target;
+  const typing = target.closest?.("input, textarea, select, [contenteditable], .xterm");
+  if (event.key === "/" && !typing) {
+    const box = view.current === "files" ? panes[files.active].filter
+      : view.current === "screen" ? $(".ch-tools .filter-input") : null;
+    if (box && !box.disabled) { event.preventDefault(); box.focus(); box.select(); }
+  } else if (event.key === "Escape" && target.matches?.(".filter-input")) {
+    if (target.value) { target.value = ""; target.dispatchEvent(new Event("input", { bubbles: true })); }
+    else target.blur();
+  }
+});

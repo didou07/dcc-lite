@@ -42,9 +42,12 @@ function transferName(task) {
 function taskRow(task) {
   const percent = Math.round(Math.max(0, Math.min(1, task.progress?.fraction || (task.state === "completed" ? 1 : 0))) * 100);
   const live = task.state === "running" || task.state === "queued";
-  const done = formatBytes(task.progress?.bytes_done || 0), total = task.progress?.bytes_total ? ` / ${formatBytes(task.progress.bytes_total)}` : "";
+  const done = task.progress?.bytes_done || 0, total = task.progress?.bytes_total || 0;
   const speed = Number(task.progress?.speed_bytes_per_second || 0);
-  const details = [task.state === "queued" ? "Waiting" : `${done}${total}`, live && speed > 0 ? `${formatBytes(speed)}/s` : "", live ? formatETA(task.progress?.eta_seconds) : ""].filter(Boolean).join(" · ");
+  const meta = task.state === "queued" ? "Waiting"
+    : live ? [`${percent}%`, speed > 0 ? `${formatBytes(speed)}/s` : "", formatETA(task.progress?.eta_seconds)].filter(Boolean).join(" · ")
+    : task.state === "completed" ? `Done${done ? ` · ${formatBytes(done)}` : ""}`
+    : task.state === "cancelled" ? "Cancelled" : "Failed";
   const bar = h("div", { class: `bar${task.state === "queued" ? " indeterminate" : ""}` }, h("i"));
   bar.firstElementChild.style.width = `${percent}%`;
   const actions = h("div", { class: "t-actions" });
@@ -52,12 +55,15 @@ function taskRow(task) {
   if (live) actions.append(iconButton("x", "Cancel transfer", () => transferAction(task.id, "cancel")));
   if (terminal && task.can_resume) actions.append(iconButton("play", "Resume from the partial file", () => transferAction(task.id, "resume")), iconButton("refresh", "Start over", () => transferAction(task.id, "restart")));
   if (terminal && !task.can_resume) actions.append(iconButton("refresh", "Try again", () => retryTransfer(task)));
+  const sizes = total ? `${formatBytes(done)} / ${formatBytes(total)}` : formatBytes(done);
   return h("div", { class: "transfer", dataset: { state: task.state, id: task.id } },
-    h("span", { class: "t-dir" }, icon(task.direction === "upload" ? "upload" : "download")),
+    h("span", { class: "t-dir" }, icon(task.direction === "upload" ? "upload" : "download", "sm")),
     h("div", { class: "t-main" },
-      h("div", { class: "t-name", title: `${task.local_path} ↔ ${task.remote_path}`, text: `${task.is_directory ? "📁 " : ""}${transferName(task)}` }),
-      bar,
-      task.error ? h("div", { class: "t-meta err", text: task.error }) : h("div", { class: "t-meta", text: `${task.state === "completed" ? "Completed · " : task.state === "cancelled" ? "Cancelled · " : ""}${details}` }),
+      h("div", { class: "t-top" },
+        h("span", { class: "t-name", title: `${task.local_path} ↔ ${task.remote_path}\n${sizes}`, text: `${task.is_directory ? "📁 " : ""}${transferName(task)}` }),
+        h("span", { class: "t-meta", text: meta })),
+      task.state === "completed" || terminal ? null : bar,
+      task.error ? h("div", { class: "t-meta err", text: task.error }) : null,
       task.warning ? h("div", { class: "t-meta warn", text: task.warning }) : null),
     actions);
 }
@@ -86,8 +92,10 @@ async function loadTransfers() {
     const failed = files.transfers.filter((t) => t.state === "failed").length;
     $("#transferSummary").textContent = files.transfers.length ? `${active} active · ${files.transfers.length} total${failed ? ` · ${failed} failed` : ""}` : "No transfers yet";
     $("#transferClear").disabled = !files.transfers.some((t) => !["running", "queued"].includes(t.state));
-    if (!files.transfers.length) list.replaceChildren(h("div", { class: "transfer-empty", text: "Select items and press Download / Upload, or drag them to the other panel." }));
-    else list.replaceChildren(...files.transfers.slice(-40).reverse().map(taskRow));
+    $("#queuePanel").classList.toggle("empty", !files.transfers.length);
+    const isLive = (t) => t.state === "running" || t.state === "queued";
+    const recent = files.transfers.slice(-40).reverse();
+    list.replaceChildren(...[...recent.filter(isLive), ...recent.filter((t) => !isLive(t))].map(taskRow));
     if (active && !files.queueTimer) files.queueTimer = window.setInterval(loadTransfers, 900);
     if (!active && files.queueTimer) { window.clearInterval(files.queueTimer); files.queueTimer = 0; }
     const finished = files.transfers.filter((t) => t.state === "completed" && !files.seenDone.has(t.id));
@@ -96,6 +104,17 @@ async function loadTransfers() {
   } catch { /* queue unavailable */ }
   finally { files.queueBusy = false; }
 }
+function setQueueCollapsed(collapsed) {
+  $("#queuePanel").classList.toggle("collapsed", collapsed);
+  const toggle = $("#transferToggle");
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  toggle.title = collapsed ? "Show the list" : "Hide the list";
+  toggle.setAttribute("aria-label", toggle.title);
+  toggle.replaceChildren(icon(collapsed ? "chev-up" : "chev-down"));
+  store.set("queue.collapsed", collapsed ? "1" : "");
+}
+$("#transferToggle").addEventListener("click", () => setQueueCollapsed(!$("#queuePanel").classList.contains("collapsed")));
+setQueueCollapsed(Boolean(store.get("queue.collapsed", "")));
 $("#transferClear").addEventListener("click", async () => { try { await api("/api/v1/files/transfers", { method: "DELETE" }); loadTransfers(); } catch (error) { toastError(error); } });
 
 /* Terminal handoff from Files */

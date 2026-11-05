@@ -48,8 +48,8 @@ function renderDeviceGrid() {
     const status = devices.status.get(profile.id);
     const card = h("article", { class: `device-card${profile.id === devices.currentID ? " current" : ""}`, dataset: { id: profile.id } },
       h("div", { class: "device-top" },
-        h("span", { class: "dot", dataset: { state: status?.state || "unknown" } }),
-        h("div", { class: "ellipsis" }, h("div", { class: "device-name ellipsis", text: profile.name }), h("div", { class: "device-sub ellipsis", text: `${profile.host} · ${profile.username || "root"}` })),
+        h("span", { class: "avatar" }, icon("tv"), h("span", { class: "dot", dataset: { state: status?.state || "unknown" } })),
+        h("div", { class: "ellipsis" }, h("div", { class: "device-name", text: profile.name }), h("div", { class: "device-sub ellipsis", text: `${profile.host} · ${profile.username || "root"}` })),
         h("div", { class: "device-menu" },
           iconButton("list", "Receiver information (image, signal, tuners, disks)", () => toggleDeviceInfo(profile.id)),
           iconButton("refresh", "Check this device", () => testDevice(profile.id)),
@@ -60,7 +60,8 @@ function renderDeviceGrid() {
       h("div", { class: "device-actions" },
         h("button", { class: "btn primary", type: "button", onClick: () => openDevice(profile.id, "files") }, icon("files"), "Files"),
         h("button", { class: "btn primary", type: "button", onClick: () => openDevice(profile.id, "terminal") }, icon("terminal"), "Terminal"),
-        h("button", { class: "btn primary", type: "button", title: "Watch what the receiver shows on the TV", onClick: () => openDevice(profile.id, "screen") }, icon("screen"), "Screen")),
+        h("button", { class: "btn primary", type: "button", title: "Watch what the receiver shows on the TV", onClick: () => openDevice(profile.id, "screen") }, icon("screen"), "Screen"),
+        h("button", { class: "btn primary", type: "button", title: "Live signal quality (SNR / AGC) while aiming the dish", onClick: () => openDevice(profile.id, "signal") }, icon("signal"), "Signal")),
       deviceInfoState.has(profile.id) ? deviceInfoPanel(profile) : null);
     grid.append(card);
   }
@@ -278,6 +279,7 @@ function setCurrentDevice(id) {
   }
   if (view.current === "terminal") terminalEnter();
   if (view.current === "screen") screenEnter();
+  if (view.current === "signal") signalEnter();
   if (id && !devices.status.has(id)) testDevice(id);
 }
 $("#deviceSelect").addEventListener("change", (event) => setCurrentDevice(event.target.value));
@@ -285,8 +287,9 @@ $("#deviceSelect").addEventListener("change", (event) => setCurrentDevice(event.
 /* ───────────── Views ───────────── */
 const view = { current: "devices" };
 function showView(name) {
-  if (!["devices", "files", "terminal", "screen"].includes(name)) name = "devices";
+  if (!["devices", "files", "terminal", "screen", "signal"].includes(name)) name = "devices";
   if (view.current === "screen" && name !== "screen") screenStop(); // no polling while the tab is not shown
+  if (view.current === "signal" && name !== "signal") signalStop();
   view.current = name;
   document.body.dataset.view = name;
   for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === name));
@@ -295,5 +298,6 @@ function showView(name) {
   if (name === "files") filesEnter();
   if (name === "terminal") terminalEnter();
   if (name === "screen") screenEnter();
+  if (name === "signal") signalEnter();
 }
 for (const tab of $$("#mainTabs .tab")) tab.addEventListener("click", () => showView(tab.dataset.view));

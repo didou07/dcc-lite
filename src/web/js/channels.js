@@ -136,7 +136,9 @@ function renderChannels() {
     return h("button", { class: `ch-item${active ? " current" : ""}`, type: "button", role: "option", "aria-selected": String(active), dataset: { ref: c.ref }, title: c.name, onClick: () => zapTo(c) },
       h("span", { class: "ch-num", text: c.number || "" }), piconNode(c, c.name),
       h("span", { class: "ch-text" }, h("span", { class: "ch-name ellipsis", text: c.name }), h("span", { class: "ch-epg ellipsis", hidden: true }), h("span", { class: "ch-prog", hidden: true }, h("span"))),
-      h("span", { class: "ch-pc", role: "presentation", title: "Watch on this computer", onClick: (event) => { event.stopPropagation(); watchOnPC(c); } }, icon("play")));
+      h("span", { class: "ch-acts" },
+        h("span", { class: "ch-pc", role: "presentation", title: "Programme guide of this channel", onClick: (event) => { event.stopPropagation(); openGuide("epg", c); } }, icon("calendar")),
+        h("span", { class: "ch-pc", role: "presentation", title: "Watch on this computer", onClick: (event) => { event.stopPropagation(); watchOnPC(c); } }, icon("play"))));
   });
   if (rows.length > shown.length) {
     nodes.push(h("button", { class: "btn sm ch-more", type: "button", onClick: () => { ch.limit += 300; renderChannels(); } }, `Show more (${rows.length - shown.length})`));
@@ -335,3 +337,12 @@ document.addEventListener("keydown", (event) => {
 
 
 $("#nowStandby").addEventListener("click", () => powerAction("wakeup", "Waking the receiver up…"));
+
+/* The running programme opens the guide of that channel. */
+const nowText = $(".now-text");
+nowText.setAttribute("role", "button");
+nowText.setAttribute("tabindex", "0");
+nowText.title = "Open the programme guide of this channel";
+const openNowGuide = () => { if (ch.currentRef) openGuide("epg", { ref: ch.currentRef, name: $("#nowChannel").textContent }); };
+nowText.addEventListener("click", openNowGuide);
+nowText.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openNowGuide(); } });

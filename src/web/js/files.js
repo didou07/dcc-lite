@@ -83,10 +83,29 @@ function computeVisible(pane) {
     .sort(compareEntries(pane));
   return pane.visible;
 }
+const FILE_TYPES = {
+  image: ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "ico", "mvi"],
+  archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "lzma"],
+  code: ["sh", "py", "lua", "pl", "php", "js", "c", "h", "cpp"],
+  box: ["ipk", "deb", "opk", "bin", "img", "nfi"],
+  video: ["ts", "mkv", "mp4", "avi", "mpg", "mpeg", "mov", "m2ts", "m4v", "vob", "wmv"],
+  audio: ["mp3", "ogg", "flac", "wav", "aac", "m4a", "wma"],
+  gear: ["conf", "cfg", "ini", "xml", "json", "yml", "yaml", "tv", "radio"],
+  text: ["txt", "log", "md", "csv", "list", "m3u", "m3u8"],
+};
+const FILE_TYPE_BY_EXT = Object.fromEntries(Object.entries(FILE_TYPES).flatMap(([type, list]) => list.map((ext) => [ext, type])));
+const FILE_TYPE_BY_NAME = /^(settings|lamedb5?|satellites\.xml|cables\.xml|terrestrial\.xml|bouquets\.(tv|radio)|userbouquet\..*|blacklist|whitelist|profile|fstab|passwd|hosts)$/;
+function fileType(name) {
+  const lower = String(name).toLowerCase();
+  if (FILE_TYPE_BY_NAME.test(lower)) return "gear";
+  const dot = lower.lastIndexOf(".");
+  return dot > 0 ? FILE_TYPE_BY_EXT[lower.slice(dot + 1)] || "" : "";
+}
 function entryIcon(entry) {
   if (entry.is_dir) return icon("folder", "dir-ic");
   if (String(entry.mode || "").startsWith("l")) return icon("link", "link-ic");
-  return icon("file", "file-ic");
+  const type = fileType(entry.name);
+  return type ? icon(type, `file-ic ft-${type}`) : icon("file", "file-ic");
 }
 function renderPane(pane) {
   const visible = computeVisible(pane);
@@ -110,7 +129,32 @@ function renderPane(pane) {
     : !pane.entries.length ? "This folder is empty" : !visible.length ? "No items match the filter" : "";
   pane.empty.textContent = message;
   pane.empty.hidden = !message;
+  pane.empty.classList.toggle("loading", message.endsWith("…"));
+  renderCrumbs(pane);
   updateSelectionUI(pane);
+}
+/* Clickable path: every folder of the current path jumps straight to it. */
+function renderCrumbs(pane) {
+  if (!pane.crumbs) {
+    pane.crumbs = h("nav", { class: "crumbs", "aria-label": "Path" });
+    $(".filterbar", pane.root).before(pane.crumbs);
+    pane.crumbs.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-path]");
+      if (button) loadPane(pane.kind, button.dataset.path);
+    });
+  }
+  const remote = pane.kind === "remote";
+  const parts = pane.path.split("/").filter((part) => part && part !== ".");
+  const crumbs = [h("button", { type: "button", class: "crumb", dataset: { path: remote ? "/" : "." }, title: remote ? "Root folder" : "Home folder" }, icon(remote ? "tv" : "home", "sm"))];
+  let current = remote ? "" : ".";
+  parts.forEach((part, index) => {
+    current = remote ? `${current}/${part}` : (current === "." ? part : `${current}/${part}`);
+    crumbs.push(h("span", { class: "crumb-sep", text: "›" }));
+    crumbs.push(h("button", { type: "button", class: `crumb${index === parts.length - 1 ? " last" : ""}`, dataset: { path: current }, text: part }));
+  });
+  pane.crumbs.hidden = !pane.loaded;
+  pane.crumbs.replaceChildren(...crumbs);
+  pane.crumbs.scrollLeft = pane.crumbs.scrollWidth;
 }
 function updateSelectionUI(pane) {
   const rows = $$("tr.row[data-index]", pane.rows);

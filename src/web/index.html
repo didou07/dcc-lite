@@ -19,8 +19,10 @@
   <script src="/js/terminal.js" defer></script>
   <script src="/js/remote-control.js" defer></script>
   <script src="/js/screen.js" defer></script>
+  <script src="/js/signal.js" defer></script>
   <script src="/js/power.js" defer></script>
   <script src="/js/channels.js" defer></script>
+  <script src="/js/guide.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
   <script src="/js/main.js" defer></script>
 </head>
@@ -68,8 +70,22 @@
     <symbol id="i-remote" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="7" r="1.2"/><path d="M10 12h4M10 15.5h4M10 19h4"/></symbol>
     <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 20v-4M9 20v-8M14 20V8M19 20V4"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
     <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 3l3 3 3-3"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 9"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M10 12l-2 2 2 2M14 12l2 2-2 2"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7zM4 7l8 4 8-4M12 11v10"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/></symbol>
+    <symbol id="i-audio" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></symbol>
     <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M4 15l4 4 4-4M16 19V5M12 9l4-4 4 4"/></symbol>
   </defs>
 </svg>
@@ -81,6 +97,7 @@
     <button class="tab" role="tab" data-view="files" aria-selected="false"><svg class="ic"><use href="#i-files"/></svg><span>Files</span></button>
     <button class="tab" role="tab" data-view="terminal" aria-selected="false"><svg class="ic"><use href="#i-terminal"/></svg><span>Terminal</span></button>
     <button class="tab" role="tab" data-view="screen" aria-selected="false"><svg class="ic"><use href="#i-screen"/></svg><span>Screen</span></button>
+    <button class="tab" role="tab" data-view="signal" aria-selected="false"><svg class="ic"><use href="#i-signal"/></svg><span>Signal</span></button>
   </nav>
   <div class="device-picker">
     <span class="dot" id="deviceDot" data-state="unknown" title="Device status"></span>
@@ -142,7 +159,7 @@
     <div class="commander" id="commander" data-active-pane="remote">
       <section class="pane" id="remotePane" data-kind="remote" aria-label="Remote files">
         <header class="pane-head">
-          <div class="pane-title"><span class="pane-badge remote">Remote</span><span id="remoteHost" class="muted ellipsis">—</span></div>
+          <div class="pane-title"><span class="pane-badge device">Remote</span><span id="remoteHost" class="muted ellipsis">—</span></div>
           <div class="pathbar">
             <button class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
             <button class="icon-btn" data-act="root" title="Root folder" aria-label="Root folder"><svg class="ic"><use href="#i-home"/></svg></button>
@@ -218,7 +235,8 @@
         <h2>Transfers</h2>
         <span class="muted" id="transferSummary">No transfers yet</span>
         <span class="spacer"></span>
-        <button class="btn sm" id="transferClear" type="button"><svg class="ic"><use href="#i-eraser"/></svg>Clear finished</button>
+        <button class="btn sm" id="transferClear" type="button" title="Remove the finished transfers"><svg class="ic"><use href="#i-eraser"/></svg>Clear finished</button>
+        <button class="icon-btn" id="transferToggle" type="button" title="Hide the list" aria-label="Hide the list" aria-expanded="true"><svg class="ic"><use href="#i-chev-down"/></svg></button>
       </header>
       <div id="transferList" class="transfer-list" tabindex="0" aria-live="polite"></div>
     </section>
@@ -279,6 +297,61 @@
       </div>
     </div>
   </section>
+  <!-- SIGNAL -->
+  <section class="view" id="view-signal" aria-label="Signal meter" hidden>
+    <div class="sig-top">
+      <div class="sig-title"><h2>Signal meter</h2><code id="sigSub" class="ellipsis"></code></div>
+      <span class="sig-live" id="sigLive" data-state="wait"><i></i><span>Waiting</span></span>
+    </div>
+    <div class="screen-tools sig-tools">
+      <label class="field-inline">Update
+        <select id="sigSpeed"><option value="300">Fast</option><option value="700">Normal</option><option value="2000">Slow</option></select>
+      </label>
+      <label class="field-inline">Good from
+        <select id="sigGood"><option value="50">50 %</option><option value="60">60 %</option><option value="70">70 %</option><option value="80">80 %</option></select>
+      </label>
+      <span class="spacer"></span>
+      <button class="btn sm" id="sigSound" type="button" aria-pressed="false" title="Beeps faster and higher as the signal improves, so you can turn the dish without looking at the screen"><svg class="ic"><use href="#i-signal"/></svg><span>Sound: off</span></button>
+      <button class="btn sm" id="sigPeakReset" type="button" title="Forget the best and worst values"><svg class="ic"><use href="#i-refresh"/></svg><span>Reset peak</span></button>
+      <button class="btn sm" id="sigPause" type="button"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
+      <button class="btn sm" id="sigFull" type="button" title="Full screen, for a phone or tablet next to the dish"><svg class="ic"><use href="#i-expand"/></svg><span>Full screen</span></button>
+    </div>
+    <div class="sig-body" id="sigBody">
+      <div class="sig-card sig-main" id="sigMain" data-level="none">
+        <div class="sig-channel" id="sigChannel"></div>
+        <div class="sig-gauge">
+          <svg viewBox="0 0 200 172" aria-hidden="true">
+            <path class="g-track" d="M43.4 156.6A80 80 0 1 1 156.6 156.6" pathLength="100" stroke-dasharray="100 100"/>
+            <path class="g-fill" id="sigArc" d="M43.4 156.6A80 80 0 1 1 156.6 156.6" pathLength="100" stroke-dasharray="0 100"/>
+            <g class="g-ticks" id="sigTicks"></g>
+            <line class="g-thr" id="sigThr" x1="168" y1="100" x2="190" y2="100"/>
+            <line class="g-peak" id="sigPeakMark" x1="170" y1="100" x2="188" y2="100" style="display:none"/>
+          </svg>
+          <div class="sig-readout" role="meter" aria-label="Signal quality (SNR)" aria-valuemin="0" aria-valuemax="100" id="sigMeter">
+            <div class="sig-big"><span id="sigValue">—</span><small>%</small></div>
+            <div class="sig-cap">SNR</div>
+          </div>
+        </div>
+        <div class="sig-state" id="sigState" role="status" aria-live="polite"><i></i><span>Waiting for the first reading…</span></div>
+        <div class="sig-tiles">
+          <div class="tile"><span>SNR</span><b id="sigDb">—</b></div>
+          <div class="tile"><span>AGC level</span><b id="sigAgc">—</b><em class="mini"><u id="sigAgcBar"></u></em></div>
+          <div class="tile"><span>BER</span><b id="sigBer">—</b></div>
+          <div class="tile best"><span>Best</span><b id="sigBest">—</b></div>
+          <div class="tile worst"><span>Worst</span><b id="sigWorst">—</b></div>
+          <div class="tile"><span>Tuner</span><b id="sigTuner">—</b></div>
+        </div>
+      </div>
+      <div class="sig-card sig-graph">
+        <div class="sig-graph-head"><strong>Last 2 minutes</strong>
+          <span class="legend"><i class="l-snr"></i>SNR</span><span class="legend"><i class="l-agc"></i>AGC</span><span class="legend"><i class="l-best"></i>Best</span>
+        </div>
+        <div class="sig-plot"><canvas id="sigCanvas" role="img" aria-label="Signal quality over the last two minutes"></canvas></div>
+        <p class="sig-tip"><b>Tip:</b> turn the dish a few millimetres, wait a second for the reading to settle, and stop where SNR is highest. Then fine-tune the LNB skew and elevation the same way.</p>
+      </div>
+    </div>
+    <p class="form-error" id="sigError" role="alert" hidden></p>
+  </section>
   <!-- SCREEN -->
   <section class="view" id="view-screen" aria-label="Live screen" hidden>
     <div class="screen-head">
@@ -295,11 +368,12 @@
         <select id="screenSpeed"><option value="400">Fast</option><option value="1000">Normal</option><option value="3000">Slow</option></select>
       </label>
       <span class="spacer"></span>
-      <button class="btn sm" id="remoteShow" type="button" hidden><svg class="ic"><use href="#i-remote"/></svg>Remote</button>
-      <button class="btn sm" id="channelShow" type="button" hidden><svg class="ic"><use href="#i-list"/></svg>Channels</button>
-      <button class="btn sm" id="screenPause" type="button"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
+      <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic"><use href="#i-remote"/></svg>Remote</button>
+      <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic"><use href="#i-list"/></svg>Channels</button>
+      <button class="btn sm" id="guideShow" type="button" title="Programme guide, timers and recordings"><svg class="ic"><use href="#i-calendar"/></svg>Guide</button>
+      <button class="btn sm" id="screenPause" type="button" title="Pause or resume the picture"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
       <button class="btn sm" id="screenFull" type="button" title="Full screen (F)"><svg class="ic"><use href="#i-expand"/></svg>Full screen</button>
-      <button class="btn sm" id="screenSave" type="button"><svg class="ic"><use href="#i-download"/></svg>Save picture</button>
+      <button class="btn sm" id="screenSave" type="button" title="Save the picture"><svg class="ic"><use href="#i-download"/></svg>Save picture</button>
     </div>
     <div class="screen-body">
       <aside class="remote" id="remotePad" aria-label="Receiver remote control">
@@ -587,6 +661,47 @@
       <span class="spacer"></span>
       <button class="btn primary" id="powerClose" type="button">Close</button>
     </div>
+  </div>
+</dialog>
+
+<dialog id="guideDialog" aria-labelledby="guideTitle">
+  <div class="dialog-card gd-card">
+    <header class="gd-head">
+      <div class="editor-title"><h2 id="guideTitle">Guide</h2><code id="guideSub" class="ellipsis"></code></div>
+      <span class="spacer"></span>
+      <div class="seg" id="guideTabs" role="tablist" aria-label="Guide sections">
+        <button type="button" role="tab" data-tab="epg" aria-selected="true">Programmes</button>
+        <button type="button" role="tab" data-tab="timers" aria-selected="false">Timers</button>
+        <button type="button" role="tab" data-tab="movies" aria-selected="false">Recordings</button>
+      </div>
+      <button class="icon-btn" id="guideClose" type="button" title="Close" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+    </header>
+    <div class="gd-tools" data-for="epg">
+      <label class="sr-only" for="guideBouquet">Bouquet</label>
+      <select id="guideBouquet"></select>
+      <label class="sr-only" for="guideChannel">Channel</label>
+      <select id="guideChannel"></select>
+      <div class="filterbar">
+        <svg class="ic sm"><use href="#i-search"/></svg>
+        <input class="filter-input" id="guideSearch" type="search" placeholder="Search the guide (all channels)" aria-label="Search the programme guide" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="gd-tools" data-for="timers" hidden>
+      <button class="btn sm" id="guideTimersRefresh" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
+      <button class="btn sm" id="guideCleanup" type="button" title="Remove the timers that are finished"><svg class="ic"><use href="#i-eraser"/></svg>Clean up finished</button>
+    </div>
+    <div class="gd-tools" data-for="movies" hidden>
+      <button class="icon-btn" id="guideUp" type="button" title="Parent folder" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
+      <code id="guideDir" class="gd-dir ellipsis"></code>
+      <div class="filterbar">
+        <svg class="ic sm"><use href="#i-search"/></svg>
+        <input class="filter-input" id="guideMovieFilter" type="search" placeholder="Filter recordings" aria-label="Filter recordings" autocomplete="off" spellcheck="false">
+      </div>
+      <button class="icon-btn" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
+    </div>
+    <div class="gd-body" id="guideList" data-tab="epg" tabindex="-1" autofocus aria-live="polite"></div>
+    <p class="form-error" id="guideError" role="alert" hidden></p>
+    <p class="muted small gd-status" id="guideStatus" role="status" aria-live="polite"></p>
   </div>
 </dialog>
 

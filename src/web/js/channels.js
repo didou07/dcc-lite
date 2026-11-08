@@ -25,7 +25,9 @@ function setChannelsOpen(open) {
 }
 function channelStatus(message, bad = false) {
   const node = $("#channelStatus");
-  node.textContent = message || "";
+  // An error is shown as its first sentence (the full text is the tooltip): the same long message is already under the picture.
+  node.textContent = bad ? String(message || "").split(/(?<=[.!?])\s/)[0] : message || "";
+  node.title = bad ? String(message || "") : "";
   node.classList.toggle("bad", bad);
 }
 function channelsReset() {

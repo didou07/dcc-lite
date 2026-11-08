@@ -4,7 +4,17 @@ const files = {
   sessionID: "", profileID: "", protocol: "ftp",
   connecting: false, gen: 0, manualOff: false, active: "remote", drag: null,
   transfers: [], queueTimer: 0, queueBusy: false, seenDone: new Set(),
+  /* A remote (signed-in) session works with the files of the device the page is open on, not with the
+     home folder of the computer that runs DCC Lite: uploads come from the browser, downloads go to it. */
+  browserMode: false, ready: null,
+  pending: [], fetched: new Set(), autoDone: new Set(), transfersSeen: false,
 };
+files.ready = api("/api/v1/system").then((info) => {
+  files.browserMode = info?.remote === "true";
+  document.body.classList.toggle("browser-files", files.browserMode);
+  $("#deviceBar").hidden = !files.browserMode;
+  if (files.browserMode) { files.active = "remote"; $("#commander").dataset.activePane = "remote"; }
+}).catch(() => {});
 const coarsePointer = matchMedia("(pointer: coarse)").matches;
 
 function makePane(kind) {
@@ -27,10 +37,13 @@ const requireSession = () => { if (!files.sessionID) { toast("Connect to the dev
 
 /* Status & buttons */
 function setFileStatus(state, text) {
-  const pill = $("#fileStatus");
-  pill.dataset.state = state;
-  pill.textContent = text;
-  pill.title = text;
+  setStatusDot($("#fileStatus"), state, text);
+  setStatusDot($("#listsStatus"), state, text); // the Channel lists page shows the same connection
+  setStatusDot($("#ipkStatus"), state, text); // so does the Install .ipk page
+  const connect = $("#listsConnect"), ipkConnect = $("#ipkConnect");
+  if (connect) { connect.hidden = state === "connected"; connect.disabled = state === "connecting"; }
+  if (ipkConnect) { ipkConnect.hidden = state === "connected"; ipkConnect.disabled = state === "connecting"; }
+  if (typeof ipkRefresh === "function") ipkRefresh();
 }
 function updateFileUI() {
   const connected = Boolean(files.sessionID);
@@ -53,6 +66,8 @@ function updateFileUI() {
   transferBtn.disabled = !(connected && selection.length);
   $("#transferActiveLabel").textContent = files.active === "remote" ? "Download" : "Upload";
   transferBtn.querySelector("use").setAttribute("href", files.active === "remote" ? "#i-download" : "#i-upload");
+  $("#deviceUpload").disabled = !connected; $("#deviceUploadFolder").disabled = !connected;
+  $("#deviceDownload").disabled = !(connected && remoteSel.some((e) => !e.is_dir));
   $("#fileTerminalHere").disabled = !connected;
   $("#fileRun").disabled = !(connected && remoteSel.length === 1 && !remoteSel[0].is_dir);
   for (const pane of Object.values(panes)) {
@@ -126,7 +141,7 @@ function renderPane(pane) {
   pane.rows.replaceChildren(fragment);
   $$("th[data-sort]", pane.root).forEach((th) => { th.dataset.dir = th.dataset.sort === pane.sort.key ? pane.sort.dir : ""; });
   const message = !pane.loaded ? (pane.kind === "remote" ? (files.connecting ? "Connecting…" : "Connect to a device to browse its files") : "Loading…")
-    : !pane.entries.length ? "This folder is empty" : !visible.length ? "No items match the filter" : "";
+    : !pane.entries.length ? "This folder is empty" : !visible.length ? (!pane.showHidden && !pane.filter.value.trim() ? "Only hidden items here. Tick “Hidden” to show them." : "No items match the filter") : "";
   pane.empty.textContent = message;
   pane.empty.hidden = !message;
   pane.empty.classList.toggle("loading", message.endsWith("…"));
@@ -152,7 +167,7 @@ function renderCrumbs(pane) {
     crumbs.push(h("span", { class: "crumb-sep", text: "›" }));
     crumbs.push(h("button", { type: "button", class: `crumb${index === parts.length - 1 ? " last" : ""}`, dataset: { path: current }, text: part }));
   });
-  pane.crumbs.hidden = !pane.loaded;
+  pane.crumbs.hidden = !pane.loaded || parts.length === 0; // at the root the path box says it all
   pane.crumbs.replaceChildren(...crumbs);
   pane.crumbs.scrollLeft = pane.crumbs.scrollWidth;
 }
@@ -173,6 +188,7 @@ function updateSelectionUI(pane) {
 const selectedEntries = (pane) => pane.entries.filter((entry) => pane.selected.has(entry.path));
 
 function setActivePane(kind) {
+  if (files.browserMode) kind = "remote";
   files.active = kind;
   for (const pane of Object.values(panes)) pane.root.classList.toggle("active", pane.kind === kind);
   $("#commander").dataset.activePane = kind;
@@ -215,7 +231,13 @@ function handleSessionLost() {
   panes.remote.loaded = false; panes.remote.entries = []; panes.remote.selected.clear();
   setFileStatus("error", "Connection lost");
   renderPane(panes.remote);
-  toast("The file connection was closed. Press Connect to reconnect.", "error");
+  // The receiver may simply have closed an idle connection: sign in again at once
+  // instead of making the user press Connect. A failed attempt reports itself and
+  // does not retry, so this cannot loop.
+  if (!files.manualOff && !files.connecting && currentDevice()) {
+    toast("The file connection was closed. Reconnecting…");
+    window.setTimeout(() => { if (!files.sessionID && !files.connecting && !files.manualOff && (view.current === "files" || view.current === "lists" || view.current === "ipk")) fileConnect().then(() => { if (view.current === "lists") listsEnterNow(); }); }, 600);
+  } else toast("The file connection was closed. Press Connect to reconnect.", "error");
 }
 const goUp = (kind) => loadPane(kind, panes[kind].parent || (kind === "remote" ? "/" : "."));
 const goRoot = (kind) => loadPane(kind, kind === "remote" ? "/" : ".");
@@ -265,6 +287,9 @@ async function fileConnect() {
     updateFileUI();
   }
 }
+window.addEventListener("pagehide", () => {
+  if (files.sessionID) fetch(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}`, { method: "DELETE", keepalive: true }).catch(() => {});
+});
 async function fileDisconnect(silent = false) {
   files.gen++;
   const id = files.sessionID;
@@ -276,9 +301,10 @@ async function fileDisconnect(silent = false) {
   renderPane(remote); updateFileUI();
   if (id && !silent) toast("Disconnected");
 }
-function filesEnter() {
+function filesEnter() { files.ready.then(filesEnterNow); }
+function filesEnterNow() {
   syncFilePort();
-  if (!panes.local.loaded) loadPane("local", store.get("localPath", "."), { quiet: true }).then((ok) => { if (!ok) loadPane("local", ".", { quiet: true }); });
+  if (!files.browserMode && !panes.local.loaded) loadPane("local", store.get("localPath", "."), { quiet: true }).then((ok) => { if (!ok) loadPane("local", ".", { quiet: true }); });
   if (!currentDevice()) { setFileStatus("idle", "No device selected"); renderPane(panes.remote); updateFileUI(); return; }
   if (!files.sessionID && !files.connecting && !files.manualOff) fileConnect();
   else updateFileUI();
@@ -364,22 +390,72 @@ for (const pane of Object.values(panes)) {
     if (!entry || (pane.kind === "remote" && !files.sessionID)) { event.preventDefault(); return; }
     if (!pane.selected.has(entry.path)) { pane.selected = new Set([entry.path]); updateSelectionUI(pane); }
     files.drag = { from: pane.kind, entries: selectedEntries(pane) };
-    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.effectAllowed = "copyMove";
     event.dataTransfer.setData("text/plain", files.drag.entries.map((e) => e.name).join("\n"));
     row.classList.add("dragging");
   });
-  pane.rows.addEventListener("dragend", () => { files.drag = null; $$(".dragging", pane.rows).forEach((r) => r.classList.remove("dragging")); Object.values(panes).forEach((p) => p.root.classList.remove("drop")); });
+  pane.rows.addEventListener("dragend", () => { files.drag = null; $$(".dragging", pane.rows).forEach((r) => r.classList.remove("dragging")); Object.values(panes).forEach((p) => { p.root.classList.remove("drop"); markDropRow(p, null); }); });
+  /* Drop on a folder row to put the items inside that folder; drop on empty space to use the open folder.
+     Between the two panels this copies; inside one panel it moves. */
+  const dropPlan = (event) => {
+    if (!files.drag) return null;
+    const target = dropFolder(pane, event), same = files.drag.from === pane.kind;
+    if (same && (!target || files.drag.entries.some((e) => e.path === target.path))) return null;
+    return { target, same };
+  };
   pane.root.addEventListener("dragover", (event) => {
-    if (!files.drag || files.drag.from === pane.kind) return;
-    event.preventDefault(); event.dataTransfer.dropEffect = "copy"; pane.root.classList.add("drop");
+    const plan = dropPlan(event);
+    if (!plan) { markDropRow(pane, null); pane.root.classList.remove("drop"); return; }
+    event.preventDefault(); event.dataTransfer.dropEffect = plan.same ? "move" : "copy";
+    markDropRow(pane, plan.target?.row || null);
+    pane.root.classList.toggle("drop", !plan.target);
   });
-  pane.root.addEventListener("dragleave", (event) => { if (!pane.root.contains(event.relatedTarget)) pane.root.classList.remove("drop"); });
+  pane.root.addEventListener("dragleave", (event) => { if (!pane.root.contains(event.relatedTarget)) { pane.root.classList.remove("drop"); markDropRow(pane, null); } });
   pane.root.addEventListener("drop", (event) => {
-    if (!files.drag || files.drag.from === pane.kind) return;
-    event.preventDefault(); pane.root.classList.remove("drop");
+    const plan = dropPlan(event);
+    if (!plan) return;
+    event.preventDefault(); pane.root.classList.remove("drop"); markDropRow(pane, null);
     const dragged = files.drag; files.drag = null;
-    transferSelection(dragged.from === "remote" ? "download" : "upload", dragged.entries);
+    if (plan.same) moveIntoFolder(pane.kind, dragged.entries, plan.target.path);
+    else transferSelection(dragged.from === "remote" ? "download" : "upload", dragged.entries, plan.target ? plan.target.path : null);
   });
+}
+
+/* The folder row under the pointer while dragging, if any. */
+function dropFolder(pane, event) {
+  const row = event.target.closest?.("tr.row[data-index]");
+  const entry = row ? rowEntry(pane, row) : null;
+  return entry && entry.is_dir ? { row, path: entry.path } : null;
+}
+function markDropRow(pane, row) {
+  $$("tr.drop-target", pane.rows).forEach((r) => { if (r !== row) r.classList.remove("drop-target"); });
+  if (row) row.classList.add("drop-target");
+}
+/* Moving inside one panel is a rename into the target folder. Nothing is overwritten. */
+async function moveIntoFolder(kind, entries, folderPath) {
+  if (kind === "remote" && !requireSession()) return;
+  const join = kind === "local" ? joinLocal : joinRemote;
+  let existing;
+  try {
+    const listing = kind === "local"
+      ? await api(`/api/v1/files/local/list?path=${encodeURIComponent(folderPath)}`)
+      : await api(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/list?path=${encodeURIComponent(folderPath)}`);
+    existing = new Set((listing.entries || []).map((e) => e.name));
+  } catch (error) { handleOpError(error, kind); return; }
+  let moved = 0, skipped = 0;
+  for (const entry of entries) {
+    if (existing.has(entry.name) || folderPath === entry.path || folderPath.startsWith(`${entry.path}/`)) { skipped++; continue; }
+    const body = { old_path: entry.path, new_path: join(folderPath, entry.name) };
+    try {
+      if (kind === "local") await post("/api/v1/files/local/rename", body);
+      else await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/rename`, body);
+      moved++;
+    } catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (kind === "remote" && sessionLost(error)) { handleSessionLost(); return; } }
+  }
+  if (moved) toast(`${moved} item${moved === 1 ? "" : "s"} moved`);
+  if (skipped) toast(`${skipped} skipped: the name already exists there`);
+  panes[kind].selected = new Set();
+  await loadPane(kind, panes[kind].path);
 }
 
 function contextItems(pane, onEntry) {
@@ -388,7 +464,7 @@ function contextItems(pane, onEntry) {
   if (onEntry) {
     if (single?.is_dir) items.push({ label: "Open", icon: "folder", run: () => loadPane(kind, single.path) });
     items.push(kind === "remote"
-      ? { label: sel.length > 1 ? `Download ${sel.length} items` : "Download", icon: "download", run: () => transferSelection("download") }
+      ? { label: files.browserMode ? (sel.length > 1 ? `Download ${sel.length} items to this device` : "Download to this device") : (sel.length > 1 ? `Download ${sel.length} items` : "Download"), icon: "download", disabled: files.browserMode && !sel.some((e) => !e.is_dir), run: () => transferSelection("download") }
       : { label: sel.length > 1 ? `Upload ${sel.length} items` : "Upload", icon: "upload", run: () => transferSelection("upload") });
     items.push("-");
     if (kind === "remote") items.push({ label: "Edit as text", icon: "file", sub: "F4", disabled: !single || single.is_dir, run: () => cmdEdit() });
@@ -403,6 +479,7 @@ function contextItems(pane, onEntry) {
     items.push("-");
     items.push({ label: sel.length > 1 ? `Delete ${sel.length} items` : "Delete", icon: "trash", sub: "F8", danger: true, run: () => cmdDelete() });
   } else {
+    if (files.browserMode && kind === "remote") items.push({ label: "Upload files from this device…", icon: "upload", run: () => chooseDeviceFiles(false) }, { label: "Upload a folder from this device…", icon: "newfolder", run: () => chooseDeviceFiles(true) }, "-");
     items.push({ label: "New folder", icon: "newfolder", sub: "F7", run: () => cmdMkdir() });
     if (kind === "remote") items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() });
     items.push({ label: "Refresh", icon: "refresh", run: () => refreshPane(kind) });

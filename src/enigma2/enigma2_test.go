@@ -199,3 +199,95 @@ func TestDisplayName(t *testing.T) {
 		t.Fatalf("stream = %q", got)
 	}
 }
+
+func TestParseServicesBuildsReferencesAndSeparatesRadio(t *testing.T) {
+	v4 := "eDVB services /4/\ntransponders\nend\nservices\n" +
+		"2b66:00c00000:03f3:0001:25:0\nDas Erste HD\np:ARD,c:00\n" +
+		"6dca:00c00000:044d:0001:1:0\nZDF\np:ZDF\n" +
+		"1234:00c00000:0001:0001:2:0\nRadio One\np:Ex\nend\n" +
+		"6dca:00c00000:044d:0001:1:0\nZDF again\np:ZDF\nend\n"
+	got := ParseServices(v4)
+	if len(got) != 3 {
+		t.Fatalf("services = %+v", got)
+	}
+	if got[0].Ref != "1:0:19:2B66:3F3:1:C00000:0:0:0:" || got[0].Provider != "ARD" || got[0].Radio {
+		t.Fatalf("first = %+v", got[0])
+	}
+	if !got[2].Radio || got[2].Name != "Radio One" {
+		t.Fatalf("radio = %+v", got[2])
+	}
+	v5 := "eDVB services /5/\n" + `s:2b66,00c00000,03f3,0001,25,0,"Das Erste HD",p:ARD` + "\n"
+	if s := ParseServices(v5); len(s) != 1 || s[0].Ref != "1:0:19:2B66:3F3:1:C00000:0:0:0:" || s[0].Name != "Das Erste HD" {
+		t.Fatalf("v5 = %+v", s)
+	}
+}
+
+// Enigma2 (eDVBDB::loadBouquet) accepts "#SERVICE:" and "#DESCRIPTION:" as well.
+func TestParseBouquetAcceptsColonDirectives(t *testing.T) {
+	text := "#NAME Colon\r\n#SERVICE:1:0:1:6DCA:44D:1:C00000:0:0:0:\r\n#DESCRIPTION: ZDF\r\n#SERVICE:1:64:1:0:0:0:0:0:0:0:\r\n#DESCRIPTION:News\r\n"
+	b, err := ParseBouquet(text)
+	if err != nil || len(b.Entries) != 2 {
+		t.Fatalf("parse = %#v, %v", b, err)
+	}
+	if b.Entries[0].Ref != "1:0:1:6DCA:44D:1:C00000:0:0:0:" || b.Entries[0].Description != "ZDF" || b.Entries[1].Description != "News" {
+		t.Fatalf("entries = %#v", b.Entries)
+	}
+	idx, err := ParseIndex("#NAME Bouquets (TV)\n#SERVICE:1:7:1:0:0:0:0:0:0:0:FROM BOUQUET \"userbouquet.a.tv\" ORDER BY bouquet\n")
+	if err != nil || len(idx.Files()) != 1 || idx.Files()[0] != "userbouquet.a.tv" {
+		t.Fatalf("index = %#v, %v", idx, err)
+	}
+	if got := idx.Format(); !strings.Contains(got, "#SERVICE 1:7:1:0:0:0:0:0:0:0:FROM BOUQUET") {
+		t.Fatalf("index is not written back in the canonical form: %q", got)
+	}
+}
+
+// The third field of a reference is hexadecimal in Enigma2.
+func TestNewMarkerNumbersAreHexadecimal(t *testing.T) {
+	b := Bouquet{Entries: []Entry{{Ref: "1:64:9:0:0:0:0:0:0:0:"}, {Ref: "1:64:A:0:0:0:0:0:0:0:"}}}
+	if m := b.NewMarker("x"); m.Ref != "1:64:B:0:0:0:0:0:0:0:" {
+		t.Fatalf("after A: %s", m.Ref)
+	}
+	b.Entries = append(b.Entries, Entry{Ref: "1:64:F:0:0:0:0:0:0:0:"})
+	if m := b.NewMarker("x"); m.Ref != "1:64:10:0:0:0:0:0:0:0:" {
+		t.Fatalf("after F: %s", m.Ref)
+	}
+}
+
+func TestCleanNameAndSplitDescription(t *testing.T) {
+	if got := CleanName("\u0086Das Erste\u0087 HD\u008a "); got != "Das Erste HD" {
+		t.Fatalf("CleanName = %q", got)
+	}
+	if n, p := SplitDescription("ZDF•ZDFvision"); n != "ZDF" || p != "ZDFvision" {
+		t.Fatalf("split = %q, %q", n, p)
+	}
+	if n, p := SplitDescription("Plain"); n != "Plain" || p != "" {
+		t.Fatalf("split = %q, %q", n, p)
+	}
+	names := ParseLamedb("eDVB services /5/\ns:2b66:00c00000:03f3:0001:25:0,\"\u0086Das Erste HD\u0087\",p:ARD\n")
+	k, _ := KeyOfRef("1:0:19:2B66:3F3:1:C00000:0:0:0:")
+	if names[k] != "Das Erste HD" {
+		t.Fatalf("name = %q", names[k])
+	}
+}
+
+// A name given in the bouquet wins over the lamedb name, as it does on the receiver.
+func TestDisplayNamePrefersBouquetNameWithoutProvider(t *testing.T) {
+	names := map[ServiceKey]string{{SID: 0x2B66, TSID: 0x3F3, ONID: 1, Namespace: 0xC00000}: "Das Erste HD"}
+	e := Entry{Ref: "1:0:19:2B66:3F3:1:C00000:0:0:0:", Description: "My Erste•ARD", HasDescription: true}
+	if got := DisplayName(e, names); got != "My Erste" {
+		t.Fatalf("display = %q", got)
+	}
+}
+
+func TestIsTVType(t *testing.T) {
+	for _, tv := range []int{1, 17, 22, 25, 31, 32, 134, 195} {
+		if !IsTVType(tv) {
+			t.Errorf("type %d should be TV", tv)
+		}
+	}
+	for _, other := range []int{2, 3, 10, 12, 16, 128} {
+		if IsTVType(other) {
+			t.Errorf("type %d should not be TV", other)
+		}
+	}
+}

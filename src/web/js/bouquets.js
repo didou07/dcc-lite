@@ -1,6 +1,6 @@
 "use strict";
 /* Bouquet editor (Enigma2 channel lists) */
-const bq = { dir: "/etc/enigma2", kind: "tv", lists: { tv: [], radio: [] }, file: "", entries: [], original: "", hash: "", sel: new Set(), anchor: -1, busy: false, dragging: [] };
+const bq = { profileID: "", dir: "/etc/enigma2", kind: "tv", lists: { tv: [], radio: [] }, file: "", entries: [], original: "", hash: "", sel: new Set(), anchor: -1, busy: false, dragging: [] };
 const bqURL = (tail) => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/enigma2/${tail}`;
 const bqSnapshot = () => JSON.stringify([$("#bqName").value, bq.entries.map((e) => [e.ref, e.description])]);
 const bqDirty = () => Boolean(bq.file) && bqSnapshot() !== bq.original;
@@ -12,11 +12,12 @@ function bqButtons() {
   $("#bqUp").disabled = !canMove; $("#bqDown").disabled = !canMove;
   $("#bqDelete").disabled = !hasSel || bq.busy;
   $("#bqMarker").disabled = !open || bq.busy;
+  $("#bqAdd").disabled = !open || bq.busy; $("#bqSort").disabled = !open || bq.busy || bq.entries.length < 2 || Boolean(bqFilter());
   $("#bqName").disabled = !open; $("#bqFilter").disabled = !open;
   const listed = bq.lists[bq.kind].some((item) => item.file === bq.file);
-  $("#bqListUp").disabled = !listed || bq.busy; $("#bqListDown").disabled = !listed || bq.busy; $("#bqListRemove").disabled = !listed || bq.busy;
+  $("#bqListUp").disabled = !listed || bq.busy; $("#bqListDown").disabled = !listed || bq.busy; $("#bqListRemove").disabled = !listed || bq.busy; $("#bqListDelete").disabled = !listed || bq.busy;
   $("#bqCount").textContent = open ? `${bq.entries.length} entr${bq.entries.length === 1 ? "y" : "ies"}${bq.sel.size ? `, ${bq.sel.size} selected` : ""}` : "";
-  $("#bqTitle").textContent = bqDirty() ? "Bouquet editor •" : "Bouquet editor";
+  $("#bqTitle").textContent = bqDirty() ? "Bouquet •" : "Bouquet";
 }
 function bqRenderLists() {
   const list = $("#bqBouquets");
@@ -76,6 +77,7 @@ async function bqLoadLists(keepOpen = false) {
     if (!keepOpen) { bq.file = ""; bq.entries = []; bq.sel.clear(); $("#bqName").value = ""; $("#bqFilter").value = ""; bq.original = ""; }
     bqRenderLists(); bqRenderEntries();
     bqStatus(`${bq.lists.tv.length} TV and ${bq.lists.radio.length} radio bouquets.`);
+    if (!keepOpen && bq.lists[bq.kind][0]) bqOpenBouquet(bq.lists[bq.kind][0].file);
   } catch (error) { bq.lists = { tv: [], radio: [] }; bqRenderLists(); bqRenderEntries(); bqError(error); }
 }
 async function bqOpenBouquet(file) {
@@ -120,11 +122,11 @@ function bqDeleteSelected() {
 async function bqAddMarker() {
   const title = await ask({ title: "New marker", label: "Marker text", ok: "Add", validate: (v) => (v.trim() ? "" : "Enter some text.") });
   if (!title) return;
-  let next = 1;
-  for (const entry of bq.entries) { const m = /^1:64:(\d+):/.exec(entry.ref); if (m) next = Math.max(next, Number(m[1]) + 1); }
+  let next = 1; // field 3 of a reference is hexadecimal in Enigma2
+  for (const entry of bq.entries) { const m = /^1:64:([0-9A-Fa-f]+):/.exec(entry.ref); if (m) next = Math.max(next, parseInt(m[1], 16) + 1); }
   const at = bq.sel.size ? Math.max(...bq.sel) + 1 : bq.entries.length;
   const text = title.trim().slice(0, 100);
-  bq.entries.splice(at, 0, { ref: `1:64:${next}:0:0:0:0:0:0:0:`, description: text, name: text, marker: true });
+  bq.entries.splice(at, 0, { ref: `1:64:${next.toString(16).toUpperCase()}:0:0:0:0:0:0:0:`, description: text, name: text, marker: true });
   bq.sel = new Set([at]);
   bqRenderEntries();
 }
@@ -157,9 +159,11 @@ async function bqListAction(action) {
   if (!file) return;
   if (!(await bqDiscardOK())) return;
   if (action === "remove" && !(await ask({ title: "Remove from the list", message: `Remove “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list? The file ${file} stays on the receiver.`, input: false, ok: "Remove", danger: true }))) return;
+  if (action === "delete" && !(await ask({ title: "Delete the bouquet", message: `Delete “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list and erase the file ${file} from the receiver? This cannot be undone.`, input: false, ok: "Delete", danger: true }))) return;
   try {
-    await api(bqURL("bouquet/list-change"), { method: "POST", body: JSON.stringify({ dir: bq.dir, file, action }) });
-    if (action === "remove") { bq.file = ""; bq.entries = []; bq.sel.clear(); $("#bqName").value = ""; bq.original = ""; await bqLoadLists(true); }
+    const answer = await api(bqURL("bouquet/list-change"), { method: "POST", body: JSON.stringify({ dir: bq.dir, file, action }) });
+    if (answer?.note) toast(answer.note, "error");
+    if (action === "remove" || action === "delete") { bq.file = ""; bq.entries = []; bq.sel.clear(); $("#bqName").value = ""; bq.original = ""; await bqLoadLists(true); }
     else { const keep = bq.file; await bqLoadLists(true); bq.file = keep; bqRenderLists(); }
   } catch (error) { bqError(error); }
 }
@@ -179,19 +183,136 @@ async function bqReloadReceiver() {
   try { await api(bqURL("reload"), { method: "POST", body: "{}" }); bqStatus("The receiver reloaded its channel lists.", "ok"); toast("Receiver reloaded its bouquets"); }
   catch (error) { bqError(error); }
 }
-async function cmdBouquets() {
-  if (!requireSession()) return;
-  bq.file = ""; bq.entries = []; bq.sel.clear(); bq.original = ""; bq.kind = "tv";
-  $("#bqName").value = ""; $("#bqFilter").value = "";
-  $$("#bqKind button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.kind === "tv")));
-  openDialog($("#bouquetDialog"));
-  await bqLoadLists();
+function bqSortAZ() {
+  if (!bq.entries.length) return;
+  // Markers are section titles: sort only the channels between two of them.
+  const label = (e) => (e.name || e.description || "").toLocaleLowerCase();
+  const out = []; let run = [];
+  const flush = () => { run.sort((a, b) => label(a).localeCompare(label(b), undefined, { numeric: true })); out.push(...run); run = []; };
+  for (const entry of bq.entries) { if (entry.marker) { flush(); out.push(entry); } else run.push(entry); }
+  flush();
+  bq.entries = out; bq.sel.clear(); bq.anchor = -1;
+  bqRenderEntries();
+}
+
+/* Add channels from the receiver's lamedb */
+const bqAdd = { items: [], sel: new Set(), timer: 0, seq: 0 };
+function bqAddRender() {
+  const list = $("#bqAddList");
+  list.replaceChildren();
+  bqAdd.items.forEach((svc, index) => {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(bqAdd.sel.has(index)));
+    li.dataset.index = String(index);
+    li.append(
+      Object.assign(document.createElement("span"), { className: "bq-name", textContent: svc.name }),
+      Object.assign(document.createElement("span"), { className: "bq-prov", textContent: svc.provider || "" }));
+    list.append(li);
+  });
+  $("#bqAddCount").textContent = bqAdd.sel.size ? `${bqAdd.sel.size} selected` : "";
+  $("#bqAddConfirm").disabled = !bqAdd.sel.size;
+}
+async function bqAddSearch() {
+  const seq = ++bqAdd.seq, q = $("#bqAddSearch").value.trim();
+  $("#bqAddStatus").textContent = "Searching…";
+  try {
+    const data = await api(`${bqURL("services")}?dir=${encodeURIComponent(bq.dir)}&kind=${bq.kind}&q=${encodeURIComponent(q)}`);
+    if (seq !== bqAdd.seq) return;
+    bqAdd.items = data.services || []; bqAdd.sel.clear();
+    bqAddRender();
+    $("#bqAddStatus").textContent = !data.total ? "No channel matches." : data.truncated ? `Showing the first ${bqAdd.items.length} of ${data.total}. Type more of the name to narrow it down.` : `${data.total} channel${data.total === 1 ? "" : "s"}.`;
+  } catch (error) {
+    if (seq !== bqAdd.seq) return;
+    bqAdd.items = []; bqAdd.sel.clear(); bqAddRender();
+    $("#bqAddStatus").textContent = error.message;
+    if (error.status === 404 && error.code !== "file_not_found") handleOpError(error, "remote");
+  }
+}
+function bqOpenAdd() {
+  if (!bq.file) return;
+  $("#bqAddSub").textContent = `${bq.kind.toUpperCase()} · ${$("#bqName").value || bq.file}`;
+  $("#bqAddSearch").value = "";
+  bqAdd.items = []; bqAdd.sel.clear(); bqAddRender();
+  openDialog($("#bqAddDialog"));
+  bqAddSearch();
+  $("#bqAddSearch").focus();
+}
+function bqAddConfirm() {
+  const picked = [...bqAdd.sel].sort((a, b) => a - b).map((i) => bqAdd.items[i]);
+  if (!picked.length) return;
+  const have = new Set(bq.entries.map((e) => e.ref.replace(/:+$/, "")));
+  const fresh = picked.filter((svc) => !have.has(svc.ref.replace(/:+$/, "")));
+  const at = bq.sel.size ? Math.max(...bq.sel) + 1 : bq.entries.length;
+  bq.entries.splice(at, 0, ...fresh.map((svc) => ({ ref: svc.ref, description: "", name: svc.name, marker: false })));
+  bq.sel = new Set(fresh.map((_, n) => at + n));
+  bq.anchor = at;
+  $("#bqAddDialog").close();
+  bqRenderEntries();
+  const skipped = picked.length - fresh.length;
+  bqStatus(`${fresh.length} channel${fresh.length === 1 ? "" : "s"} added${skipped ? `, ${skipped} already in the bouquet` : ""}. Press Save to keep the change.`, "ok");
+  $("#bqEntries").querySelector(`li[data-index="${at}"]`)?.scrollIntoView({ block: "nearest" });
 }
 {
-  const dialog = $("#bouquetDialog"), entries = $("#bqEntries");
-  const closeEditor = async () => { if (bq.busy || !(await bqDiscardOK("Close without saving?"))) return; bq.file = ""; bq.original = ""; dialog.close(); };
-  dialog.addEventListener("cancel", (event) => { event.preventDefault(); closeEditor(); });
-  $("#bqClose").addEventListener("click", closeEditor);
+  const list = $("#bqAddList");
+  list.addEventListener("click", (event) => {
+    const li = event.target.closest("li[data-index]");
+    if (!li) return;
+    const index = Number(li.dataset.index);
+    if (event.shiftKey && bqAdd.anchor !== undefined && bqAdd.anchor >= 0) { const [a, b] = [Math.min(bqAdd.anchor, index), Math.max(bqAdd.anchor, index)]; for (let i = a; i <= b; i++) bqAdd.sel.add(i); }
+    else { if (!bqAdd.sel.delete(index)) bqAdd.sel.add(index); bqAdd.anchor = index; }   // a click toggles: picking many channels is the normal case
+    $$("#bqAddList li[data-index]").forEach((node) => node.setAttribute("aria-selected", String(bqAdd.sel.has(Number(node.dataset.index)))));
+    $("#bqAddCount").textContent = bqAdd.sel.size ? `${bqAdd.sel.size} selected` : "";
+    $("#bqAddConfirm").disabled = !bqAdd.sel.size;
+  });
+  list.addEventListener("dblclick", (event) => { const li = event.target.closest("li[data-index]"); if (li) { bqAdd.sel = new Set([Number(li.dataset.index)]); bqAddConfirm(); } });
+  $("#bqAddSearch").addEventListener("input", () => { window.clearTimeout(bqAdd.timer); bqAdd.timer = window.setTimeout(bqAddSearch, 250); });
+  $("#bqAddSearch").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); window.clearTimeout(bqAdd.timer); bqAddSearch(); } });
+  $("#bqAddConfirm").addEventListener("click", bqAddConfirm);
+  $("#bqAddClose").addEventListener("click", () => $("#bqAddDialog").close());
+  $("#bqAdd").addEventListener("click", bqOpenAdd);
+  $("#bqSort").addEventListener("click", bqSortAZ);
+  $("#bqListDelete").addEventListener("click", () => bqListAction("delete"));
+}
+/* ───────────── The "Channel lists" page ───────────── */
+function bqReset() {
+  bq.file = ""; bq.entries = []; bq.sel.clear(); bq.anchor = -1; bq.original = ""; bq.hash = ""; bq.lists = { tv: [], radio: [] };
+  $("#bqName").value = ""; $("#bqFilter").value = ""; $("#bqSub").textContent = "";
+  bqRenderLists(); bqRenderEntries();
+}
+function listsMode(mode) {
+  $("#listsEdit").hidden = mode !== "edit";
+  $("#listsBackup").hidden = mode !== "backup";
+  const id = mode === "backup" ? "backup" : "editor";
+  if (typeof tools !== "undefined") { tools.current = id; store.set("tool", id); if (typeof updateToolsNav === "function") updateToolsNav(); }
+  const title = $("#listsTitle"); if (title) title.firstChild.textContent = mode === "backup" ? "Backup & restore " : "Channel editor ";
+  const lead = $("#listsLead");
+  if (lead) lead.innerHTML = mode === "backup"
+    ? "Save the channel list of the receiver as a <b>.zip</b> file on this device, or put a saved copy back. Make a backup before you change the lists."
+    : "Your receiver keeps its channels in <b>bouquets</b> (the favourite lists you zap through). Reorder, rename, add or remove channels and whole bouquets.";
+}
+function listsEnter() { files.ready.then(listsEnterNow); }
+async function listsEnterNow() {
+  const device = currentDevice();
+  $("#listsDevice").textContent = device?.name || "";
+  if (!device) { bqReset(); bqStatus("Add or choose a device first (Devices tab)."); return; }
+  syncFilePort(); // the connection uses the port of the Files tab
+  if (!files.sessionID && !files.connecting && !files.manualOff) await fileConnect();
+  if (!files.sessionID) { bqStatus(files.connecting ? "Connecting…" : "Not connected. Press Connect to read the channel lists."); return; }
+  // Another device: start clean. The same device after a reconnect keeps what is being edited.
+  if (bq.profileID !== files.profileID) {
+    if (bqDirty()) toast("Unsaved changes of the previous device were discarded", "error");
+    bqReset();
+    bq.profileID = files.profileID;
+    $("#bqDir").value = bq.dir;
+    await bqLoadLists();
+  }
+}
+{
+  const entries = $("#bqEntries");
+  const page = $("#view-lists");
+  $("#listsConnect").addEventListener("click", () => { files.manualOff = false; fileConnect().then(listsEnterNow); });
+  $("#listsGoBackup").addEventListener("click", (event) => { event.preventDefault(); showTool("backup"); });
   $("#bqLoad").addEventListener("click", async () => { if (await bqDiscardOK()) bqLoadLists(); });
   $("#bqDir").addEventListener("keydown", async (event) => { if (event.key === "Enter") { event.preventDefault(); if (await bqDiscardOK()) bqLoadLists(); } });
   $("#bqSave").addEventListener("click", () => bqSave());
@@ -213,6 +334,7 @@ async function cmdBouquets() {
     $$("#bqKind button").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
     bq.file = ""; bq.entries = []; bq.sel.clear(); bq.original = ""; $("#bqName").value = ""; $("#bqFilter").value = "";
     bqRenderLists(); bqRenderEntries();
+    if (bq.lists[bq.kind][0]) bqOpenBouquet(bq.lists[bq.kind][0].file);
   });
   $("#bqBouquets").addEventListener("click", (event) => { const li = event.target.closest("li[data-file]"); if (li) bqOpenBouquet(li.dataset.file); });
   entries.addEventListener("click", (event) => {
@@ -230,7 +352,7 @@ async function cmdBouquets() {
     else if (event.altKey && event.key === "ArrowDown") { event.preventDefault(); bqNudge(1); }
     else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); bq.sel = new Set(bq.entries.keys()); bqRenderEntries(); }
   });
-  dialog.addEventListener("keydown", (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!$("#bqSave").disabled) bqSave(); } });
+  page.addEventListener("keydown", (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!$("#bqSave").disabled) bqSave(); } });
   // Drag and drop to reorder.
   const clearDrop = () => $$("#bqEntries .drop-before, #bqEntries .drop-after").forEach((li) => li.classList.remove("drop-before", "drop-after"));
   entries.addEventListener("dragstart", (event) => {
@@ -262,13 +384,14 @@ async function cmdBouquets() {
     bqMoveBlock(dragged, target);
   });
   entries.addEventListener("dragend", () => { bq.dragging = []; clearDrop(); });
-  window.addEventListener("beforeunload", (event) => { if (dialog.open && bqDirty()) { event.preventDefault(); event.returnValue = ""; } });
+  window.addEventListener("beforeunload", (event) => { if (bqDirty()) { event.preventDefault(); event.returnValue = ""; } });
 }
 async function cmdCopyPath() {
   const pane = panes[files.active], sel = selectedEntries(pane);
   const text = sel.length ? sel.map((e) => e.path).join("\n") : pane.path;
-  try { await navigator.clipboard.writeText(text); toast(sel.length > 1 ? "Paths copied" : "Path copied"); }
-  catch { toast("Clipboard access is not available", "error"); }
+  // clipboardWrite also works on plain HTTP, where navigator.clipboard does not exist.
+  if (await clipboardWrite(text)) toast(sel.length > 1 ? "Paths copied" : "Path copied");
+  else toast("Copy was blocked by the browser", "error");
 }
 function cmdSelectAll() {
   const pane = panes[files.active];
@@ -282,6 +405,6 @@ function handleOpError(error, kind) {
 $(".actionbar").addEventListener("click", (event) => {
   const button = event.target.closest("[data-cmd]");
   if (!button) return;
-  ({ mkdir: cmdMkdir, edit: cmdEdit, bouquets: cmdBouquets, tools: cmdTools, rename: cmdRename, chmod: cmdChmod, delete: cmdDelete, copypath: cmdCopyPath, selectall: cmdSelectAll,
+  ({ mkdir: cmdMkdir, edit: cmdEdit, ipk: cmdIpk, rename: cmdRename, chmod: cmdChmod, delete: cmdDelete, copypath: cmdCopyPath, selectall: cmdSelectAll,
      transfer: () => transferSelection(files.active === "remote" ? "download" : "upload") })[button.dataset.cmd]?.();
 });

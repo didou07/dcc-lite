@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -344,15 +345,15 @@ func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Dir    string `json:"dir"`
 		File   string `json:"file"`
-		Action string `json:"action"` // remove | up | down
+		Action string `json:"action"` // remove | delete (remove and erase the file) | up | down
 	}
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	dir, err := bouquetDir(input.Dir)
-	if err != nil || !enigma2.ValidBouquetFile(input.File) || (input.Action != "remove" && input.Action != "up" && input.Action != "down") {
-		writeError(w, http.StatusBadRequest, "a valid bouquet file and action (remove, up, down) are required")
+	if err != nil || !enigma2.ValidBouquetFile(input.File) || (input.Action != "remove" && input.Action != "delete" && input.Action != "up" && input.Action != "down") {
+		writeError(w, http.StatusBadRequest, "a valid bouquet file and action (remove, delete, up, down) are required")
 		return
 	}
 	id := r.PathValue("id")
@@ -364,7 +365,7 @@ func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	changed := false
 	switch input.Action {
-	case "remove":
+	case "remove", "delete":
 		changed = index.text.Remove(input.File)
 	case "up":
 		changed = index.text.Move(input.File, -1)
@@ -380,6 +381,16 @@ func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 		ExpectedSize: index.file.Size, ExpectedModifiedAt: index.file.ModifiedAt, ExpectedHash: index.file.Hash,
 	}); err != nil {
 		writeEditError(w, err)
+		return
+	}
+	if input.Action == "delete" {
+		// The list no longer points at the file; erase it too. A failure here is
+		// reported but is harmless: the file is just an unused leftover.
+		if err := s.app.Files.Remove(r.Context(), id, dir+"/"+input.File, false); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"changed": true, "file_removed": false, "note": "The bouquet was removed from the list, but its file could not be deleted: " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"changed": true, "file_removed": true})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"changed": true})
@@ -419,4 +430,133 @@ func (s *Server) reloadBouquets(w http.ResponseWriter, r *http.Request) {
 		answer = answer[:200]
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answer": answer})
+}
+
+// serviceIndex keeps the parsed channel list of lamedb between requests (it can
+// hold tens of thousands of services), per session and settings folder.
+var serviceIndex = &serviceCache{}
+
+type serviceCache struct {
+	mu      sync.Mutex
+	entries map[string]serviceCacheEntry
+}
+
+type serviceCacheEntry struct {
+	services []enigma2.Service
+	at       time.Time
+}
+
+func (c *serviceCache) get(key string) ([]enigma2.Service, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	if !ok || time.Since(entry.at) > nameCacheTTL {
+		delete(c.entries, key)
+		return nil, false
+	}
+	return entry.services, true
+}
+
+func (c *serviceCache) put(key string, services []enigma2.Service) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]serviceCacheEntry)
+	}
+	if len(c.entries) > 8 {
+		for k := range c.entries {
+			delete(c.entries, k)
+			break
+		}
+	}
+	c.entries[key] = serviceCacheEntry{services: services, at: time.Now()}
+}
+
+func (c *serviceCache) forget() {
+	c.mu.Lock()
+	c.entries = nil
+	c.mu.Unlock()
+}
+
+const maxServiceResults = 300
+
+// listServices searches the channels of the receiver's lamedb, so the editor can
+// add channels to a bouquet. Query: kind = tv | radio, q = text to look for
+// (name or provider), dir = settings folder, refresh = 1 to re-read lamedb.
+func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
+	dir, err := bouquetDir(r.URL.Query().Get("dir"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	kind := r.URL.Query().Get("kind")
+	if kind != "tv" && kind != "radio" {
+		writeError(w, http.StatusBadRequest, "kind must be tv or radio")
+		return
+	}
+	id := r.PathValue("id")
+	key := id + "|" + dir
+	all, ok := serviceIndex.get(key)
+	if !ok || r.URL.Query().Get("refresh") == "1" {
+		all = nil
+		for _, file := range []string{"lamedb", "lamedb5"} { // lamedb5 wins on conflicts
+			data, found, readErr := s.app.Files.ReadBytes(r.Context(), id, dir+"/"+file)
+			if readErr != nil {
+				writeBouquetError(w, readErr)
+				return
+			}
+			if !found {
+				continue
+			}
+			all = mergeServices(all, enigma2.ParseServices(strings.ToValidUTF8(string(data), "")))
+		}
+		serviceIndex.put(key, all)
+	}
+	if len(all) == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no channels found: there is no lamedb in " + dir, "code": "file_not_found"})
+		return
+	}
+	needle := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	matches := make([]enigma2.Service, 0, 64)
+	total := 0
+	for _, svc := range all {
+		if kind == "radio" {
+			if !svc.Radio {
+				continue
+			}
+		} else if !enigma2.IsTVType(svc.Type) {
+			continue
+		}
+		if needle != "" && !strings.Contains(strings.ToLower(svc.Name), needle) && !strings.Contains(strings.ToLower(svc.Provider), needle) {
+			continue
+		}
+		total++
+		matches = append(matches, svc)
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		return strings.ToLower(matches[i].Name) < strings.ToLower(matches[j].Name)
+	})
+	truncated := false
+	if len(matches) > maxServiceResults {
+		matches, truncated = matches[:maxServiceResults], true
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"services": matches, "total": total, "truncated": truncated})
+}
+
+// mergeServices adds the services of `next` to `base`; a service of `next` replaces
+// the same service already in `base`.
+func mergeServices(base, next []enigma2.Service) []enigma2.Service {
+	index := make(map[string]int, len(base))
+	for i, svc := range base {
+		index[svc.Ref] = i
+	}
+	for _, svc := range next {
+		if i, ok := index[svc.Ref]; ok {
+			base[i] = svc
+		} else {
+			index[svc.Ref] = len(base)
+			base = append(base, svc)
+		}
+	}
+	return base
 }

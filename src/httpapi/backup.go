@@ -184,6 +184,7 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	longTransfer(w)
 	r.Body = http.MaxBytesReader(w, r.Body, restoreMaxZip+(1<<20))
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -234,6 +235,7 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	s.names.entries = nil // channel names come from the restored lamedb now
 	s.names.mu.Unlock()
 	piconCache.forget()
+	serviceIndex.forget()
 	writeJSON(w, http.StatusOK, map[string]any{"restored": restored, "skipped": skipped, "reloaded": reloaded, "reload_note": note})
 }
 

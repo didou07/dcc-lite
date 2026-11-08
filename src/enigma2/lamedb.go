@@ -1,6 +1,7 @@
 package enigma2
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,7 +54,9 @@ func ParseLamedb(text string) map[ServiceKey]string {
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimRight(lines[i], "\r")
 		if m := lamedb5Service.FindStringSubmatch(line); m != nil {
-			names[ServiceKey{SID: hex(m[1]), Namespace: hex(m[2]), TSID: hex(m[3]), ONID: hex(m[4])}] = m[5]
+			if name := CleanName(m[5]); name != "" {
+				names[ServiceKey{SID: hex(m[1]), Namespace: hex(m[2]), TSID: hex(m[3]), ONID: hex(m[4])}] = name
+			}
 			continue
 		}
 		switch line {
@@ -68,7 +71,7 @@ func ParseLamedb(text string) map[ServiceKey]string {
 			continue
 		}
 		if m := lamedb4Header.FindStringSubmatch(line); m != nil && i+1 < len(lines) {
-			name := strings.TrimSpace(lines[i+1])
+			name := CleanName(lines[i+1])
 			if name != "" {
 				names[ServiceKey{SID: hex(m[1]), Namespace: hex(m[2]), TSID: hex(m[3]), ONID: hex(m[4])}] = name
 			}
@@ -78,18 +81,144 @@ func ParseLamedb(text string) map[ServiceKey]string {
 	return names
 }
 
-// DisplayName picks the best human-readable name for an entry.
+// CleanName removes the control characters DVB broadcasters put into names
+// (U+0086/U+0087 "emphasis" marks, U+008A line break, 0x1A) and surrounding
+// blanks. Enigma2 shows names without them; OpenWebif strips the same bytes
+// (controllers/models/services.py, removeBadChars).
+func CleanName(name string) string {
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case 0x1A, 0x86, 0x87, 0x8A:
+			return -1
+		}
+		return r
+	}, name)
+	return strings.TrimSpace(name)
+}
+
+// SplitDescription splits a #DESCRIPTION text into the name and the provider.
+// When Enigma2 saves a bouquet it appends "•<provider>" to the name
+// (eBouquet::flushChanges) and splits it again on load
+// (eServiceReference::parseNameAndProviderFromName).
+func SplitDescription(description string) (name, provider string) {
+	name, provider, _ = strings.Cut(description, "•")
+	if i := strings.Index(provider, "•"); i >= 0 {
+		provider = provider[:i]
+	}
+	return CleanName(name), CleanName(provider)
+}
+
+// DisplayName picks the name Enigma2 itself shows for an entry: the name given
+// in the bouquet (#DESCRIPTION, without the "•provider" part) when there is one,
+// otherwise the channel name from lamedb.
 func DisplayName(e Entry, names map[ServiceKey]string) string {
+	if name, _ := SplitDescription(e.Description); name != "" {
+		return name
+	}
 	if e.IsMarker() {
-		return e.Description
+		return ""
 	}
 	if key, ok := KeyOfRef(e.Ref); ok {
 		if name, found := names[key]; found {
 			return name
 		}
 	}
-	if e.Description != "" {
-		return e.Description
-	}
 	return ""
 }
+
+// Service is one channel of lamedb, with what is needed to put it in a bouquet.
+type Service struct {
+	Ref      string `json:"ref"`
+	Name     string `json:"name"`
+	Provider string `json:"provider,omitempty"`
+	Type     int    `json:"type"`
+	Radio    bool   `json:"radio"`
+}
+
+// radioType reports whether a DVB service type is a radio service. These are
+// Enigma2's own radio types (service_types_radio in Screens/ChannelSelection.py).
+func radioType(t int) bool { return t == 2 || t == 10 }
+
+// IsTVType reports whether a DVB service type is listed in the TV bouquets of
+// Enigma2: service_types_tv is 1 (SD), 17 (MPEG-2 HD), 22 (SD H.264), 25 (HD
+// H.264), 31 (UHD), 32, 134 and 195. Data, teletext and other service types are
+// not offered when editing a TV bouquet.
+func IsTVType(t int) bool {
+	switch t {
+	case 1, 17, 22, 25, 31, 32, 134, 195:
+		return true
+	}
+	return false
+}
+
+// MakeRef builds the service reference Enigma2 writes into a bouquet for a
+// broadcast service, e.g. "1:0:19:2B66:3F3:1:C00000:0:0:0:".
+func MakeRef(key ServiceKey, serviceType int) string {
+	return fmt.Sprintf("1:0:%X:%X:%X:%X:%X:0:0:0:", serviceType, key.SID, key.TSID, key.ONID, key.Namespace)
+}
+
+// ParseServices lists the channels of a lamedb (v4) or lamedb5 file.
+// Duplicates (the same service twice) are dropped; unknown layouts yield fewer
+// services, never an error.
+func ParseServices(text string) []Service {
+	var out []Service
+	seen := map[string]bool{}
+	hex := func(s string) uint32 {
+		v, _ := strconv.ParseUint(s, 16, 32)
+		return uint32(v)
+	}
+	add := func(key ServiceKey, serviceType int, name, provider string) {
+		ref := MakeRef(key, serviceType)
+		name, provider = CleanName(name), CleanName(provider)
+		if name == "" || seen[ref] {
+			return
+		}
+		seen[ref] = true
+		out = append(out, Service{Ref: ref, Name: name, Provider: provider, Type: serviceType, Radio: radioType(serviceType)})
+	}
+	lines := splitLines(text)
+	inServices := false
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimRight(lines[i], "\r")
+		if m := lamedb5Full.FindStringSubmatch(line); m != nil {
+			t, _ := strconv.Atoi(m[5])
+			provider := ""
+			if p := lamedb5Provider.FindStringSubmatch(line); p != nil {
+				provider = p[1]
+			}
+			add(ServiceKey{SID: hex(m[1]), Namespace: hex(m[2]), TSID: hex(m[3]), ONID: hex(m[4])}, t, m[6], provider)
+			continue
+		}
+		switch line {
+		case "services":
+			inServices = true
+			continue
+		case "end":
+			inServices = false
+			continue
+		}
+		if !inServices {
+			continue
+		}
+		if m := lamedb4Typed.FindStringSubmatch(line); m != nil && i+1 < len(lines) {
+			t, _ := strconv.Atoi(m[5])
+			name := lines[i+1]
+			provider := ""
+			if i+2 < len(lines) {
+				if p := lamedb4Provider.FindStringSubmatch(strings.TrimSpace(lines[i+2])); p != nil {
+					provider = p[1]
+				}
+			}
+			add(ServiceKey{SID: hex(m[1]), Namespace: hex(m[2]), TSID: hex(m[3]), ONID: hex(m[4])}, t, name, provider)
+			i += 2
+		}
+	}
+	return out
+}
+
+var (
+	lamedb4Typed    = regexp.MustCompile(`^([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):(\d+):\d+`)
+	lamedb4Provider = regexp.MustCompile(`^p:([^,]*)`)
+	lamedb5Full     = regexp.MustCompile(`^s:([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,](\d+)[:,]\d+[^"]*"([^"]*)"`)
+	lamedb5Provider = regexp.MustCompile(`,p:([^,]*)`)
+)

@@ -13,7 +13,7 @@ import (
 
 const ipkMaxBytes = 256 << 20
 
-var ipkFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,150}\.ipk$`)
+var ipkFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+~-]{0,150}\.ipk$`)
 
 // uploadIPK puts an .ipk package from the browser into /tmp on the receiver and
 // returns the command that installs it. The page then runs that command in a
@@ -24,6 +24,7 @@ func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "file session not found")
 		return
 	}
+	longTransfer(w)
 	r.Body = http.MaxBytesReader(w, r.Body, ipkMaxBytes+(1<<20))
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -50,7 +51,7 @@ func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 		}
 		name = strings.ReplaceAll(part.FileName(), " ", "_")
 		if !ipkFileName.MatchString(name) {
-			writeError(w, http.StatusUnprocessableEntity, "choose an .ipk file whose name has only letters, digits and . _ + -")
+			writeError(w, http.StatusUnprocessableEntity, "choose an .ipk file whose name has only letters, digits and . _ + ~ -")
 			return
 		}
 		tmp, err := os.CreateTemp("", "dcclite-ipk-*")
@@ -86,6 +87,15 @@ func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Keep the package after a failed install so it can be retried; remove it after a good one.
-	command := "opkg install " + remote + " && rm -f " + remote
+	// Options chosen on the page: reinstall over an installed version, and restart the
+	// Enigma2 GUI afterwards (most plugins only show up after that).
+	install := "opkg install "
+	if r.URL.Query().Get("force") == "1" {
+		install += "--force-reinstall --force-overwrite "
+	}
+	command := install + remote + " && rm -f " + remote
+	if r.URL.Query().Get("restart") == "1" {
+		command += " && sleep 1 && init 4 && sleep 3 && init 3"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": remote, "command": command})
 }

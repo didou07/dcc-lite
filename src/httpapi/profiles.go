@@ -60,6 +60,16 @@ func (s *Server) importProfiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"imported": len(imported), "profiles": imported})
 }
 
+func (s *Server) revealCredential(w http.ResponseWriter, r *http.Request) {
+	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"password": profile.Password})
+}
+
 func (s *Server) setCredential(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	profile, ok := s.app.Profiles.Get(id)

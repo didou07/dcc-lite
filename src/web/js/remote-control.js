@@ -56,15 +56,22 @@ function sendRemoteKey(key, long = false, button = null) {
 function buildRemote() {
   const holder = $("#remoteKeys");
   holder.replaceChildren();
-  for (const row of REMOTE_ROWS) {
-    holder.append(h("div", { class: "remote-row" }, row.map(([key, label, extra = ""]) => {
+  REMOTE_ROWS.forEach((row, rowIndex) => {
+    holder.append(h("div", { class: rowIndex >= 8 ? "remote-row extra" : "remote-row" }, row.map(([key, label, extra = ""]) => {
       const button = h("button", { class: `rk ${extra}`.trim(), type: "button", title: KEY_TITLES[key] || label || key, dataset: { key }, "aria-label": KEY_TITLES[key] || label || key });
       if (label.startsWith("@")) {
         button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GLYPHS[label.slice(1)]}</svg>`;
       } else button.textContent = label;
       return button;
     })));
-  }
+  });
+  // Phones: only the main keys are shown under the picture; "More keys" opens the rest.
+  const more = $("#remoteMore");
+  more.onclick = () => {
+    const open = $("#remotePad").classList.toggle("more");
+    more.setAttribute("aria-expanded", String(open));
+    more.querySelector("span").textContent = open ? "Fewer keys" : "More keys";
+  };
 }
 function remoteBind() {
   const holder = $("#remoteKeys");

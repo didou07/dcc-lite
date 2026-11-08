@@ -41,7 +41,10 @@ func (p *outputPump) run() {
 		p.mu.Lock()
 		if n > 0 {
 			p.buf = append(p.buf, chunk[:n]...)
-			if over := len(p.buf) - replayLimit; over > 0 {
+			// Trim in batches: copying ~512 KiB after every 4 KiB read made fast output
+			// (logs, tail -f) cost far more CPU than the output itself.
+			if len(p.buf) > replayLimit+replayLimit/2 {
+				over := len(p.buf) - replayLimit
 				p.buf = append([]byte(nil), p.buf[over:]...)
 				p.base += int64(over)
 			}

@@ -7,8 +7,7 @@ function raShowError(message) {
   node.textContent = message || "";
 }
 function raShowSecret(password) {
-  $("#raSecret").hidden = !password;
-  $("#raSecretValue").value = password || "";
+  $("#raPass").value = password || ""; // a generated password is shown right in the password field
 }
 function raRender(status) {
   if (!status) return;
@@ -21,14 +20,15 @@ function raRender(status) {
   for (const id of ["#raEnabled", "#raListen", "#raMode", "#raHosts", "#raSave"]) $(id).disabled = !managed;
   const state = $("#raState");
   state.dataset.state = status.running ? "on" : "off";
-  state.textContent = !managed ? "Started from the command line (--remote-listen). Restart DCC Lite without it to manage remote access here."
-    : status.running ? `On — listening on ${status.listen} (${status.plain_http ? "HTTP, not encrypted" : "HTTPS"})` : "Off";
+  state.textContent = !managed ? "Started from the command line (--remote-listen). Restart without it to manage this here."
+    : status.running ? `On · ${status.plain_http ? "HTTP" : "HTTPS"} · ${status.listen}` : "Off";
   $("#raInfo").hidden = !status.running;
   $("#raCert").hidden = Boolean(status.plain_http);
   const list = $("#raUrls");
-  list.replaceChildren(...(status.urls || []).map((u) => h("li", {}, h("code", { text: u }))));
+  list.replaceChildren(...(status.urls || []).map((u) => h("li", {}, h("code", { text: u }),
+    h("button", { class: "icon-btn", type: "button", title: "Copy link", "aria-label": "Copy link", onClick: async () => { try { await navigator.clipboard.writeText(u); toast("Link copied"); } catch { toast("Press Ctrl+C to copy", "error"); } } }, icon("copy")))));
   $("#raFingerprint").textContent = status.fingerprint || "";
-  $("#raPassState").textContent = status.password_set ? "A password is set." : "No password yet — one is generated when you turn remote access on.";
+  $("#raPass").placeholder = status.password_set ? "Password is set. Type a new one (10+ characters)" : "Password (10+ characters)";
   raShowError(status.error || "");
 }
 function raModeChanged() {
@@ -65,7 +65,6 @@ $("#raPassSet").addEventListener("click", async () => {
   raShowError("");
   try {
     const data = await post("/api/v1/remote-access/password", { password: $("#raPass").value });
-    $("#raPass").value = "";
     raRender(data.status);
     toast("Password saved; signed-in remote sessions were ended");
   } catch (error) { raShowError(error.message); }
@@ -79,6 +78,6 @@ $("#raPassGen").addEventListener("click", async () => {
   } catch (error) { raShowError(error.message); }
 });
 $("#raSecretCopy").addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($("#raSecretValue").value); toast("Password copied"); }
-  catch { $("#raSecretValue").select(); toast("Press Ctrl+C to copy", "error"); }
+  try { await navigator.clipboard.writeText($("#raPass").value); toast("Password copied"); }
+  catch { $("#raPass").select(); toast("Press Ctrl+C to copy", "error"); }
 });

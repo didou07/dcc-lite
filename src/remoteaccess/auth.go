@@ -20,8 +20,11 @@ const (
 	// encrypted): browsers refuse __Host- and Secure cookies over HTTP.
 	PlainCookieName = "dcc_session"
 
-	sessionIdleTimeout = 2 * time.Hour
-	sessionMaxAge      = 12 * time.Hour
+	// A sign-in stays valid while the page keeps talking to the server (the page
+	// sends a heartbeat and the terminal WebSocket refreshes it), so an open
+	// terminal or file transfer is not cut off by the session timing out.
+	sessionIdleTimeout = 12 * time.Hour
+	sessionMaxAge      = 7 * 24 * time.Hour
 	maxSessions        = 32
 	freeAttempts       = 5
 	baseLockout        = time.Minute

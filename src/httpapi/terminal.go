@@ -159,6 +159,10 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 					cancel()
 					return
 				}
+				// An open terminal is activity: keep the remote sign-in alive too.
+				if s.remote != nil {
+					s.remote.auth.Authenticated(r)
+				}
 			}
 		}
 	}()

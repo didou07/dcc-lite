@@ -33,6 +33,7 @@ function sigSetLive(state, text) {
   const node = $("#sigLive");
   node.dataset.state = state;
   $("span", node).textContent = text;
+  node.title = text;
 }
 
 /** Paints one reading (or the "no signal" state when reading is null). */

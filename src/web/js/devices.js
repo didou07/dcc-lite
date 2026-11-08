@@ -55,13 +55,12 @@ function renderDeviceGrid() {
           iconButton("refresh", "Check this device", () => testDevice(profile.id)),
           iconButton("edit", "Edit device", () => openDeviceDialog(profile)),
           iconButton("trash", "Delete device", () => deleteDevice(profile)))),
-      h("div", { class: "chips" }, statusChips(profile, status)),
-      h("div", { class: "device-status", text: status && status.state !== "checking" ? status.message : "" }),
+      h("div", { class: "chips", title: status && status.state !== "checking" ? status.message : "" }, statusChips(profile, status)),
       h("div", { class: "device-actions" },
-        h("button", { class: "btn primary", type: "button", onClick: () => openDevice(profile.id, "files") }, icon("files"), "Files"),
-        h("button", { class: "btn primary", type: "button", onClick: () => openDevice(profile.id, "terminal") }, icon("terminal"), "Terminal"),
-        h("button", { class: "btn primary", type: "button", title: "Watch what the receiver shows on the TV", onClick: () => openDevice(profile.id, "screen") }, icon("screen"), "Screen"),
-        h("button", { class: "btn primary", type: "button", title: "Live signal quality (SNR / AGC) while aiming the dish", onClick: () => openDevice(profile.id, "signal") }, icon("signal"), "Signal")),
+        h("button", { class: "btn", type: "button", onClick: () => openDevice(profile.id, "files") }, icon("files"), "Files"),
+        h("button", { class: "btn", type: "button", onClick: () => openDevice(profile.id, "terminal") }, icon("terminal"), "Terminal"),
+        h("button", { class: "btn", type: "button", title: "Watch what the receiver shows on the TV", onClick: () => openDevice(profile.id, "screen") }, icon("screen"), "Screen"),
+        h("button", { class: "btn", type: "button", title: "Channel editor, backup, .ipk install and signal meter", onClick: () => openDevice(profile.id, "tools") }, icon("gear"), "Tools")),
       deviceInfoState.has(profile.id) ? deviceInfoPanel(profile) : null);
     grid.append(card);
   }
@@ -166,15 +165,19 @@ function openDeviceDialog(profile = null) {
   $("#devHost").value = profile?.host || "";
   $("#devUser").value = profile?.username || "root";
   $("#devPass").value = "";
-  $("#devPass").type = "password";
-  $("#devPass").placeholder = profile ? (profile.credential_configured ? "Saved — leave empty to keep" : "No password saved") : "dreambox";
-  $("#devPassHint").textContent = profile ? "Leave empty to keep the saved password." : "Leave empty to use the default password dreambox.";
+  $("#devPass").type = "text"; // passwords are shown; the eye button hides them
+  $("#devPass").placeholder = profile ? (profile.credential_configured ? "Saved" : "No password") : "dreambox";
+  if (profile?.credential_configured) { // shown only on this computer; a remote page keeps the field empty (empty = keep)
+    const field = $("#devPass"), editing = profile;
+    api(`/api/v1/profiles/${encodeURIComponent(profile.id)}/password`).then((data) => {
+      if (deviceDialog.editing === editing && !field.value && data?.password) field.value = data.password;
+    }).catch(() => {});
+  }
   $("#devFtp").value = profile?.ftp_port || "";
   $("#devWeb").value = profile?.port || "";
   $("#devWebHttps").checked = profile?.scheme === "https";
   $("#devTelnet").value = profile?.telnet_port || "";
   $(".advanced", $("#deviceDialog")).open = Boolean(profile && (profile.ftp_port || profile.telnet_port || profile.port || profile.scheme === "https"));
-  $("#devClearPass").hidden = !(profile && profile.credential_configured);
   $("#deviceError").hidden = true;
   openDialog($("#deviceDialog"));
   $("#devName").focus();
@@ -226,16 +229,7 @@ $("#deviceForm").addEventListener("submit", async (event) => {
 });
 $("#deviceCancel").addEventListener("click", () => $("#deviceDialog").close());
 $("#devPassToggle").addEventListener("click", () => { const f = $("#devPass"); f.type = f.type === "password" ? "text" : "password"; });
-$("#devClearPass").addEventListener("click", async () => {
-  const profile = deviceDialog.editing;
-  if (!profile) return;
-  try {
-    await api(`/api/v1/profiles/${encodeURIComponent(profile.id)}/password`, { method: "DELETE" });
-    $("#deviceDialog").close();
-    await loadDevices();
-    toast("Saved password removed");
-  } catch (problem) { toastError(problem); }
-});
+
 $("#deviceAdd").addEventListener("click", () => openDeviceDialog());
 $("#deviceAddEmpty").addEventListener("click", () => openDeviceDialog());
 $("#devicesRefresh").addEventListener("click", testAllDevices);
@@ -275,27 +269,62 @@ function setCurrentDevice(id) {
   updateDeviceDot();
   renderDeviceGrid();
   if (changed) {
-    fileDisconnect(true).then(() => { if (view.current === "files") filesEnter(); });
+    fileDisconnect(true).then(() => { if (view.current === "files") filesEnter(); else if (view.current === "lists") listsEnter(); else if (view.current === "ipk") ipkEnter(); });
   }
   if (view.current === "terminal") terminalEnter();
   if (view.current === "screen") screenEnter();
   if (view.current === "signal") signalEnter();
+  if (view.current === "ipk") ipkEnter();
   if (id && !devices.status.has(id)) testDevice(id);
 }
 $("#deviceSelect").addEventListener("change", (event) => setCurrentDevice(event.target.value));
 
 /* ───────────── Views ───────────── */
 const view = { current: "devices" };
+/* "Tools" is one tab with four sub-pages. Each sub-page is its own section (view-lists, view-ipk, view-signal);
+   view.current keeps the section name, tools.current says which sub-page is open. */
+const TOOL_PAGES = [
+  { id: "editor", label: "Channel editor", icon: "list", view: "lists" },
+  { id: "backup", label: "Backup & restore", icon: "archive", view: "lists" },
+  { id: "ipk", label: "Install .ipk", icon: "box", view: "ipk" },
+  { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
+];
+const tools = { current: store.get("tool", "editor") };
+if (!TOOL_PAGES.some((t) => t.id === tools.current)) tools.current = "editor";
+const toolViews = ["lists", "ipk", "signal"];
+function updateToolsNav() {
+  for (const nav of $$("[data-toolsnav]")) {
+    nav.replaceChildren(...TOOL_PAGES.map((t) => h("button", {
+      type: "button", role: "tab", class: "toolsnav-btn", "aria-selected": String(t.id === tools.current),
+      onClick: () => showTool(t.id),
+    }, icon(t.icon), t.label)));
+  }
+}
+function showTool(id) {
+  const page = TOOL_PAGES.find((t) => t.id === id) || TOOL_PAGES[0];
+  tools.current = page.id;
+  store.set("tool", page.id);
+  if (page.view === "lists" && typeof listsMode === "function") listsMode(page.id);
+  showView(page.view);
+}
 function showView(name) {
-  if (!["devices", "files", "terminal", "screen", "signal"].includes(name)) name = "devices";
+  if (name === "tools") name = TOOL_PAGES.find((t) => t.id === tools.current)?.view || "lists";
+  if (!["devices", "files", "terminal", "screen", ...toolViews].includes(name)) name = "devices";
   if (view.current === "screen" && name !== "screen") screenStop(); // no polling while the tab is not shown
   if (view.current === "signal" && name !== "signal") signalStop();
   view.current = name;
+  if (name === "ipk") tools.current = "ipk";
+  else if (name === "signal") tools.current = "signal";
+  else if (name === "lists" && (tools.current === "ipk" || tools.current === "signal")) tools.current = "editor";
   document.body.dataset.view = name;
-  for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === name));
+  const top = toolViews.includes(name) ? "tools" : name;
+  for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === top));
   for (const section of $$("main > .view")) section.hidden = section.id !== `view-${name}`;
   store.set("view", name);
+  if (toolViews.includes(name)) { store.set("tool", tools.current); updateToolsNav(); }
   if (name === "files") filesEnter();
+  if (name === "lists") { if (typeof listsMode === "function") listsMode(tools.current === "backup" ? "backup" : "edit"); listsEnter(); }
+  if (name === "ipk") ipkEnter();
   if (name === "terminal") terminalEnter();
   if (name === "screen") screenEnter();
   if (name === "signal") signalEnter();

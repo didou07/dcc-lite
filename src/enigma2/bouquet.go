@@ -64,22 +64,26 @@ func ParseBouquet(text string) (Bouquet, error) {
 	var last *Entry
 	for _, raw := range splitLines(text) {
 		line := strings.TrimRight(raw, "\r")
-		switch {
-		case strings.HasPrefix(line, "#NAME "):
-			b.Name = strings.TrimSpace(line[len("#NAME "):])
-		case strings.HasPrefix(line, "#SERVICE "):
+		if ref, ok := directive(line, "#SERVICE"); ok {
 			if len(b.Entries) >= MaxEntries {
 				return Bouquet{}, errors.New("the bouquet has too many entries")
 			}
-			b.Entries = append(b.Entries, Entry{Ref: strings.TrimSpace(line[len("#SERVICE "):])})
+			b.Entries = append(b.Entries, Entry{Ref: strings.TrimSpace(ref)})
 			last = &b.Entries[len(b.Entries)-1]
-		case strings.HasPrefix(line, "#DESCRIPTION "):
+			continue
+		}
+		if desc, ok := directive(line, "#DESCRIPTION"); ok {
 			if last != nil && !last.HasDescription {
-				last.Description = strings.TrimRight(line[len("#DESCRIPTION "):], " ")
+				last.Description = strings.TrimRight(desc, " ")
 				last.HasDescription = true
 			} else if last == nil {
 				b.Header = append(b.Header, line)
 			}
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "#NAME "):
+			b.Name = strings.TrimSpace(line[len("#NAME "):])
 		case line == "":
 		default:
 			if last == nil && strings.HasPrefix(line, "#") {
@@ -116,13 +120,15 @@ func (b Bouquet) NewMarker(title string) Entry {
 		if !e.IsMarker() {
 			continue
 		}
+		// The third field of a reference is hexadecimal in Enigma2 (it writes
+		// "1:64:1C:..." for marker 28), so read and write it as hex.
 		if fields := strings.Split(e.Ref, ":"); len(fields) > 2 {
-			if n, err := strconv.Atoi(fields[2]); err == nil && n >= next {
-				next = n + 1
+			if n, err := strconv.ParseUint(fields[2], 16, 32); err == nil && int(n) >= next {
+				next = int(n) + 1
 			}
 		}
 	}
-	return Entry{Ref: fmt.Sprintf("1:64:%d:0:0:0:0:0:0:0:", next), Description: oneLine(title), HasDescription: true}
+	return Entry{Ref: fmt.Sprintf("1:64:%X:0:0:0:0:0:0:0:", next), Description: oneLine(title), HasDescription: true}
 }
 
 // ValidateEntry checks an entry coming from the browser before it is written.
@@ -137,6 +143,25 @@ func ValidateEntry(e Entry) error {
 		return fmt.Errorf("%q is not a service reference", e.Ref)
 	}
 	return nil
+}
+
+// directive returns the text after a "#SERVICE" / "#DESCRIPTION" keyword. Enigma2
+// itself accepts both "#SERVICE <ref>" and "#SERVICE:<ref>" (lib/dvb/db.cpp,
+// eDVBDB::loadBouquet), and files written by other tools use the colon form, so
+// both must be understood or such a bouquet would look empty and be saved empty.
+func directive(line, keyword string) (string, bool) {
+	if !strings.HasPrefix(line, keyword) {
+		return "", false
+	}
+	rest := line[len(keyword):]
+	switch {
+	case strings.HasPrefix(rest, ":"):
+		rest = rest[1:]
+	case strings.HasPrefix(rest, " "):
+	default:
+		return "", false
+	}
+	return strings.TrimPrefix(rest, " "), true
 }
 
 func oneLine(s string) string {
@@ -167,15 +192,16 @@ func ParseIndex(text string) (Index, error) {
 	var idx Index
 	for _, raw := range splitLines(text) {
 		line := strings.TrimRight(raw, "\r")
-		switch {
-		case strings.HasPrefix(line, "#NAME "):
-			idx.Name = strings.TrimSpace(line[len("#NAME "):])
-		case strings.HasPrefix(line, "#SERVICE "):
-			l := IndexLine{Raw: line}
-			if m := fromBouquet.FindStringSubmatch(line); m != nil {
+		if ref, ok := directive(line, "#SERVICE"); ok {
+			l := IndexLine{Raw: "#SERVICE " + strings.TrimSpace(ref)}
+			if m := fromBouquet.FindStringSubmatch(ref); m != nil {
 				l.File = m[1]
 			}
 			idx.Lines = append(idx.Lines, l)
+			continue
+		}
+		if strings.HasPrefix(line, "#NAME ") {
+			idx.Name = strings.TrimSpace(line[len("#NAME "):])
 		}
 	}
 	if idx.Name == "" && len(idx.Lines) == 0 {

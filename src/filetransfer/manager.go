@@ -31,6 +31,7 @@ const (
 	maxFileSessions          = 8
 	maxFileSessionsPerDevice = 2
 	maxTransferTasks         = 100
+	idleSessionTTL           = 2 * time.Hour
 	maxDirectoryEntries      = 100000
 	maxDirectoryDepth        = 64
 )
@@ -48,6 +49,8 @@ type managedSession struct {
 	adapter core.FileTransfer
 	mu      sync.Mutex
 	closed  bool
+	// lastUsed is guarded by Manager.mu. It decides which idle session is closed first when the limit is reached.
+	lastUsed time.Time
 }
 type Manager struct {
 	mu               sync.Mutex
@@ -60,7 +63,9 @@ type Manager struct {
 }
 
 func NewManager() *Manager {
-	return &Manager{sessions: make(map[string]*managedSession), tasks: make(map[string]*taskEntry), queue: make(chan struct{}, 2), openingByProfile: make(map[string]int)}
+	m := &Manager{sessions: make(map[string]*managedSession), tasks: make(map[string]*taskEntry), queue: make(chan struct{}, 2), openingByProfile: make(map[string]int)}
+	go m.reapIdleLoop()
+	return m
 }
 
 func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol string, port int, password string) (SessionInfo, error) {
@@ -82,19 +87,35 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		m.mu.Unlock()
 		return SessionInfo{}, errors.New("file transfer manager is closed")
 	}
-	count := m.openingByProfile[profile.ID]
-	for _, session := range m.sessions {
-		if session.info.ProfileID == profile.ID {
-			count++
+	// Sessions left behind by a closed tab, a reload or a dropped connection must never lock the user out:
+	// when a limit is reached, the least recently used session with no running transfer is closed to make room.
+	var evicted []*managedSession
+	for {
+		count := m.openingByProfile[profile.ID]
+		for _, session := range m.sessions {
+			if session.info.ProfileID == profile.ID {
+				count++
+			}
 		}
-	}
-	if len(m.sessions)+m.opening >= maxFileSessions || count >= maxFileSessionsPerDevice {
-		m.mu.Unlock()
-		return SessionInfo{}, ErrSessionLimit
+		deviceFull := count >= maxFileSessionsPerDevice
+		if len(m.sessions)+m.opening < maxFileSessions && !deviceFull {
+			break
+		}
+		victim := m.idleSessionLocked(profile.ID, deviceFull)
+		if victim == nil {
+			m.mu.Unlock()
+			go closeSessions(evicted)
+			return SessionInfo{}, ErrSessionLimit
+		}
+		delete(m.sessions, victim.info.ID)
+		evicted = append(evicted, victim)
 	}
 	m.opening++
 	m.openingByProfile[profile.ID]++
 	m.mu.Unlock()
+	if len(evicted) > 0 {
+		go closeSessions(evicted)
+	}
 	reservationHeld := true
 	releaseReservation := func() {
 		if !reservationHeld {
@@ -137,7 +158,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		delete(m.openingByProfile, profile.ID)
 	}
 	reservationHeld = false
-	m.sessions[id] = &managedSession{info: info, adapter: adapter}
+	m.sessions[id] = &managedSession{info: info, adapter: adapter, lastUsed: time.Now()}
 	m.mu.Unlock()
 	return info, nil
 }
@@ -228,7 +249,89 @@ func (m *Manager) get(id string) (*managedSession, error) {
 	if !ok {
 		return nil, ErrSessionNotFound
 	}
+	session.lastUsed = time.Now()
 	return session, nil
+}
+
+// idleSessionLocked returns the least recently used session that has no queued or running transfer,
+// or nil when every candidate is busy. With deviceOnly it only considers the given device. Manager.mu must be held.
+func (m *Manager) idleSessionLocked(profileID string, deviceOnly bool) *managedSession {
+	busy, latest := m.sessionUsageLocked()
+	var victim *managedSession
+	var victimTime time.Time
+	for id, session := range m.sessions {
+		if busy[id] || (deviceOnly && session.info.ProfileID != profileID) {
+			continue
+		}
+		used := lastUse(session, latest[id])
+		if victim == nil || used.Before(victimTime) {
+			victim = session
+			victimTime = used
+		}
+	}
+	return victim
+}
+
+// sessionUsageLocked reports which sessions have a queued or running transfer and when each session's tasks last changed.
+func (m *Manager) sessionUsageLocked() (map[string]bool, map[string]time.Time) {
+	busy := make(map[string]bool)
+	latest := make(map[string]time.Time)
+	for _, task := range m.tasks {
+		id := task.info.SessionID
+		if task.info.State == "queued" || task.info.State == "running" {
+			busy[id] = true
+		}
+		if task.info.UpdatedAt.After(latest[id]) {
+			latest[id] = task.info.UpdatedAt
+		}
+	}
+	return busy, latest
+}
+
+func lastUse(session *managedSession, lastTask time.Time) time.Time {
+	used := session.lastUsed
+	if used.IsZero() {
+		used = session.info.OpenedAt
+	}
+	if lastTask.After(used) {
+		used = lastTask
+	}
+	return used
+}
+
+// reapIdleLoop closes sessions nobody has used for idleSessionTTL (and that have no running transfer), so a page that was
+// left open for days, or a browser that vanished, does not keep FTP connections open on the receiver. A page that comes
+// back simply reconnects. The loop ends when the manager is closed.
+func (m *Manager) reapIdleLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.mu.Lock()
+		if m.closed {
+			m.mu.Unlock()
+			return
+		}
+		busy, latest := m.sessionUsageLocked()
+		now := time.Now()
+		var stale []*managedSession
+		for id, session := range m.sessions {
+			if !busy[id] && now.Sub(lastUse(session, latest[id])) > idleSessionTTL {
+				stale = append(stale, session)
+				delete(m.sessions, id)
+			}
+		}
+		m.mu.Unlock()
+		closeSessions(stale)
+	}
+}
+
+func closeSessions(sessions []*managedSession) {
+	for _, session := range sessions {
+		session.mu.Lock()
+		session.closed = true
+		_ = session.adapter.Close()
+		session.mu.Unlock()
+	}
 }
 
 func (m *Manager) Close(id string) error {
@@ -304,9 +407,12 @@ type TaskInfo struct {
 	Progress    core.TransferProgress `json:"progress"`
 	Error       string                `json:"error,omitempty"`
 	Warning     string                `json:"warning,omitempty"`
-	CanResume   bool                  `json:"can_resume"`
-	CreatedAt   time.Time             `json:"created_at"`
-	UpdatedAt   time.Time             `json:"updated_at"`
+	// Staged marks a transfer whose local side is the private staging folder:
+	// the file comes from, or goes to, the user's browser.
+	Staged    bool      `json:"staged,omitempty"`
+	CanResume bool      `json:"can_resume"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 type taskEntry struct {
 	info            TaskInfo
@@ -325,6 +431,17 @@ type taskEntry struct {
 }
 
 func (m *Manager) StartTransfer(sessionID, direction, localRelative, remotePath string, overwrite, isDirectory bool, local *LocalFS) (TaskInfo, error) {
+	return m.startTransfer(sessionID, direction, localRelative, remotePath, overwrite, isDirectory, local, false)
+}
+
+// StartStagedTransfer is StartTransfer for a file that lives in the staging
+// folder: an upload whose bytes the browser just sent, or a download the browser
+// will fetch when it finishes.
+func (m *Manager) StartStagedTransfer(sessionID, direction, stagedRelative, remotePath string, overwrite bool, staging *LocalFS) (TaskInfo, error) {
+	return m.startTransfer(sessionID, direction, stagedRelative, remotePath, overwrite, false, staging, true)
+}
+
+func (m *Manager) startTransfer(sessionID, direction, localRelative, remotePath string, overwrite, isDirectory bool, local *LocalFS, staged bool) (TaskInfo, error) {
 	if local == nil {
 		return TaskInfo{}, errors.New("local file system is unavailable")
 	}
@@ -388,7 +505,7 @@ func (m *Manager) StartTransfer(sessionID, direction, localRelative, remotePath 
 	_, supportsResume := session.adapter.(core.ResumableFileTransfer)
 	canResume := supportsResume && !isDirectory
 	entry := &taskEntry{
-		info:   TaskInfo{ID: id, SessionID: sessionID, Direction: direction, LocalPath: localRelative, RemotePath: remotePath, IsDirectory: isDirectory, State: "queued", CanResume: canResume, CreatedAt: now, UpdatedAt: now},
+		info:   TaskInfo{ID: id, SessionID: sessionID, Direction: direction, LocalPath: localRelative, RemotePath: remotePath, IsDirectory: isDirectory, State: "queued", CanResume: canResume, Staged: staged, CreatedAt: now, UpdatedAt: now},
 		cancel: cancel, session: session, local: local, localAbsolute: localAbsolute, overwrite: overwrite,
 	}
 	if direction == "download" && !isDirectory {
@@ -518,6 +635,11 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 		info.Progress.Fraction = 1
 		info.UpdatedAt = time.Now().UTC()
 	})
+	// The bytes that came from the browser are no longer needed once the
+	// receiver has them. (A staged download stays until the browser fetched it.)
+	if task.info.Staged && task.info.Direction == "upload" {
+		removeStagedFiles(task)
+	}
 }
 
 func commitRemoteFile(ctx context.Context, adapter core.FileTransfer, partialPath, remotePath string, overwrite bool, taskID string) error {
@@ -931,6 +1053,7 @@ func (m *Manager) cleanupTaskArtifacts(entry *taskEntry) {
 	if entry == nil {
 		return
 	}
+	removeStagedFiles(entry)
 	if entry.partialPath != "" {
 		_ = os.Remove(entry.partialPath)
 	}
@@ -979,6 +1102,25 @@ func (m *Manager) pruneTasksLocked() []*taskEntry {
 				}
 			}
 			delete(m.tasks, id)
+			removed = append(removed, entry)
+		}
+	}
+	// A big batch (a whole folder of files) can fill the list within minutes.
+	// Finished transfers are only history, so make room by dropping the oldest
+	// completed ones rather than refusing new work.
+	if len(m.tasks) >= maxTransferTasks {
+		var done []*taskEntry
+		for _, entry := range m.tasks {
+			if entry.info.State == "completed" {
+				done = append(done, entry)
+			}
+		}
+		sort.Slice(done, func(i, j int) bool { return done[i].info.UpdatedAt.Before(done[j].info.UpdatedAt) })
+		for _, entry := range done {
+			if len(m.tasks) < maxTransferTasks-maxTransferTasks/5 {
+				break
+			}
+			delete(m.tasks, entry.info.ID)
 			removed = append(removed, entry)
 		}
 	}

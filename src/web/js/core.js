@@ -60,6 +60,17 @@ function iconButton(name, title, onClick, extra = "") {
   return h("button", { class: `icon-btn ${extra}`.trim(), type: "button", title, "aria-label": title, onClick }, icon(name));
 }
 
+/** Connection state is shown as a coloured dot only: green = connected, red = not connected or failed, amber = busy.
+ *  The words go to the tooltip and to screen readers, so nothing is repeated on screen. */
+function setStatusDot(node, state, text) {
+  if (!node) return;
+  node.dataset.state = state;
+  node.textContent = "";
+  node.title = text;
+  node.setAttribute("role", "img");
+  node.setAttribute("aria-label", text);
+}
+
 let toastTimer = 0;
 function toast(message, kind = "info") {
   const node = $("#toast");

@@ -109,6 +109,23 @@ func TestProfilePasswordIsAcceptedButNeverReturned(t *testing.T) {
 	}
 }
 
+func TestSavedPasswordIsRevealedOnlyOnTheLocalListener(t *testing.T) {
+	h := testServer(t)
+	res := request(t, h, http.MethodPost, "/api/v1/profiles", []byte(`{"name":"Box","host":"192.168.1.10","password":"local-secret"}`))
+	var created struct {
+		Profile struct {
+			ID string `json:"id"`
+		} `json:"profile"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil || created.Profile.ID == "" {
+		t.Fatalf("create: %d %s", res.Code, res.Body)
+	}
+	res = request(t, h, http.MethodGet, "/api/v1/profiles/"+created.Profile.ID+"/password", nil)
+	if res.Code != http.StatusOK || !bytes.Contains(res.Body.Bytes(), []byte("local-secret")) {
+		t.Fatalf("reveal: %d %s", res.Code, res.Body)
+	}
+}
+
 func TestRejectsCrossOriginAndNonLoopbackHost(t *testing.T) {
 	h := testServer(t)
 	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8787/api/v1/profiles", bytes.NewReader([]byte(`{}`)))

@@ -225,18 +225,23 @@ func (m *remoteManager) start() (remotePlan, error) {
 	return plan, nil
 }
 
-// linkHosts lists the names and addresses worth showing in the links: the
-// certificate's hosts for HTTPS, otherwise this computer's addresses plus the
-// public IP / dynamic DNS name typed by the user.
+// linkHosts lists the addresses worth showing in the links: only the public IP
+// or dynamic DNS name typed by the user, because this computer's own LAN
+// addresses are not what someone opens from outside. A run started from the
+// command line has no such field, so it keeps listing the certificate's hosts
+// (HTTPS) or this computer's addresses (plain HTTP).
 func (m *remoteManager) linkHosts(plan remotePlan) []string {
-	if !m.settings.PlainHTTP {
-		return displayHosts(plan.Certificate.Hosts)
-	}
-	hosts := remoteaccess.DefaultHosts()
+	var hosts []string
 	for _, extra := range strings.Split(m.settings.TLSHosts, ",") {
 		if extra = strings.TrimSpace(extra); extra != "" {
 			hosts = append(hosts, extra)
 		}
+	}
+	if len(hosts) == 0 && m.cli {
+		if !m.settings.PlainHTTP {
+			return displayHosts(plan.Certificate.Hosts)
+		}
+		hosts = remoteaccess.DefaultHosts()
 	}
 	seen := map[string]bool{}
 	var unique []string

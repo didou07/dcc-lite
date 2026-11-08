@@ -19,7 +19,25 @@ type fileSessionRequest struct {
 	Port      int    `json:"port"`
 }
 
+// denyHostFiles answers true (after replying 403) for a signed-in remote user.
+// The "local" file API reads and writes the home folder of the machine that runs
+// DCC Lite; a remote user works from their own device instead (see
+// files_browser.go), and must not reach into the host's files.
+func (s *Server) denyHostFiles(w http.ResponseWriter) bool {
+	if s.remote == nil {
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]any{
+		"error": "The files of the computer that runs DCC Lite are not available in a remote session. Use \"Upload files\" and \"Download to this device\" to move files from and to your own device.",
+		"code":  "host_files_unavailable",
+	})
+	return true
+}
+
 func (s *Server) listLocalFiles(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
 	if s.app.LocalFiles == nil {
 		writeError(w, http.StatusServiceUnavailable, "local file browser is unavailable")
 		return
@@ -37,6 +55,9 @@ func (s *Server) listLocalFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) makeLocalDirectory(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
 	var input struct {
 		Path string `json:"path"`
 	}
@@ -56,6 +77,9 @@ func (s *Server) makeLocalDirectory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renameLocalFile(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
 	var input struct {
 		OldPath string `json:"old_path"`
 		NewPath string `json:"new_path"`
@@ -76,6 +100,9 @@ func (s *Server) renameLocalFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeLocalFile(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
 	var input struct {
 		Path string `json:"path"`
 	}
@@ -95,6 +122,9 @@ func (s *Server) removeLocalFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) chmodLocalFile(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
 	var input struct {
 		Path string `json:"path"`
 		Mode string `json:"mode"`
@@ -319,6 +349,9 @@ func writeEditError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) startFileTransfer(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
 	var input struct {
 		Direction   string `json:"direction"`
 		LocalPath   string `json:"local_path"`

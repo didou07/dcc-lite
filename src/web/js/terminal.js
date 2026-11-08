@@ -113,10 +113,8 @@ function updateTerminalBar() {
   $("#terminalDisconnect").hidden = !(connected || busy);
   $("#terminalPort").value = String(tab?.port || defaultPort(currentDevice(), term.protocol));
   $("#terminalPort").disabled = connected || busy;
-  const pill = $("#terminalStatus");
-  pill.dataset.state = state === "disconnected" ? "idle" : state;
-  pill.textContent = !tab ? "No session" : connected ? `${tab.host || "Connected"} · ${tab.protocol.toUpperCase()}` : busy ? (tab.reconnecting ? "Reconnecting…" : "Connecting…") : state === "error" ? (tab.error || "Connection error") : "Disconnected";
-  pill.title = pill.textContent;
+  setStatusDot($("#terminalStatus"), state === "disconnected" ? "idle" : state,
+    !tab ? "No session" : connected ? `${tab.host || "Connected"} · ${tab.protocol.toUpperCase()}` : busy ? (tab.reconnecting ? "Reconnecting…" : "Connecting…") : state === "error" ? (tab.error || "Connection error") : "Disconnected");
   $("#terminalFiles").disabled = !tab || !deviceByID(tab.profileID);
   if (tab) tab.terminal.options.disableStdin = !connected;
 }
@@ -262,7 +260,7 @@ function setTabState(tab, state, message = "") {
    same session and asks for the output after the last byte it received, so nothing
    is lost and nothing appears twice. */
 const RECONNECT_DELAYS = [400, 1000, 2000, 3000, 5000];
-const RECONNECT_WINDOW_MS = 9 * 60 * 1000; // a little under the server's grace period
+const RECONNECT_WINDOW_MS = 170 * 60 * 1000; // a little under the server's grace period (3 hours)
 const PING_EVERY_MS = 15000;
 
 function openTerminalSocket(tab) {
@@ -311,8 +309,12 @@ function wireTerminalSocket(tab, socket) {
 }
 function probeTab(tab, socket) {
   if (tab.socket !== socket) { window.clearInterval(tab.watchdog); return; }
+  // A hidden tab has its timers and network events delayed by the browser; judging the connection by
+  // them dropped healthy shells. The server pings too, so a hidden tab stays connected. When the tab
+  // is shown again it is probed at once (see the visibilitychange handler).
+  if (document.hidden) return;
   const now = performance.now();
-  if (tab.pingSentAt && tab.lastRx < tab.pingSentAt && now - tab.pingSentAt > 8000) { abandonSocket(tab); return; }
+  if (tab.pingSentAt && tab.lastRx < tab.pingSentAt && now - tab.pingSentAt > 15000) { abandonSocket(tab); return; }
   if (socket.readyState !== WebSocket.OPEN) return;
   tab.pingSentAt = now;
   try { socket.send(JSON.stringify({ type: "ping" })); } catch { abandonSocket(tab); }

@@ -32,6 +32,8 @@ func New(application *app.App) http.Handler {
 	mux.HandleFunc("GET /api/v1/remote-access", s.getRemoteAccess)
 	mux.HandleFunc("PUT /api/v1/remote-access", s.putRemoteAccess)
 	mux.HandleFunc("POST /api/v1/remote-access/password", s.setRemotePassword)
+	// A saved receiver password is shown back only on this computer, never to a remote visitor.
+	mux.HandleFunc("GET /api/v1/profiles/{id}/password", s.revealCredential)
 	return secureHeaders(localOnly(mux))
 }
 
@@ -99,11 +101,15 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/files/sessions/{id}/enigma2/bouquet/new", s.newBouquet)
 	mux.HandleFunc("POST /api/v1/files/sessions/{id}/enigma2/bouquet/list-change", s.changeIndex)
 	mux.HandleFunc("POST /api/v1/files/sessions/{id}/enigma2/reload", s.reloadBouquets)
+	mux.HandleFunc("GET /api/v1/files/sessions/{id}/enigma2/services", s.listServices)
 	mux.HandleFunc("POST /api/v1/files/sessions/{id}/transfer", s.startFileTransfer)
 	mux.HandleFunc("GET /api/v1/files/transfers", s.listFileTransfers)
 	mux.HandleFunc("DELETE /api/v1/files/transfers", s.clearFinishedFileTransfers)
 	mux.HandleFunc("GET /api/v1/files/transfers/{id}", s.getFileTransfer)
 	mux.HandleFunc("DELETE /api/v1/files/transfers/{id}", s.cancelFileTransfer)
+	mux.HandleFunc("POST /api/v1/files/sessions/{id}/upload", s.uploadFromBrowser)
+	mux.HandleFunc("POST /api/v1/files/sessions/{id}/download-prepare", s.prepareBrowserDownload)
+	mux.HandleFunc("GET /api/v1/files/transfers/{id}/file", s.fetchStagedDownload)
 	mux.HandleFunc("POST /api/v1/files/transfers/{id}/resume", s.resumeFileTransfer)
 	mux.HandleFunc("POST /api/v1/files/transfers/{id}/restart", s.restartFileTransfer)
 	mux.HandleFunc("PUT /api/v1/profiles/{id}/password", s.setCredential)

@@ -72,7 +72,7 @@ func OpenFTP(ctx context.Context, options FTPOptions) (*FTPClient, error) {
 		code, _, err = client.command("USER", options.Username)
 	}
 	if err == nil && code == 331 {
-		// RFC 959 requires the separating space even when the password is empty.
+
 		code, _, err = client.commandWithArgument("PASS", options.Password)
 	}
 	if err == nil && code != 230 {
@@ -94,8 +94,7 @@ func OpenFTP(ctx context.Context, options FTPOptions) (*FTPClient, error) {
 
 func defaultFTPUsername(username string) string {
 	if strings.TrimSpace(username) == "" {
-		// Enigma2 receivers normally expose the FTP account as root.
-		// Anonymous access remains available when explicitly selected.
+
 		return "root"
 	}
 	return strings.TrimSpace(username)
@@ -184,9 +183,6 @@ func (c *FTPClient) Download(ctx context.Context, remotePath, localPath string, 
 	return nil
 }
 
-// DownloadPartial writes to a task-owned temporary file and deliberately keeps
-// the partial bytes when the control/data connection fails. The manager only
-// commits this file after the complete transfer succeeds.
 func (c *FTPClient) DownloadPartial(ctx context.Context, remotePath, partialPath string, progress func(core.TransferProgress)) error {
 	if err := validateRemotePath(remotePath); err != nil {
 		return err
@@ -213,7 +209,6 @@ func (c *FTPClient) DownloadPartial(ctx context.Context, remotePath, partialPath
 	return nil
 }
 
-// ResumeDownload resumes a task-owned local partial file using SIZE and REST.
 func (c *FTPClient) ResumeDownload(ctx context.Context, remotePath, partialPath string, progress func(core.TransferProgress)) error {
 	if err := validateRemotePath(remotePath); err != nil {
 		return err
@@ -264,9 +259,6 @@ func (c *FTPClient) ResumeDownload(ctx context.Context, remotePath, partialPath 
 	return nil
 }
 
-// ResumeUpload continues a partial remote file only when the server reports a
-// usable SIZE and accepts REST. A remote file larger than the local source is
-// rejected rather than truncated or silently corrupted.
 func (c *FTPClient) ResumeUpload(ctx context.Context, localPath, remotePath string, progress func(core.TransferProgress)) error {
 	if err := validateRemotePath(remotePath); err != nil {
 		return err
@@ -580,8 +572,7 @@ func (c *FTPClient) dataCommand(ctx context.Context, command, remotePath string)
 	data, readErr := readBounded(dataConn, maxFTPListingSize)
 	closeErr := dataConn.Close()
 	stopData()
-	// Always consume the completion reply after closing the data socket. This
-	// keeps the control connection synchronized when a listing exceeds its cap.
+
 	code, _, replyErr := c.readReply()
 	if replyErr != nil {
 		return nil, errors.Join(readErr, closeErr, replyErr)
@@ -632,8 +623,6 @@ func (c *FTPClient) openPassive(ctx context.Context) (net.Conn, error) {
 		epsvErr = fmt.Errorf("EPSV not supported (%d)", code)
 	}
 
-	// Many older Enigma2 FTP daemons implement PASV but have incomplete EPSV
-	// support. Retry with PASV whenever EPSV negotiation or its data socket fails.
 	code, response, err = c.command("PASV", "")
 	if err != nil {
 		if epsvErr != nil {
@@ -648,7 +637,7 @@ func (c *FTPClient) openPassive(ctx context.Context) (net.Conn, error) {
 	if parseErr != nil {
 		return nil, fmt.Errorf("invalid PASV response after EPSV fallback (%v): %w", epsvErr, parseErr)
 	}
-	// Ignore the PASV-advertised address to prevent FTP bounce/redirect attacks.
+
 	conn, dialErr := (&net.Dialer{Timeout: 8 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(c.host, strconv.Itoa(port)))
 	if dialErr != nil {
 		return nil, fmt.Errorf("FTP PASV data connection failed (EPSV: %v): %w", epsvErr, dialErr)
@@ -770,8 +759,7 @@ func (c *FTPClient) readLine() (string, error) {
 			continue
 		}
 		if err != nil {
-			// A closed or reset connection can never recover; a timeout can (the
-			// caller may only be probing), so it does not mark the client broken.
+
 			var netErr net.Error
 			if !(errors.As(err, &netErr) && netErr.Timeout()) {
 				return "", c.failControl(err)
@@ -809,16 +797,12 @@ func setConnContext(conn net.Conn, ctx context.Context, d time.Duration) func() 
 	return context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 }
 
-// IsClosed reports whether the control connection is known to be unusable.
 func (c *FTPClient) IsClosed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.closed
 }
 
-// Noop checks that the server still answers on the control connection. Any
-// complete reply, even an error code, proves the connection is alive; only an
-// I/O failure is returned.
 func (c *FTPClient) Noop(ctx context.Context) error {
 	stop := c.beginContext(ctx, ftpNoopTimeout)
 	defer func() { stop(); _ = c.control.SetDeadline(time.Time{}) }()
@@ -829,7 +813,7 @@ func (c *FTPClient) Noop(ctx context.Context) error {
 	}
 	_, _, err := c.command("NOOP", "")
 	if err != nil {
-		// A timed-out probe leaves the server's state unknown: do not reuse it.
+
 		_ = c.failControl(err)
 	}
 	return err

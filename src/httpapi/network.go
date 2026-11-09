@@ -8,7 +8,6 @@ import (
 	"github.com/didou07/dcc-lite/src/netscan"
 )
 
-// networkRanges suggests scan ranges from this computer's private interfaces.
 func (s *Server) networkRanges(w http.ResponseWriter, _ *http.Request) {
 	ranges := netscan.SuggestRanges()
 	if ranges == nil {
@@ -17,7 +16,6 @@ func (s *Server) networkRanges(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ranges": ranges})
 }
 
-// networkScan looks for receivers (open FTP / Telnet ports) in a private address range.
 func (s *Server) networkScan(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Range string `json:"range"`

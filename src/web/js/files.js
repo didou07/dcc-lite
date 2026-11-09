@@ -1,11 +1,8 @@
 "use strict";
-/* ───────────── Files ───────────── */
 const files = {
   sessionID: "", profileID: "", protocol: "ftp",
   connecting: false, gen: 0, manualOff: false, active: "remote", drag: null,
   transfers: [], queueTimer: 0, queueBusy: false, seenDone: new Set(),
-  /* A remote (signed-in) session works with the files of the device the page is open on, not with the
-     home folder of the computer that runs DCC Lite: uploads come from the browser, downloads go to it. */
   browserMode: false, ready: null,
   pending: [], fetched: new Set(), autoDone: new Set(), transfersSeen: false,
 };
@@ -35,11 +32,10 @@ for (const pane of Object.values(panes)) pane.hiddenBox.checked = pane.showHidde
 function sessionLost(error) { return error?.status === 404 || /session not found/i.test(error?.message || ""); }
 const requireSession = () => { if (!files.sessionID) { toast("Connect to the device first"); return false; } return true; };
 
-/* Status & buttons */
 function setFileStatus(state, text) {
   setStatusDot($("#fileStatus"), state, text);
-  setStatusDot($("#listsStatus"), state, text); // the Channel lists page shows the same connection
-  setStatusDot($("#ipkStatus"), state, text); // so does the Install .ipk page
+  setStatusDot($("#listsStatus"), state, text);
+  setStatusDot($("#ipkStatus"), state, text);
   const connect = $("#listsConnect"), ipkConnect = $("#ipkConnect");
   if (connect) { connect.hidden = state === "connected"; connect.disabled = state === "connecting"; }
   if (ipkConnect) { ipkConnect.hidden = state === "connected"; ipkConnect.disabled = state === "connecting"; }
@@ -77,7 +73,6 @@ function updateFileUI() {
   }
 }
 
-/* Entries, sorting, rendering */
 function compareEntries(pane) {
   const { key, dir } = pane.sort;
   const factor = dir === "desc" ? -1 : 1;
@@ -148,7 +143,6 @@ function renderPane(pane) {
   renderCrumbs(pane);
   updateSelectionUI(pane);
 }
-/* Clickable path: every folder of the current path jumps straight to it. */
 function renderCrumbs(pane) {
   if (!pane.crumbs) {
     pane.crumbs = h("nav", { class: "crumbs", "aria-label": "Path" });
@@ -167,7 +161,7 @@ function renderCrumbs(pane) {
     crumbs.push(h("span", { class: "crumb-sep", text: "›" }));
     crumbs.push(h("button", { type: "button", class: `crumb${index === parts.length - 1 ? " last" : ""}`, dataset: { path: current }, text: part }));
   });
-  pane.crumbs.hidden = !pane.loaded || parts.length === 0; // at the root the path box says it all
+  pane.crumbs.hidden = !pane.loaded || parts.length === 0;
   pane.crumbs.replaceChildren(...crumbs);
   pane.crumbs.scrollLeft = pane.crumbs.scrollWidth;
 }
@@ -198,7 +192,6 @@ function setActivePane(kind) {
   updateSelectionUI(other);
 }
 
-/* Loading */
 async function loadPane(kind, path, { keepSelection = false, quiet = false } = {}) {
   const pane = panes[kind];
   if (kind === "remote" && !files.sessionID) return false;
@@ -231,9 +224,6 @@ function handleSessionLost() {
   panes.remote.loaded = false; panes.remote.entries = []; panes.remote.selected.clear();
   setFileStatus("error", "Connection lost");
   renderPane(panes.remote);
-  // The receiver may simply have closed an idle connection: sign in again at once
-  // instead of making the user press Connect. A failed attempt reports itself and
-  // does not retry, so this cannot loop.
   if (!files.manualOff && !files.connecting && currentDevice()) {
     toast("The file connection was closed. Reconnecting…");
     window.setTimeout(() => { if (!files.sessionID && !files.connecting && !files.manualOff && (view.current === "files" || view.current === "lists" || view.current === "ipk")) fileConnect().then(() => { if (view.current === "lists") listsEnterNow(); }); }, 600);
@@ -244,7 +234,6 @@ const goRoot = (kind) => loadPane(kind, kind === "remote" ? "/" : ".");
 const refreshPane = (kind) => loadPane(kind, panes[kind].path, { keepSelection: true });
 async function refreshBoth() { await Promise.all([refreshPane("local"), files.sessionID ? refreshPane("remote") : null]); }
 
-/* Connect / disconnect */
 function syncFilePort() {
   const device = currentDevice();
   $("#filePort").value = String(defaultPort(device, files.protocol));
@@ -313,7 +302,6 @@ function filesEnterNow() {
 $("#fileConnect").addEventListener("click", () => { files.manualOff = false; fileConnect(); });
 $("#fileDisconnect").addEventListener("click", () => fileDisconnect(false));
 
-/* Navigation inputs */
 for (const pane of Object.values(panes)) {
   pane.pathInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") { event.preventDefault(); loadPane(pane.kind, pane.pathInput.value.trim() || (pane.kind === "remote" ? "/" : "."), {}).then(() => pane.table.focus()); }
@@ -336,7 +324,6 @@ for (const pane of Object.values(panes)) {
 function saveSort(pane) { store.set(`pane.${pane.kind}`, { key: pane.sort.key, dir: pane.sort.dir, hidden: pane.showHidden }); }
 $$("#paneSwitch button").forEach((button) => button.addEventListener("click", () => setActivePane(button.dataset.pane)));
 
-/* Row interaction */
 function rowEntry(pane, row) { return row && row.dataset.index !== undefined ? pane.visible[Number(row.dataset.index)] : null; }
 function openEntry(pane, entry) {
   if (!entry) return;
@@ -383,7 +370,6 @@ for (const pane of Object.values(panes)) {
     if (entry && !pane.selected.has(entry.path)) { pane.selected = new Set([entry.path]); pane.anchor = pane.cursor = Number(row.dataset.index); updateSelectionUI(pane); }
     openMenu(contextItems(pane, Boolean(entry)), event.clientX, event.clientY);
   });
-  /* drag & drop between the two panels */
   pane.rows.addEventListener("dragstart", (event) => {
     const row = event.target.closest("tr.row[data-index]");
     const entry = rowEntry(pane, row);
@@ -395,8 +381,6 @@ for (const pane of Object.values(panes)) {
     row.classList.add("dragging");
   });
   pane.rows.addEventListener("dragend", () => { files.drag = null; $$(".dragging", pane.rows).forEach((r) => r.classList.remove("dragging")); Object.values(panes).forEach((p) => { p.root.classList.remove("drop"); markDropRow(p, null); }); });
-  /* Drop on a folder row to put the items inside that folder; drop on empty space to use the open folder.
-     Between the two panels this copies; inside one panel it moves. */
   const dropPlan = (event) => {
     if (!files.drag) return null;
     const target = dropFolder(pane, event), same = files.drag.from === pane.kind;
@@ -421,7 +405,6 @@ for (const pane of Object.values(panes)) {
   });
 }
 
-/* The folder row under the pointer while dragging, if any. */
 function dropFolder(pane, event) {
   const row = event.target.closest?.("tr.row[data-index]");
   const entry = row ? rowEntry(pane, row) : null;
@@ -431,7 +414,6 @@ function markDropRow(pane, row) {
   $$("tr.drop-target", pane.rows).forEach((r) => { if (r !== row) r.classList.remove("drop-target"); });
   if (row) row.classList.add("drop-target");
 }
-/* Moving inside one panel is a rename into the target folder. Nothing is overwritten. */
 async function moveIntoFolder(kind, entries, folderPath) {
   if (kind === "remote" && !requireSession()) return;
   const join = kind === "local" ? joinLocal : joinRemote;
@@ -489,7 +471,6 @@ function contextItems(pane, onEntry) {
   return items;
 }
 
-/* Bookmarks */
 function bookmarkKey(kind) { return kind === "remote" ? `bookmarks.remote.${files.profileID || devices.currentID}` : "bookmarks.local"; }
 const ENIGMA2_QUICK_JUMP = [
   ["Settings & bouquets", "/etc/enigma2"],
@@ -523,7 +504,6 @@ function openBookmarks(kind, x, y) {
   openMenu(items, x, y);
 }
 
-/* File operations */
 async function cmdMkdir() {
   const kind = files.active;
   if (kind === "remote" && !requireSession()) return;
@@ -588,7 +568,6 @@ async function cmdChmod() {
   await loadPane(kind, panes[kind].path, { keepSelection: true });
   if (failed) toast(`Permissions failed for ${failed} item(s): ${last.message}`, "error"); else toast(`Permissions set to ${mode}`);
 }
-/* Remote text editor (FTP) */
 const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false };
 const editorURL = () => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/content`;
 const editorDirty = () => $("#editorText").value !== editor.original;

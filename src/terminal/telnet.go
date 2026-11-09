@@ -11,14 +11,13 @@ import (
 )
 
 const (
-	telnetIAC  = 255
-	telnetDONT = 254
-	telnetDO   = 253
-	telnetWONT = 252
-	telnetWILL = 251
-	telnetSB   = 250
-	telnetSE   = 240
-
+	telnetIAC       = 255
+	telnetDONT      = 254
+	telnetDO        = 253
+	telnetWONT      = 252
+	telnetWILL      = 251
+	telnetSB        = 250
+	telnetSE        = 240
 	telnetOptEcho   = 1
 	telnetOptSGA    = 3
 	telnetOptTTYPE  = 24
@@ -104,7 +103,7 @@ func (s *TelnetSession) Read(p []byte) (int, error) {
 				return 0, err
 			}
 		default:
-			// Other Telnet command bytes do not carry payload.
+
 		}
 	}
 }

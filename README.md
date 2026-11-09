@@ -24,8 +24,7 @@ exists. To release a new version, raise the number in `VERSION` and push.
 
 ```
 src/        all the code (src/httpapi/server.go lists every route; src/web is the browser UI)
-test/       integration.sh, dccimport.test.js (Go unit tests sit next to their code)
 scripts/    build.sh, build.ps1, setup-go-win7.sh
 ```
 
-Build: `scripts/build.sh [os/arch]`. Tests: `go test ./...`, `bash test/integration.sh`.
+Build: `scripts/build.sh [os/arch]`.

@@ -1,6 +1,3 @@
-// Package enigma2 reads and writes the channel list files of Enigma2 receivers:
-// bouquets.tv / bouquets.radio, userbouquet.* files and the lamedb service
-// database (used to show channel names). It does no I/O of its own.
 package enigma2
 
 import (
@@ -11,16 +8,12 @@ import (
 	"strings"
 )
 
-// fileNamePattern is the only shape of bouquet file name accepted from the
-// network. It cannot contain a path separator or "..".
 var fileNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(tv|radio)$`)
 
-// ValidBouquetFile reports whether name is a safe bouquet file name.
 func ValidBouquetFile(name string) bool {
 	return fileNamePattern.MatchString(name) && !strings.Contains(name, "..")
 }
 
-// KindOf returns "tv" or "radio" for a bouquet file name.
 func KindOf(file string) string {
 	if strings.HasSuffix(file, ".radio") {
 		return "radio"
@@ -28,15 +21,12 @@ func KindOf(file string) string {
 	return "tv"
 }
 
-// Entry is one item of a bouquet: a service reference and, optionally, the
-// #DESCRIPTION line that follows it (markers and stream entries use it).
 type Entry struct {
 	Ref            string `json:"ref"`
 	Description    string `json:"description"`
 	HasDescription bool   `json:"-"`
 }
 
-// IsMarker reports whether the entry is a section marker (service flag 64).
 func (e Entry) IsMarker() bool {
 	fields := strings.Split(e.Ref, ":")
 	if len(fields) < 3 {
@@ -46,19 +36,15 @@ func (e Entry) IsMarker() bool {
 	return err == nil && flags&64 != 0
 }
 
-// Bouquet is a parsed userbouquet file.
 type Bouquet struct {
 	Name string
-	// Header holds lines between #NAME and the first #SERVICE that are not
-	// understood (for example #SORT); they are written back unchanged.
+
 	Header  []string
 	Entries []Entry
 }
 
-// MaxEntries guards against absurd files.
 const MaxEntries = 20000
 
-// ParseBouquet parses a userbouquet file.
 func ParseBouquet(text string) (Bouquet, error) {
 	var b Bouquet
 	var last *Entry
@@ -97,7 +83,6 @@ func ParseBouquet(text string) (Bouquet, error) {
 	return b, nil
 }
 
-// Format writes the bouquet in the layout Enigma2 itself produces.
 func (b Bouquet) Format() string {
 	var out strings.Builder
 	out.WriteString("#NAME " + oneLine(b.Name) + "\n")
@@ -113,15 +98,13 @@ func (b Bouquet) Format() string {
 	return out.String()
 }
 
-// NewMarker returns a section marker with the next free marker number.
 func (b Bouquet) NewMarker(title string) Entry {
 	next := 1
 	for _, e := range b.Entries {
 		if !e.IsMarker() {
 			continue
 		}
-		// The third field of a reference is hexadecimal in Enigma2 (it writes
-		// "1:64:1C:..." for marker 28), so read and write it as hex.
+
 		if fields := strings.Split(e.Ref, ":"); len(fields) > 2 {
 			if n, err := strconv.ParseUint(fields[2], 16, 32); err == nil && int(n) >= next {
 				next = int(n) + 1
@@ -131,7 +114,6 @@ func (b Bouquet) NewMarker(title string) Entry {
 	return Entry{Ref: fmt.Sprintf("1:64:%X:0:0:0:0:0:0:0:", next), Description: oneLine(title), HasDescription: true}
 }
 
-// ValidateEntry checks an entry coming from the browser before it is written.
 func ValidateEntry(e Entry) error {
 	if strings.TrimSpace(e.Ref) == "" || len(e.Ref) > 1024 || strings.ContainsAny(e.Ref, "\r\n\x00") {
 		return errors.New("an entry has an invalid service reference")
@@ -145,10 +127,6 @@ func ValidateEntry(e Entry) error {
 	return nil
 }
 
-// directive returns the text after a "#SERVICE" / "#DESCRIPTION" keyword. Enigma2
-// itself accepts both "#SERVICE <ref>" and "#SERVICE:<ref>" (lib/dvb/db.cpp,
-// eDVBDB::loadBouquet), and files written by other tools use the colon form, so
-// both must be understood or such a bouquet would look empty and be saved empty.
 func directive(line, keyword string) (string, bool) {
 	if !strings.HasPrefix(line, keyword) {
 		return "", false
@@ -173,13 +151,11 @@ func splitLines(text string) []string {
 	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 }
 
-// IndexLine is one line of bouquets.tv / bouquets.radio.
 type IndexLine struct {
 	Raw  string
-	File string // set when the line points at a userbouquet file
+	File string
 }
 
-// Index is a parsed bouquets.tv or bouquets.radio.
 type Index struct {
 	Name  string
 	Lines []IndexLine
@@ -187,7 +163,6 @@ type Index struct {
 
 var fromBouquet = regexp.MustCompile(`FROM BOUQUET "([^"]+)"`)
 
-// ParseIndex parses bouquets.tv or bouquets.radio.
 func ParseIndex(text string) (Index, error) {
 	var idx Index
 	for _, raw := range splitLines(text) {
@@ -210,7 +185,6 @@ func ParseIndex(text string) (Index, error) {
 	return idx, nil
 }
 
-// Files lists the bouquet files in order.
 func (i Index) Files() []string {
 	var out []string
 	for _, l := range i.Lines {
@@ -221,7 +195,6 @@ func (i Index) Files() []string {
 	return out
 }
 
-// Has reports whether the index already lists file.
 func (i Index) Has(file string) bool {
 	for _, l := range i.Lines {
 		if l.File == file {
@@ -231,7 +204,6 @@ func (i Index) Has(file string) bool {
 	return false
 }
 
-// Add appends a bouquet file to the index.
 func (i *Index) Add(file string) {
 	slot := "1"
 	if KindOf(file) == "radio" {
@@ -243,7 +215,6 @@ func (i *Index) Add(file string) {
 	})
 }
 
-// Remove drops every line that points at file; it reports whether anything was removed.
 func (i *Index) Remove(file string) bool {
 	kept := i.Lines[:0:0]
 	removed := false
@@ -258,7 +229,6 @@ func (i *Index) Remove(file string) bool {
 	return removed
 }
 
-// Move shifts the line for file by delta positions (negative = up).
 func (i *Index) Move(file string, delta int) bool {
 	from := -1
 	for n, l := range i.Lines {
@@ -275,7 +245,6 @@ func (i *Index) Move(file string, delta int) bool {
 	return true
 }
 
-// Format writes the index back.
 func (i Index) Format() string {
 	var out strings.Builder
 	out.WriteString("#NAME " + oneLine(i.Name) + "\n")

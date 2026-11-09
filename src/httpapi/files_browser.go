@@ -16,19 +16,8 @@ import (
 	"unicode/utf8"
 )
 
-// These handlers move files between the user's browser and the receiver. A
-// remote user opens DCC Lite from another computer, so the files to send live on
-// that computer and the files to save must end up there: the "local" panel of
-// the server (its own home folder) is of no use to them.
-//
-//	upload:   browser -> staging folder -> queued FTP upload (progress, cancel, resume)
-//	download: queued FTP download -> staging folder -> browser (a normal file download)
+const maxBrowserUpload = 8 << 30
 
-const maxBrowserUpload = 8 << 30 // 8 GiB per file
-
-// longTransfer lifts the server-wide read and write timeouts for this request.
-// They are tuned for small API calls (15 s to read a request, 3 min to write a
-// reply) and would cut off any big upload or download half way.
 func longTransfer(w http.ResponseWriter) {
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Time{})
@@ -43,8 +32,6 @@ func newStageID() (string, error) {
 	return hex.EncodeToString(value[:]), nil
 }
 
-// safeStageName turns the name of a file on the user's computer into a name that
-// is safe inside the staging folder and still readable in the transfer list.
 func safeStageName(name string) string {
 	name = strings.ReplaceAll(name, "\\", "/")
 	name = path.Base(name)
@@ -68,10 +55,6 @@ func safeStageName(name string) string {
 	return name
 }
 
-// uploadFromBrowser receives one file from the browser (the raw request body) and
-// queues its upload to the receiver. Query: path = destination file on the
-// receiver, overwrite = 1 to replace an existing file, mtime = the file's
-// modification time in milliseconds (kept on the receiver).
 func (s *Server) uploadFromBrowser(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 	if _, ok := s.sessionProfile(sessionID); !ok {
@@ -144,8 +127,6 @@ func (s *Server) uploadFromBrowser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"task": task})
 }
 
-// prepareBrowserDownload queues a download of one remote file into the staging
-// folder. When it finishes, the page fetches it with fetchStagedDownload.
 func (s *Server) prepareBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 	if _, ok := s.sessionProfile(sessionID); !ok {
@@ -198,7 +179,6 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 }
 func (c *countingWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
 
-// fetchStagedDownload hands a finished staged download to the browser as a file.
 func (s *Server) fetchStagedDownload(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
 	staged, info, err := s.app.Files.StagedDownload(taskID)
@@ -228,7 +208,7 @@ func (s *Server) fetchStagedDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	counter := &countingWriter{ResponseWriter: w}
 	http.ServeContent(counter, r, name, stat.ModTime(), file)
-	// A complete answer to a plain request means the browser has the file.
+
 	if r.Header.Get("Range") == "" && counter.n == stat.Size() {
 		s.app.Files.ReleaseStaged(taskID)
 	}

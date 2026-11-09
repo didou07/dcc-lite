@@ -1,14 +1,9 @@
 "use strict";
-/* ───────────── Channels, now playing, keyboard ─────────────
-   The channel list comes from the receiver's own web interface (OpenWebif, through
-   DCC Lite). Clicking a channel zaps the receiver, then the picture is refreshed. */
 const ch = {
-  profileID: "", kind: store.get("channels.kind", "tv") === "radio" ? "radio" : "tv", cache: new Map(), // kind -> bouquets
+  profileID: "", kind: store.get("channels.kind", "tv") === "radio" ? "radio" : "tv", cache: new Map(),
   bouquets: [], bouquetRef: store.get("channels.bouquet", ""), filter: "", currentRef: "", limit: 300, loading: 0, standby: null, timer: 0, tick: 0, event: null, eventAt: 0, zapping: 0,
-  epg: new Map(), epgTimer: 0, // bouquet ref -> { at, now, events: { serviceRef: { title, begin, duration } } }
+  epg: new Map(), epgTimer: 0,
 };
-// The name lets the server find name based picons (bbcone.png), like OpenWebif does.
-/* Watch on the computer: the receiver's playlist for a channel, opened with VLC or any player */
 function watchOnPC(entry) {
   if (!entry || !entry.ref || !ch.profileID) { toast("Pick a channel first"); return; }
   const url = `/api/v1/profiles/${encodeURIComponent(ch.profileID)}/stream.m3u?ref=${encodeURIComponent(entry.ref)}&name=${encodeURIComponent(entry.name || "")}`;
@@ -25,7 +20,6 @@ function setChannelsOpen(open) {
 }
 function channelStatus(message, bad = false) {
   const node = $("#channelStatus");
-  // An error is shown as its first sentence (the full text is the tooltip): the same long message is already under the picture.
   node.textContent = bad ? String(message || "").split(/(?<=[.!?])\s/)[0] : message || "";
   node.title = bad ? String(message || "") : "";
   node.classList.toggle("bad", bad);
@@ -93,7 +87,6 @@ function renderBouquets() {
   const select = $("#channelBouquet");
   select.replaceChildren(...ch.bouquets.map((b) => h("option", { value: b.ref, text: `${b.name} (${b.channels.filter((c) => !c.marker).length})` })));
   if (!ch.bouquets.some((b) => b.ref === ch.bouquetRef)) {
-    // Prefer the bouquet that holds the channel being watched, else the first one.
     const holder = ch.currentRef && ch.bouquets.find((b) => b.channels.some((c) => c.ref === ch.currentRef));
     ch.bouquetRef = (holder || ch.bouquets[0] || {}).ref || "";
   }
@@ -105,7 +98,6 @@ function renderBouquets() {
 function channelRows() {
   const needle = ch.filter.trim().toLowerCase();
   if (!needle) return (ch.bouquets.find((b) => b.ref === ch.bouquetRef)?.channels || []);
-  // A search looks in every bouquet and lists each channel once.
   const seen = new Set(), rows = [];
   for (const bouquet of ch.bouquets) for (const c of bouquet.channels) {
     if (c.marker || seen.has(c.ref) || !c.name.toLowerCase().includes(needle)) continue;
@@ -153,8 +145,6 @@ function renderChannels() {
   loadEPG(false);
 }
 
-/* What is on now, per channel of the shown bouquet (OpenWebif "epgnow"). The rows
-   are painted in place, so the list does not jump or lose the scroll position. */
 function epgFor(ref) {
   for (const data of ch.epg.values()) {
     const e = data.events[ref];
@@ -185,7 +175,7 @@ async function loadEPG(force) {
     if (id !== ch.profileID) return;
     ch.epg.set(ref, { at: Date.now(), now: data.now || Math.floor(Date.now() / 1000), events: data.events || {} });
     if (ref === ch.bouquetRef) paintEPG();
-  } catch { /* a receiver without the programme guide still lists its channels */ }
+  } catch { }
 }
 
 async function zapTo(entry) {
@@ -205,7 +195,6 @@ async function zapTo(entry) {
     await post(`/api/v1/profiles/${encodeURIComponent(id)}/zap`, { ref: entry.ref });
     if (token !== ch.zapping || id !== ch.profileID) return;
     channelStatus("");
-    // The receiver needs a moment to tune before there is a picture and a programme to show.
     window.setTimeout(() => { if (id === ch.profileID && !screenView.paused) screenRestart(); }, 1200);
     window.setTimeout(() => { if (token === ch.zapping && id === ch.profileID) pollCurrent(true); }, 1800);
   } catch (error) {
@@ -259,7 +248,7 @@ async function pollCurrent(now = false) {
       }
       setStandby(info.standby);
       showNow(info);
-    } catch { /* the picture area already reports a receiver that does not answer */ }
+    } catch { }
   }
   ch.timer = window.setTimeout(() => pollCurrent(false), 10000);
 }
@@ -288,7 +277,6 @@ $("#channelFilter").addEventListener("input", () => {
 });
 $("#channelFilter").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    // Typing a channel number and pressing Enter zaps to it, like the remote does.
     const typed = $("#channelFilter").value.trim();
     const target = /^\d{1,5}$/.test(typed) ? ch.bouquets.find((b) => b.ref === ch.bouquetRef)?.channels.find((c) => !c.marker && c.number === Number(typed)) : null;
     if (target) {
@@ -313,7 +301,6 @@ $("#channelReload").addEventListener("click", () => loadChannels(true));
 $("#channelHide").addEventListener("click", () => setChannelsOpen(false));
 $("#channelShow").addEventListener("click", () => setChannelsOpen(true));
 
-/* Full screen for the picture. */
 $("#screenFull").addEventListener("click", async () => {
   const stage = $("#screenStage");
   try { if (document.fullscreenElement === stage) await document.exitFullscreen(); else await stage.requestFullscreen(); }
@@ -321,14 +308,13 @@ $("#screenFull").addEventListener("click", async () => {
 });
 $("#screenStage").addEventListener("dblclick", () => $("#screenFull").click());
 
-/* Keyboard: the arrow keys, Enter, Esc, Page up/down, +/- and M drive the receiver's remote. */
 const KEY_MAP = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "ok", Escape: "exit", PageUp: "chup", PageDown: "chdown", "+": "volup", "=": "volup", "-": "voldown", m: "mute", i: "info", e: "epg" };
 document.addEventListener("keydown", (event) => {
   if (view.current !== "screen" || event.ctrlKey || event.metaKey || event.altKey) return;
-  if (document.querySelector("dialog[open]") || !$("#menu").hidden || event.defaultPrevented) return; // a menu or dialog owns the keys
+  if (document.querySelector("dialog[open]") || !$("#menu").hidden || event.defaultPrevented) return;
   const target = event.target;
   if (target.closest?.("input, select, textarea, #channelPane, [contenteditable]")) return;
-  if (target.closest?.("button") && (event.key === "Enter" || event.key === " ")) return; // the focused button handles it
+  if (target.closest?.("button") && (event.key === "Enter" || event.key === " ")) return;
   if (event.key.toLowerCase() === "f") { event.preventDefault(); $("#screenFull").click(); return; }
   const key = KEY_MAP[event.key] || KEY_MAP[event.key.toLowerCase()];
   if (!key) return;
@@ -336,11 +322,8 @@ document.addEventListener("keydown", (event) => {
   sendRemoteKey(key, false, $(`#remoteKeys .rk[data-key="${key}"]`));
 });
 
-
-
 $("#nowStandby").addEventListener("click", () => powerAction("wakeup", "Waking the receiver up…"));
 
-/* The running programme opens the guide of that channel. */
 const nowText = $(".now-text");
 nowText.setAttribute("role", "button");
 nowText.setAttribute("tabindex", "0");

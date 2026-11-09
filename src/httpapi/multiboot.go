@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-// bootSlot is one entry of the receiver's MultiBoot list as shown in the power
-// dialog. OpenWebif lists a slot once per boot code (for example "4" and "4 (1)"
-// on receivers whose image has several kernels), so a slot is identified by the
-// pair of slot and boot code, not by the slot alone.
 type bootSlot struct {
 	Slot    string `json:"slot"`
 	Code    string `json:"code"`
@@ -22,10 +18,6 @@ type bootSlot struct {
 	Current bool   `json:"current"`
 }
 
-// OpenWebif (oe-alliance, controllers/MultiBoot.py) serves MultiBoot outside of
-// /api: GET /multiboot/get lists the slots and GET /multiboot/set?slot=&bootcode=
-// activates one and reboots. Images without MultiBoot support answer 404, and
-// images with the plugin but no MultiBoot hardware answer "multiboot": false.
 const (
 	multibootGetPath = "/multiboot/get"
 	multibootSetPath = "/multiboot/set"
@@ -38,9 +30,6 @@ var (
 	bootCodeName = regexp.MustCompile(`^[0-9A-Za-z_-]{0,16}$`)
 )
 
-// parseBootSlots reads the answer of /multiboot/get. Entries that do not look
-// like a slot are skipped, text is bounded, and nothing but the fields the
-// dialog shows is kept.
 func parseBootSlots(body []byte) []bootSlot {
 	var reply struct {
 		MultiBoot bool `json:"multiboot"`
@@ -84,8 +73,6 @@ func (e httpStatusError) Error() string {
 	return "The web interface answered HTTP " + strconv.Itoa(int(e)) + "."
 }
 
-// fetchBootSlots asks the receiver for its MultiBoot slots. An empty list means
-// the receiver (or its web interface) has no MultiBoot support.
 func fetchBootSlots(ctx context.Context, web deviceWeb) ([]bootSlot, error) {
 	status, body, err := web.getBounded(ctx, multibootGetPath, 128<<10)
 	switch {
@@ -99,7 +86,6 @@ func fetchBootSlots(ctx context.Context, web deviceWeb) ([]bootSlot, error) {
 	return parseBootSlots(body), nil
 }
 
-// writeBootFailure answers for a failed MultiBoot request to the receiver.
 func writeBootFailure(w http.ResponseWriter, web deviceWeb, err error) {
 	if _, isStatus := err.(httpStatusError); isStatus {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "code": "web_error"})
@@ -108,7 +94,6 @@ func writeBootFailure(w http.ResponseWriter, web deviceWeb, err error) {
 	writeJSON(w, http.StatusBadGateway, map[string]any{"error": web.unreachable(err), "code": "web_unreachable"})
 }
 
-// deviceMultiboot lists the receiver's MultiBoot slots for the power dialog.
 func (s *Server) deviceMultiboot(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -133,9 +118,6 @@ type multibootRequest struct {
 	Code string `json:"code"`
 }
 
-// deviceMultibootSet restarts the receiver into one of its MultiBoot slots. The
-// slot and boot code must be a pair the receiver itself just listed, and it must
-// not be the one that is already running.
 func (s *Server) deviceMultibootSet(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -178,7 +160,7 @@ func (s *Server) deviceMultibootSet(w http.ResponseWriter, r *http.Request) {
 	query.Set("bootcode", code)
 	status, body, err := web.press(ctx, multibootSetPath+"?"+query.Encode())
 	if err != nil {
-		// A receiver that is restarting may drop the connection before it answers.
+
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}

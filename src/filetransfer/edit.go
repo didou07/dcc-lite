@@ -18,9 +18,6 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// MaxEditBytes is the largest remote file the in-browser editor will open or save.
-// Configuration files on a receiver are tiny; the limit keeps the editor from
-// pulling large binaries or logs into the browser.
 const MaxEditBytes = 1 << 20
 
 var (
@@ -32,15 +29,12 @@ var (
 	ErrEditDirectory = errors.New("a folder cannot be edited as text")
 )
 
-// Line ending names reported to and accepted from the editor.
 const (
 	LineEndingLF    = "lf"
 	LineEndingCRLF  = "crlf"
 	LineEndingMixed = "mixed"
 )
 
-// TextFile is the editable view of a remote file. Content always uses "\n"
-// line breaks; LineEnding records what the file used so a save can restore it.
 type TextFile struct {
 	Path       string    `json:"path"`
 	Content    string    `json:"content"`
@@ -48,32 +42,26 @@ type TextFile struct {
 	ModifiedAt time.Time `json:"modified_at,omitempty"`
 	Mode       string    `json:"mode,omitempty"`
 	LineEnding string    `json:"line_ending"`
-	// Hash is the SHA-256 of the file as stored on the device. Saves send it
-	// back so a change made meanwhile is detected even when the listing's size
-	// and one-second timestamp did not move.
+
 	Hash string `json:"hash"`
-	// ModeUnknown is set after a save when the server's listing did not report
-	// the file's permissions, so they could not be carried over to the new file.
+
 	ModeUnknown bool `json:"mode_unknown,omitempty"`
 }
 
-// TextWrite describes a save request from the editor.
 type TextWrite struct {
 	Content    string
 	LineEnding string
-	// ExpectedSize and ExpectedModifiedAt come from the TextFile the editor
-	// opened. They detect a remote change made while the editor was open.
+
 	ExpectedSize       int64
 	ExpectedModifiedAt time.Time
-	// ExpectedHash is TextFile.Hash from when the editor opened the file.
+
 	ExpectedHash string
-	// Force skips the change check (the user chose to overwrite).
+
 	Force bool
-	// Create makes a new file and fails when the name already exists.
+
 	Create bool
 }
 
-// ReadText downloads a small remote text file for editing.
 func (m *Manager) ReadText(ctx context.Context, sessionID, remotePath string) (TextFile, error) {
 	var result TextFile
 	err := m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
@@ -107,10 +95,6 @@ func (m *Manager) ReadText(ctx context.Context, sessionID, remotePath string) (T
 	return result, err
 }
 
-// WriteText saves edited text back to the receiver. The new content is uploaded
-// to a hidden partial file and swapped in with commitRemoteFile, so a dropped
-// connection never leaves a half-written configuration file, and the existing
-// permissions are preserved.
 func (m *Manager) WriteText(ctx context.Context, sessionID, remotePath string, write TextWrite) (TextFile, error) {
 	data, err := encodeText(write.Content, write.LineEnding)
 	if err != nil {
@@ -175,7 +159,7 @@ func (m *Manager) WriteText(ctx context.Context, sessionID, remotePath string, w
 		}
 		updated, _, err := findRemoteEntry(ctx, adapter, remotePath)
 		if err != nil {
-			// The save itself succeeded; report what we know.
+
 			updated = core.FileEntry{Path: remotePath, Size: int64(len(data))}
 		}
 		lineEnding := write.LineEnding
@@ -214,8 +198,6 @@ func findRemoteEntry(ctx context.Context, adapter core.FileTransfer, remotePath 
 	return core.FileEntry{}, false, nil
 }
 
-// sameRemoteVersion compares a listing entry with what the editor opened.
-// Listings may lack a modification time (zero); then only the size is compared.
 func sameRemoteVersion(entry core.FileEntry, size int64, modified time.Time) bool {
 	if entry.Size != size {
 		return false
@@ -227,8 +209,7 @@ func sameRemoteVersion(entry core.FileEntry, size int64, modified time.Time) boo
 }
 
 func downloadSmall(ctx context.Context, adapter core.FileTransfer, remotePath string, limit int64) ([]byte, error) {
-	// Adapters refuse to download onto an existing file, so give them a path
-	// inside a private temporary directory that does not exist yet.
+
 	dir, err := os.MkdirTemp("", "dccnext-edit-*")
 	if err != nil {
 		return nil, err
@@ -253,7 +234,6 @@ func downloadSmall(ctx context.Context, adapter core.FileTransfer, remotePath st
 	return data, nil
 }
 
-// decodeText validates that data is UTF-8 text and normalises line breaks to "\n".
 func decodeText(data []byte) (string, string, error) {
 	if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
 		return "", "", ErrEditNotText
@@ -274,7 +254,6 @@ func decodeText(data []byte) (string, string, error) {
 	return text, lineEnding, nil
 }
 
-// encodeText validates editor content and applies the requested line ending.
 func encodeText(content, lineEnding string) ([]byte, error) {
 	if strings.IndexByte(content, 0) >= 0 || !utf8.ValidString(content) {
 		return nil, ErrEditNotText
@@ -289,11 +268,8 @@ func encodeText(content, lineEnding string) ([]byte, error) {
 	return []byte(content), nil
 }
 
-// MaxReadBytes is the largest file ReadBytes will fetch (a big lamedb5 is a few MB).
 const MaxReadBytes = 24 << 20
 
-// ReadBytes downloads a remote file into memory. found is false when the file
-// does not exist, which is not an error for optional files.
 func (m *Manager) ReadBytes(ctx context.Context, sessionID, remotePath string) (data []byte, found bool, err error) {
 	err = m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
 		entry, ok, listErr := findRemoteEntry(ctx, adapter, remotePath)

@@ -1,12 +1,7 @@
 "use strict";
-/* ───────────── Guide: programmes, timers and recordings ─────────────
-   Three tabs in one dialog. Everything is relayed by DCC Lite to the receiver's own web
-   interface (OpenWebif): the programme guide of a channel (and a search over every channel),
-   the timers, and the recordings. The page only sends service references, numbers and
-   short texts; it never sends an address. */
 const guide = {
   profileID: "", tab: store.get("guide.tab", "epg"), ref: "", name: "", bouquetRef: "", search: "",
-  events: [], now: 0, nowAt: 0, loaded: "", // loaded: what the programme list shows ("" = nothing yet)
+  events: [], now: 0, nowAt: 0, loaded: "",
   timers: [], timersAt: 0,
   dir: "", folders: [], movies: [], movieFilter: "", movieLimit: 200, moviesAt: 0, filled: -1, watch: 0,
   gen: { epg: 0, timers: 0, movies: 0 },
@@ -14,7 +9,6 @@ const guide = {
 const GUIDE_TABS = ["epg", "timers", "movies"];
 const guideURL = (path) => `/api/v1/profiles/${encodeURIComponent(guide.profileID)}/${path}`;
 
-/* ── Small helpers ── */
 const gdPad = (n) => String(n).padStart(2, "0");
 const gdClock = (ts) => { const d = new Date(ts * 1000); return `${gdPad(d.getHours())}:${gdPad(d.getMinutes())}`; };
 const gdDayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -43,7 +37,6 @@ function gdDownload(url) {
 }
 function gdEmpty(text) { return h("p", { class: "gd-empty muted", text }); }
 function gdDayHeader(ts) { return h("div", { class: "gd-day", role: "presentation", text: gdDay(ts) }); }
-/** Rows of a list are grouped under a header; `key` gives the header text of one row. */
 function gdGrouped(rows, key, header) {
   const nodes = [];
   let last = null;
@@ -55,7 +48,6 @@ function gdGrouped(rows, key, header) {
   return nodes;
 }
 
-/* ── Timers: loading and lookup ── */
 async function gdLoadTimers(force = false) {
   const id = guide.profileID;
   if (!id || (!force && guide.timersAt && Date.now() - guide.timersAt < 30000)) return;
@@ -71,7 +63,6 @@ async function gdLoadTimers(force = false) {
     if (guide.tab === "timers") { guide.timers = []; gdPaint(); gdError(error.message); }
   }
 }
-/** The timer that already covers a programme, so it can be marked and not added twice. */
 function gdTimerFor(e) {
   return guide.timers.find((t) => {
     if (t.ref !== e.ref || t.state === 3) return false;
@@ -98,7 +89,6 @@ async function gdZap(ref, name) {
   } catch (error) { gdError(error.message); }
 }
 
-/* ── Programmes tab ── */
 function gdFillChannels() {
   guide.filled = ch.bouquets.length;
   const bouquets = $("#guideBouquet"), select = $("#guideChannel");
@@ -181,7 +171,6 @@ function gdPaintEPG(list) {
   gdStatus(`${events.length} programme${events.length === 1 ? "" : "s"}`);
 }
 
-/* ── Timers tab ── */
 const GD_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function gdRepeat(mask) {
   if (!mask) return "";
@@ -238,7 +227,6 @@ function gdPaintTimers(list) {
   $("#guideCleanup").disabled = !done.length;
 }
 
-/* ── Recordings tab ── */
 async function gdLoadMovies(dir = guide.dir) {
   const id = guide.profileID, gen = ++guide.gen.movies;
   gdError("");
@@ -309,7 +297,6 @@ function gdPaintMovies(list) {
   gdStatus(guide.moviesAt ? `${movies.length} recording${movies.length === 1 ? "" : "s"}${folders.length ? ` · ${folders.length} folder${folders.length === 1 ? "" : "s"}` : ""}` : "");
 }
 
-/* ── The dialog ── */
 function gdPaint() {
   const list = $("#guideList");
   list.dataset.tab = guide.tab;
@@ -338,7 +325,6 @@ function guideSetTab(tab) {
     if (!guide.moviesAt || Date.now() - guide.moviesAt > 30000) gdLoadMovies();
   }
 }
-/** Opens the guide. `entry` is a channel ({ref, name}) to show first. */
 function openGuide(tab = guide.tab, entry = null) {
   const id = screenView.profileID;
   if (!id) { toast("Pick a device first", "error"); return; }
@@ -359,7 +345,6 @@ function openGuide(tab = guide.tab, entry = null) {
   $("#guideSub").textContent = $("#screenSub").textContent || "";
   openDialog($("#guideDialog"));
   guideSetTab(tab);
-  // The channel list may still be loading when the guide opens: fill the pickers as soon as it arrives.
   window.clearInterval(guide.watch);
   guide.watch = window.setInterval(() => {
     if (!$("#guideDialog").open) { window.clearInterval(guide.watch); return; }

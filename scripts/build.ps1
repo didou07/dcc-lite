@@ -1,11 +1,3 @@
-# Build the portable Windows package: dist\DCC-Lite-<version>-windows-<arch>[-win7].zip
-#   .\scripts\build.ps1                      64-bit, Windows 10/11
-#   .\scripts\build.ps1 -Arch 386            32-bit, Windows 10/11
-#   .\scripts\build.ps1 -Win7                64-bit, also runs on Windows 7/8/8.1
-#   .\scripts\build.ps1 -Win7 -Arch 386      32-bit, also runs on Windows 7/8/8.1
-# -Win7 needs the patched Go toolchain from https://github.com/XTLS/go-win7 (the "go-for-win7-windows-*"
-# zip of a release). Unpack it and point GO_WIN7 at its go.exe:
-#   $env:GO_WIN7 = "C:\go-win7\bin\go.exe"
 param(
     [switch]$Win7,
     [ValidateSet("amd64", "386")][string]$Arch = "amd64"
@@ -32,7 +24,6 @@ function Invoke-Go {
 $Name = "DCC-Lite-$Version-windows-$Arch$Suffix"
 $Dir = "dist\$Name"
 try {
-    # Never let Go download the official toolchain: programs it builds do not start on Windows 7.
     if ($Win7) { $env:GOTOOLCHAIN = "local" }
 
     Remove-Item $Dir, "dist\$Name.zip", "dist\$Name.zip.sha256" -Recurse -Force -ErrorAction SilentlyContinue

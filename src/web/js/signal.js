@@ -1,9 +1,4 @@
 "use strict";
-/* ───────────── Signal meter ─────────────
-   Shows the receiver's tuner signal (SNR, AGC, BER) several times a second, with the best
-   value seen, a two minute graph and an optional beep that gets faster and higher as the
-   signal improves, so a dish can be turned while looking at the dish instead of the screen.
-   One request is in flight at a time, so a slow receiver is never flooded. */
 const SIG_WINDOW_MS = 120000;
 const sig = { profileID: "", running: false, gen: 0, paused: false, controller: null, wake: null, history: [], best: null, worst: null, failures: 0, polls: 0, last: null, audio: null, sound: false, beepTimer: 0 };
 const sigSleep = (ms) => new Promise((resolve) => { const timer = window.setTimeout(resolve, ms); sig.wake = () => { window.clearTimeout(timer); resolve(); }; });
@@ -16,18 +11,25 @@ function sigShowError(message) {
   node.textContent = message || "";
 }
 
-const sigAngle = (value) => 135 + 2.7 * value; // the gauge is a 270° arc that starts at the bottom left
-function sigPlaceThreshold() { $("#sigThr").style.transform = `rotate(${sigAngle(sigGoodFrom())}deg)`; }
-function sigBuildTicks() {
-  const group = $("#sigTicks");
-  if (group.childNodes.length) return;
-  for (const value of [0, 25, 50, 75, 100]) {
-    const line = document.createElementNS(SVG_NS, "line");
-    line.setAttribute("x1", "164"); line.setAttribute("x2", "168"); line.setAttribute("y1", "100"); line.setAttribute("y2", "100");
-    line.style.transformOrigin = "100px 100px";
-    line.style.transform = `rotate(${sigAngle(value)}deg)`;
-    group.append(line);
-  }
+const SIG_SEGMENTS = 50;
+function sigBuildBar() {
+  const bar = $("#sigBar");
+  if (bar.querySelector("span")) return;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < SIG_SEGMENTS; i++) frag.append(document.createElement("span"));
+  bar.prepend(frag);
+}
+function sigPlaceThreshold() {
+  const good = sigGoodFrom(), low = Math.max(0, good - 25);
+  $("#sigBar").querySelectorAll("span").forEach((segment, i) => {
+    const value = (i + 0.5) * (100 / SIG_SEGMENTS);
+    segment.dataset.z = value < low ? "bad" : value < good ? "warn" : "ok";
+  });
+  $("#sigThr").style.left = `${good}%`;
+}
+function sigSetBar(value) {
+  const lit = Math.round((value / 100) * SIG_SEGMENTS);
+  $("#sigBar").querySelectorAll("span").forEach((segment, i) => segment.classList.toggle("on", i < lit));
 }
 function sigSetLive(state, text) {
   const node = $("#sigLive");
@@ -36,12 +38,11 @@ function sigSetLive(state, text) {
   node.title = text;
 }
 
-/** Paints one reading (or the "no signal" state when reading is null). */
 function sigRender(reading) {
   sig.last = reading;
   const main = $("#sigMain");
   const state = $("#sigState span");
-  const arc = (value) => $("#sigArc").setAttribute("stroke-dasharray", `${value} 100`);
+  const arc = (value) => sigSetBar(value);
   if (!reading || !reading.available) {
     main.dataset.level = "none";
     $("#sigValue").textContent = "—";
@@ -49,6 +50,7 @@ function sigRender(reading) {
     for (const id of ["#sigDb", "#sigAgc", "#sigBer", "#sigTuner"]) $(id).textContent = "—";
     $("#sigAgcBar").style.width = "0%";
     arc(0);
+    sigRenderTrend(null);
     $("#sigMeter").setAttribute("aria-valuenow", "0");
     return;
   }
@@ -58,6 +60,7 @@ function sigRender(reading) {
   state.textContent = !reading.locked ? (reading.standby ? "Receiver in standby" : "No lock — keep turning slowly")
     : level === "ok" ? "Good signal" : level === "mid" ? "Weak signal — fine-tune" : "Very weak signal";
   arc(reading.snr);
+  sigRenderTrend(reading.locked ? reading.snr : null);
   $("#sigMeter").setAttribute("aria-valuenow", String(reading.snr));
   $("#sigDb").textContent = reading.has_db ? `${reading.snr_db.toFixed(1)} dB` : `${reading.snr} %`;
   $("#sigAgc").textContent = `${reading.agc} %`;
@@ -67,16 +70,33 @@ function sigRender(reading) {
   if (reading.channel) $("#sigChannel").textContent = reading.channel;
 }
 
+function sigRenderTrend(snr) {
+  const node = $("#sigTrend"), text = $("#sigTrendText");
+  if (snr === null) { node.dataset.dir = "none"; text.textContent = ""; return; }
+  const now = performance.now();
+  const older = sig.history.filter((p) => p.snr !== null && now - p.t >= 1500 && now - p.t <= 4500);
+  let dir = "flat", label = "";
+  if (older.length) {
+    const delta = snr - older.reduce((sum, p) => sum + p.snr, 0) / older.length;
+    if (delta >= 1.5) { dir = "up"; label = `▲ +${Math.round(delta)}`; }
+    else if (delta <= -1.5) { dir = "down"; label = `▼ ${Math.round(delta)}`; }
+    else label = "● steady";
+  }
+  if (sig.best !== null && snr < sig.best) label += `${label ? " · " : ""}${sig.best - snr} below best`;
+  else if (sig.best !== null && snr >= sig.best && sig.history.length > 3) label += `${label ? " · " : ""}best so far`;
+  node.dataset.dir = dir;
+  text.textContent = label;
+}
+
 function sigRenderPeaks() {
   const fmt = (v) => (v === null ? "—" : `${v} %`);
   $("#sigBest").textContent = fmt(sig.best);
   $("#sigWorst").textContent = fmt(sig.worst);
   const mark = $("#sigPeakMark");
   mark.style.display = sig.best === null ? "none" : "";
-  if (sig.best !== null) mark.style.transform = `rotate(${sigAngle(sig.best)}deg)`;
+  if (sig.best !== null) mark.style.left = `${sig.best}%`;
 }
 
-/** Draws the two minute history on a canvas: colour zones, AGC, SNR with a soft fill, best line, live dot. */
 function sigDraw() {
   const canvas = $("#sigCanvas");
   const ratio = window.devicePixelRatio || 1;
@@ -93,7 +113,6 @@ function sigDraw() {
   const w = width - left - right, h = height - top - bottom;
   const y = (value) => top + (1 - value / 100) * h;
   const good = sigGoodFrom();
-  // Zones: green above the threshold, amber 25 points below it, red under that.
   for (const [from, to, name] of [[good, 100, "--ok"], [Math.max(0, good - 25), good, "--warn"], [0, Math.max(0, good - 25), "--bad"]]) {
     const c = mix(name, 0.09); c.fillRect(left, y(to), w, y(from) - y(to)); c.restore();
   }
@@ -158,9 +177,6 @@ function sigPush(reading) {
   }
 }
 
-/* ── Sound: a short beep per reading, higher and faster with a better signal; a low
-   steady tone when there is no lock. Browsers only allow sound after a click, which the
-   Sound button provides. ── */
 function sigBeep() {
   window.clearTimeout(sig.beepTimer);
   if (!sig.sound || !sig.audio) return;
@@ -172,14 +188,14 @@ function sigBeep() {
   const osc = ctx.createOscillator();
   const length = locked ? 0.09 : 0.25;
   osc.type = "sine";
-  osc.frequency.value = locked ? 300 + snr * 10 : 140; // 300 Hz … 1300 Hz
+  osc.frequency.value = locked ? 300 + snr * 10 : 140;
   gain.gain.setValueAtTime(0.0001, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + length);
   osc.connect(gain).connect(ctx.destination);
   osc.start();
   osc.stop(ctx.currentTime + length + 0.02);
-  const gap = locked ? 900 - snr * 8 : 700; // 900 ms … 100 ms between beeps
+  const gap = locked ? 900 - snr * 8 : 700;
   sig.beepTimer = window.setTimeout(sigBeep, Math.max(100, gap));
 }
 function sigSetSound(on) {
@@ -205,7 +221,6 @@ async function sigLoop(gen) {
     sig.controller = controller;
     let delay = Number($("#sigSpeed").value) || 700;
     try {
-      // The channel name is asked for now and then only (it needs a second call on the receiver).
       const withChannel = sig.polls % 20 === 0 ? "?channel=1" : "";
       sig.polls += 1;
       const response = await fetch(`/api/v1/profiles/${encodeURIComponent(sig.profileID)}/signal${withChannel}`, { signal: controller.signal, cache: "no-store" });
@@ -232,7 +247,7 @@ async function sigLoop(gen) {
       sigShowError(error.message);
       sigSetLive("error", "No link");
       if (error.fatal) { sig.running = false; return; }
-      delay = Math.min(8000, 1000 * sig.failures);
+      delay = Math.min(20000, 2000 * sig.failures);
     }
     await sigSleep(Math.max(100, delay - (performance.now() - began)));
   }
@@ -258,7 +273,6 @@ function signalStop() {
   sigWake(false);
   if (document.fullscreenElement === $("#sigBody")) document.exitFullscreen?.().catch(() => {});
 }
-/* Keep a phone or tablet awake while the meter is shown (not every browser has this). */
 let sigLock = null;
 async function sigWake(on) {
   try {
@@ -266,9 +280,8 @@ async function sigWake(on) {
       sigLock = await navigator.wakeLock.request("screen");
       sigLock.addEventListener("release", () => { sigLock = null; });
     } else if (!on && sigLock) { const lock = sigLock; sigLock = null; await lock.release(); }
-  } catch { /* not allowed now; harmless */ }
+  } catch { }
 }
-/** Called when the Signal tab is shown or the selected device changes while it is shown. */
 function signalEnter() {
   const device = currentDevice();
   if (!device) {
@@ -290,7 +303,7 @@ function signalEnter() {
   $("#sigChannel").textContent = "";
   sigSetPauseLabel(false);
   sigShowError("");
-  sigBuildTicks();
+  sigBuildBar();
   sigPlaceThreshold();
   sigSetLive("wait", "Waiting");
   sigRender(null);

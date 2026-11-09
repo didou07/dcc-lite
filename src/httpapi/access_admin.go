@@ -6,10 +6,6 @@ import (
 	"github.com/didou07/dcc-lite/src/app"
 )
 
-// Remote-access administration. These handlers are registered only on the
-// loopback listener (see New), never on the HTTPS listener, so a remote
-// visitor, even a signed-in one, cannot open, close or reconfigure remote access.
-
 func (s *Server) remoteAdminAvailable(w http.ResponseWriter) bool {
 	if s.remote != nil || s.app.RemoteAccess == nil {
 		writeError(w, http.StatusNotFound, "remote access settings are not available here")

@@ -1,16 +1,8 @@
 "use strict";
-/* Reads the user scripts of the original Dreambox Control Center (dccscript.ini). */
 (function () {
   const MAX_NAME = 80;
   const MAX_COMMAND = 1000;
 
-  /*
-   * dccscript.ini lists the scripts to show in [UserScripts] (one "Name=1" line
-   * each). Every script has its own [Name] section with Line1..LineN, run one
-   * after the other. The built-in mount/format sections that ship in the file use
-   * device paths of very old receivers (/dev/ide/..., /dev/scsi/...), so they are
-   * deliberately not imported: guessing a device name for mkfs is dangerous.
-   */
   function parseDccScripts(text) {
     const sections = new Map();
     let current = null;

@@ -13,20 +13,14 @@ import (
 	webui "github.com/didou07/dcc-lite/src/web"
 )
 
-// remoteMode carries what only the authenticated HTTPS listener needs.
 type remoteMode struct {
 	auth *remoteaccess.Auth
 }
 
-// RemoteOptions configures NewRemote.
 type RemoteOptions struct {
 	Auth *remoteaccess.Auth
 }
 
-// NewRemote returns the handler for the HTTPS listener that serves the same
-// application as New, but only after a password sign-in. It must be served over
-// TLS (the session cookie is Secure and __Host- prefixed), unless the Auth was
-// made with NewPlainAuth for an explicitly unencrypted listener.
 func NewRemote(application *app.App, options RemoteOptions) http.Handler {
 	s := &Server{app: application, remote: &remoteMode{auth: options.Auth}}
 	protected := s.requireSignIn(s.routes())
@@ -45,8 +39,6 @@ func NewRemote(application *app.App, options RemoteOptions) http.Handler {
 
 var safeHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
 
-// remoteCSP names the page's own host for the terminal WebSocket, because not
-// every browser lets 'self' cover wss: URLs (ws: on a plain HTTP listener).
 func (s *Server) remoteCSP(r *http.Request) string {
 	connect := "'self'"
 	if safeHostPattern.MatchString(r.Host) {
@@ -59,8 +51,6 @@ func (s *Server) remoteCSP(r *http.Request) string {
 	return strings.Replace(baseCSP, "%s", connect, 1)
 }
 
-// remoteGuard rejects requests that could be forged by another website: every
-// state-changing request must come from the page's own origin.
 func (s *Server) remoteGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host == "" {

@@ -1,5 +1,3 @@
-// Package app is the application object shared by the HTTP handlers: the version,
-// system information and the saved device profiles.
 package app
 
 import (
@@ -14,8 +12,6 @@ import (
 	"github.com/didou07/dcc-lite/src/terminal"
 )
 
-// App wires the three things DCC Lite does: keep a list of devices, move files
-// over FTP, open Telnet terminals and watch the live screen.
 type App struct {
 	Version     string
 	Profiles    *config.ProfileStore
@@ -23,10 +19,9 @@ type App struct {
 	Terminals   *terminal.Manager
 	Files       *filetransfer.Manager
 	LocalFiles  *filetransfer.LocalFS
-	// Staging is the private folder that carries files between the user's
-	// browser and the receiver (see filetransfer/staging.go).
+
 	Staging *filetransfer.LocalFS
-	// RemoteAccess manages the optional HTTPS listener (set by the executable).
+
 	RemoteAccess RemoteController
 }
 
@@ -54,17 +49,13 @@ func New(version string, profiles *config.ProfileStore, dirs ...string) *App {
 	}
 }
 
-// newStaging prepares an empty staging folder inside the data directory (or the
-// system temp folder when none was given). Whatever a previous run left in it is
-// removed: no transfer survives a restart, so nothing there is needed.
 func newStaging(dirs []string) *filetransfer.LocalFS {
 	var dir string
 	if len(dirs) > 0 && dirs[0] != "" {
 		dir = filepath.Join(dirs[0], "staging")
 		_ = os.RemoveAll(dir)
 	} else {
-		// No data directory: use a private folder of our own so that several
-		// instances never delete each other's files.
+
 		made, err := os.MkdirTemp("", "dcclite-staging-")
 		if err != nil {
 			return nil

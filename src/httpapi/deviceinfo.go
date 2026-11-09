@@ -47,7 +47,6 @@ type deviceInfo struct {
 	Temperature *int        `json:"temperature,omitempty"`
 }
 
-// text turns a JSON value (string or number) into trimmed text.
 func jsonText(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -75,7 +74,6 @@ func joinWords(parts ...string) string {
 	return strings.Join(out, " ")
 }
 
-// percent reads a signal value such as 78, "78" or "78 %" as a whole percent.
 func percent(v any) (int, bool) {
 	t := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(jsonText(v)), "%"))
 	if t == "" {
@@ -91,8 +89,6 @@ func percent(v any) (int, bool) {
 	return int(f + 0.5), true
 }
 
-// buildDeviceInfo reads OpenWebif's "about" answer (and the optional
-// "tunersignal" answer) tolerantly: a field a receiver does not have is left out.
 func buildDeviceInfo(about, signal map[string]any) deviceInfo {
 	info := asMap(about["info"])
 	out := deviceInfo{Tuners: []infoTuner{}, Disks: []infoDisk{}}
@@ -142,10 +138,8 @@ func buildDeviceInfo(about, signal map[string]any) deviceInfo {
 	return out
 }
 
-// temperaturePaths are the places Enigma2 boxes publish their temperature.
 var temperaturePaths = []string{"/proc/stb/sensors/temp0/value", "/proc/stb/fp/temp_sensor", "/proc/stb/fp/temp_sensor_avs"}
 
-// parseTemperature reads a sensor file ("45", "45\n", "45.5").
 func parseTemperature(data []byte) (int, bool) {
 	f, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
 	if err != nil || f < 1 || f > 150 {
@@ -154,8 +148,6 @@ func parseTemperature(data []byte) (int, bool) {
 	return int(f + 0.5), true
 }
 
-// deviceTemperature reads the temperature over an already open FTP session of
-// this device: OpenWebif does not publish it. Without such a session it is left out.
 func (s *Server) deviceTemperature(ctx context.Context, profileID string) *int {
 	sessionID := ""
 	for _, info := range s.app.Files.Sessions() {
@@ -193,7 +185,6 @@ func getJSONMap(ctx context.Context, web deviceWeb, path string) (int, map[strin
 	return status, m, nil
 }
 
-// deviceInfoHandler returns the information shown on a device card.
 func (s *Server) deviceInfoHandler(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {

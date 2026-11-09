@@ -1,4 +1,3 @@
-// Package terminal runs the Telnet terminal sessions behind the browser tabs.
 package terminal
 
 import (
@@ -27,11 +26,7 @@ const (
 	maxSessions          = 16
 	maxSessionsPerDevice = 8
 	unattachedSessionTTL = 45 * time.Second
-	// detachedSessionTTL is how long a shell is kept after its browser
-	// connection dropped, so the page can reconnect and carry on (laptop asleep,
-	// phone locked, Wi-Fi change). The old 10 minutes ended long-running shells
-	// whenever the page was away for a short break.
-	detachedSessionTTL = 3 * time.Hour
+	detachedSessionTTL   = 3 * time.Hour
 )
 
 type SessionInfo struct {
@@ -87,8 +82,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	}
 
 	m.mu.Lock()
-	// Shells whose browser left must not lock the user out: when a limit is reached, the shell that has been
-	// detached the longest is closed to make room. A shell that is open in a page is never touched.
+
 	var evicted []*managedSession
 	for {
 		deviceCount := m.opening[profile.ID]
@@ -156,7 +150,6 @@ func (m *Manager) SetInitialDirectory(sessionID, directory string) error {
 	return m.SetInitialDirectoryAndCommand(sessionID, directory, "pwd")
 }
 
-// SetInitialDirectoryAndCommand queues a single command after Telnet login. The directory is always shell-quoted.
 func (m *Manager) SetInitialDirectoryAndCommand(sessionID, directory, command string) error {
 	if len(directory) > 4096 || strings.ContainsAny(directory, "\r\n\x00") {
 		return errors.New("remote directory contains unsupported characters or exceeds 4096 bytes")
@@ -194,7 +187,6 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
-// Attach connects a browser to a session from the start of its buffered output.
 func (m *Manager) Attach(id string) (core.TerminalSession, SessionInfo, error) {
 	attachment, info, err := m.AttachAt(id, 0)
 	if err != nil {
@@ -203,10 +195,6 @@ func (m *Manager) Attach(id string) (core.TerminalSession, SessionInfo, error) {
 	return attachment, info, nil
 }
 
-// AttachAt connects a browser to a session and continues its output at the
-// given absolute byte offset (0 for a new page). A browser that reconnects after
-// a dropped connection may find the old attachment still registered, because the
-// server has not noticed the loss yet; the new one replaces it.
 func (m *Manager) AttachAt(id string, offset int64) (*Attachment, SessionInfo, error) {
 	m.mu.Lock()
 	session, ok := m.sessions[id]
@@ -235,8 +223,6 @@ func (m *Manager) AttachAt(id string, offset int64) (*Attachment, SessionInfo, e
 	return attachment, info, nil
 }
 
-// Info returns the details of a live session, for a page that wants to know
-// whether it can still reconnect to it.
 func (m *Manager) Info(id string) (SessionInfo, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -247,7 +233,6 @@ func (m *Manager) Info(id string) (SessionInfo, bool) {
 	return session.info, true
 }
 
-// detach records that a browser left. The shell stays for detachedSessionTTL.
 func (m *Manager) detach(id string, a *Attachment) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -328,8 +313,6 @@ func (m *Manager) cleanupLoop() {
 	}
 }
 
-// detachedSessionLocked returns the session that is not attached to a page and was detached the longest ago,
-// or nil when every candidate is in use. With deviceOnly it only considers the given device. Manager.mu must be held.
 func (m *Manager) detachedSessionLocked(profileID string, deviceOnly bool) (string, *managedSession) {
 	var victimID string
 	var victim *managedSession

@@ -1,5 +1,4 @@
 "use strict";
-/* ───────────── Devices ───────────── */
 const devices = { list: [], status: new Map(), currentID: store.get("device", "") };
 const currentDevice = () => devices.list.find((p) => p.id === devices.currentID) || null;
 const deviceByID = (id) => devices.list.find((p) => p.id === id) || null;
@@ -75,8 +74,7 @@ async function testDevice(id) {
   } catch (error) { devices.status.set(id, { state: "error", message: error.message }); }
   renderDeviceGrid(); updateDeviceDot();
 }
-/* Device information (OpenWebif about + tuner signal, temperature when Files is connected) */
-const deviceInfoState = new Map(); // id -> { loading, data, error }
+const deviceInfoState = new Map();
 function toggleDeviceInfo(id) {
   if (deviceInfoState.has(id)) { deviceInfoState.delete(id); renderDeviceGrid(); return; }
   deviceInfoState.set(id, { loading: true, data: null, error: "" });
@@ -156,7 +154,6 @@ async function deleteDevice(profile) {
   } catch (error) { toastError(error); }
 }
 
-/* Device dialog */
 const deviceDialog = { editing: null };
 function openDeviceDialog(profile = null) {
   deviceDialog.editing = profile;
@@ -165,9 +162,9 @@ function openDeviceDialog(profile = null) {
   $("#devHost").value = profile?.host || "";
   $("#devUser").value = profile?.username || "root";
   $("#devPass").value = "";
-  $("#devPass").type = "text"; // passwords are shown; the eye button hides them
+  $("#devPass").type = "text";
   $("#devPass").placeholder = profile ? (profile.credential_configured ? "Saved" : "No password") : "dreambox";
-  if (profile?.credential_configured) { // shown only on this computer; a remote page keeps the field empty (empty = keep)
+  if (profile?.credential_configured) {
     const field = $("#devPass"), editing = profile;
     api(`/api/v1/profiles/${encodeURIComponent(profile.id)}/password`).then((data) => {
       if (deviceDialog.editing === editing && !field.value && data?.password) field.value = data.password;
@@ -182,7 +179,6 @@ function openDeviceDialog(profile = null) {
   openDialog($("#deviceDialog"));
   $("#devName").focus();
 }
-// Ticking or unticking HTTPS moves the web port between the usual 80 and 443.
 $("#devWebHttps").addEventListener("change", () => {
   const field = $("#devWeb");
   const https = $("#devWebHttps").checked;
@@ -256,7 +252,6 @@ $("#devicesImportFile").addEventListener("change", async (event) => {
   } catch (error) { toastError(error); }
 });
 
-/** Choose a device, optionally jump to a view. */
 function openDevice(id, view) {
   setCurrentDevice(id);
   if (view) showView(view);
@@ -279,10 +274,7 @@ function setCurrentDevice(id) {
 }
 $("#deviceSelect").addEventListener("change", (event) => setCurrentDevice(event.target.value));
 
-/* ───────────── Views ───────────── */
 const view = { current: "devices" };
-/* "Tools" is one tab with four sub-pages. Each sub-page is its own section (view-lists, view-ipk, view-signal);
-   view.current keeps the section name, tools.current says which sub-page is open. */
 const TOOL_PAGES = [
   { id: "editor", label: "Channel editor", icon: "list", view: "lists" },
   { id: "backup", label: "Backup & restore", icon: "archive", view: "lists" },
@@ -310,7 +302,7 @@ function showTool(id) {
 function showView(name) {
   if (name === "tools") name = TOOL_PAGES.find((t) => t.id === tools.current)?.view || "lists";
   if (!["devices", "files", "terminal", "screen", ...toolViews].includes(name)) name = "devices";
-  if (view.current === "screen" && name !== "screen") screenStop(); // no polling while the tab is not shown
+  if (view.current === "screen" && name !== "screen") screenStop();
   if (view.current === "signal" && name !== "signal") signalStop();
   view.current = name;
   if (name === "ipk") tools.current = "ipk";

@@ -1,5 +1,4 @@
 "use strict";
-/* ───────────── Start ───────────── */
 (async function start() {
   applyTerminalLook();
   api("/api/v1/health").then((health) => { $(".brand").title = `DCC Lite ${health.version}`; }).catch(() => {});
@@ -11,23 +10,19 @@
   else if (devices.currentID && !devices.status.has(devices.currentID)) testDevice(devices.currentID);
 })();
 
-/* Remote (HTTPS) access: show Sign out only when served by the authenticated listener. */
 api("/api/v1/system").then((info) => {
-  if (info?.remote !== "true") { $("#remoteAccessBtn").hidden = false; return; } // only the local page manages remote access
-  // Keep the sign-in alive while this page is open: the session only counts requests, and a terminal or a
-  // long transfer makes none, so it used to expire in the middle of work.
+  if (info?.remote !== "true") { $("#remoteAccessBtn").hidden = false; return; }
   const beat = () => fetch("/api/v1/health", { cache: "no-store" }).then((r) => { if (r.status === 401) window.location.assign("/login"); }).catch(() => {});
   window.setInterval(beat, 4 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) beat(); });
   const button = $("#logoutButton");
   button.hidden = false;
   button.addEventListener("click", async () => {
-    try { await post("/api/v1/auth/logout", {}); } catch { /* already signed out */ }
+    try { await post("/api/v1/auth/logout", {}); } catch { }
     window.location.assign("/login");
   });
 }).catch(() => {});
 
-/* "/" jumps to the search box of the current page; Esc inside it clears the search. */
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const target = event.target;

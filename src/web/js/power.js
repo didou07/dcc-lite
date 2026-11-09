@@ -1,8 +1,4 @@
 "use strict";
-/* ───────────── Power dialog ─────────────
-   Standby, wake up, deep standby, reboot and restart of the receiver's interface go through
-   the receiver's web interface (powerstate); the risky ones ask for confirmation. The same
-   dialog lists the receiver's MultiBoot slots so it can restart into another image. */
 async function powerAction(action, doing, confirm = null, report = remoteError) {
   const id = screenView.profileID;
   if (!id) return false;
@@ -10,8 +6,6 @@ async function powerAction(action, doing, confirm = null, report = remoteError) 
   report("");
   try {
     const data = await post(`/api/v1/profiles/${encodeURIComponent(id)}/power`, { action });
-    // OpenWebif answers with the standby state from before the action ran, so it is not shown;
-    // the poll below reads the real state once the receiver has switched.
     void data;
     toast(doing);
     if (action === "reload") { loadChannels(true); return true; }
@@ -33,8 +27,6 @@ function powerSetBusy(busy) {
     else { button.disabled = button.dataset.wasDisabled === "1"; delete button.dataset.wasDisabled; }
   }
 }
-/** Runs one power-dialog action; the dialog closes only when the action really went through
-    (a cancelled confirmation leaves it open). */
 async function powerRun(task) {
   if (powerView.busy) return;
   powerDialogError("");

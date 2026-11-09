@@ -1,7 +1,5 @@
 "use strict";
-/* DCC Lite — Devices, Files (FTP), Terminal (Telnet) and Live screen. */
 
-/* ───────────── Helpers ───────────── */
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -10,7 +8,7 @@ const store = {
   get(key, fallback) {
     try { const raw = localStorage.getItem(`dcclite.${key}`) ?? localStorage.getItem(`boxdeck.${key}`) ?? localStorage.getItem(`dccnext.${key}`); return raw === null ? fallback : JSON.parse(raw); } catch { return fallback; }
   },
-  set(key, value) { try { localStorage.setItem(`dcclite.${key}`, JSON.stringify(value)); } catch { /* storage unavailable */ } },
+  set(key, value) { try { localStorage.setItem(`dcclite.${key}`, JSON.stringify(value)); } catch { } },
 };
 
 async function api(path, options = {}) {
@@ -60,8 +58,6 @@ function iconButton(name, title, onClick, extra = "") {
   return h("button", { class: `icon-btn ${extra}`.trim(), type: "button", title, "aria-label": title, onClick }, icon(name));
 }
 
-/** Connection state is shown as a coloured dot only: green = connected, red = not connected or failed, amber = busy.
- *  The words go to the tooltip and to screen readers, so nothing is repeated on screen. */
 function setStatusDot(node, state, text) {
   if (!node) return;
   node.dataset.state = state;
@@ -125,10 +121,8 @@ const joinRemote = (base, name) => (base === "/" ? `/${name}` : base === "." || 
 const shellQuote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
 const validName = (name) => name && name !== "." && name !== ".." && !/[\\/\0\r\n]/.test(name) && name.length <= 255;
 
-/* ───────────── Dialogs & menus ───────────── */
 function openDialog(dialog) { if (!dialog.open) dialog.showModal(); }
 
-/** Ask for text (or just confirm when `input` is false). Resolves to the string / true, or null when cancelled. */
 function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", danger = false, validate = null }) {
   const dialog = $("#askDialog");
   $("#askTitle").textContent = title;
@@ -169,7 +163,6 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
     form.addEventListener("submit", onSubmit);
     $("#askCancel").addEventListener("click", onCancel);
     dialog.addEventListener("cancel", onCancel);
-    // A "close" event queued by a previous prompt can arrive after this one opened; only react when it is really closed.
     const onClose = () => { if (!dialog.open) finish(null); };
     dialog.addEventListener("close", onClose);
     openDialog(dialog);
@@ -179,7 +172,6 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
 
 const menuState = { onClose: null };
 function closeMenu() { const menu = $("#menu"); if (!menu.hidden) { menu.hidden = true; menu.replaceChildren(); } }
-/** items: [{label, icon, run, danger, disabled, sub}] | "-" | {heading: "text"} */
 function openMenu(items, x, y) {
   const menu = $("#menu");
   menu.replaceChildren();
@@ -202,7 +194,6 @@ document.addEventListener("keydown", (event) => { if (event.key === "Escape") cl
 window.addEventListener("blur", closeMenu);
 window.addEventListener("resize", closeMenu);
 
-/* ───────────── Theme ───────────── */
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   store.set("theme", theme);

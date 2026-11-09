@@ -1,4 +1,3 @@
-// Package config stores the saved device profiles (and their passwords) on disk.
 package config
 
 import (
@@ -134,8 +133,6 @@ func (s *ProfileStore) Save(p Profile) (Profile, error) {
 	return p, nil
 }
 
-// Import adds profiles as new entries. Exported IDs and timestamps are ignored so
-// importing the same file twice cannot overwrite existing devices.
 func (s *ProfileStore) Import(profiles []Profile) ([]Profile, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

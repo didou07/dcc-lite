@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-# Build DCC Lite into dist/ (one zip per platform + SHA256SUMS.txt).
-#   scripts/build.sh                          every platform
-#   scripts/build.sh windows/amd64            only the given os/arch targets
-#   scripts/build.sh windows7/386             32-bit Windows 7/8/8.1 (see below)
-#
-# Targets: windows/{amd64,386}  linux/{amd64,386,arm64,arm}  darwin/{amd64,arm64}
-#          windows7/{amd64,386}
-#
-# Windows 7, 8 and 8.1: programs built with Go 1.21 or newer do not start there. The windows7/*
-# targets need the patched toolchain from https://github.com/XTLS/go-win7 : set GO_WIN7 to its `go`
-# binary (scripts/setup-go-win7.sh downloads it). When GO_WIN7 is set, the default build also makes
-# both windows7 packages. They are named DCC-Lite-<version>-windows-<arch>-win7.zip and run on
-# Windows 10/11 too.
-# 32-bit ARM Linux is built for ARMv7 (set GOARM=6 for a Raspberry Pi 1 / Zero).
-# The version comes from the VERSION file (override with VERSION=1.2.3).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

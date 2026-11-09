@@ -11,13 +11,8 @@ import (
 
 const maxScreenBytes = 6 << 20
 
-// screenWidths are the picture widths the receiver is asked for (OpenWebif "r").
 var screenWidths = map[int]bool{320: true, 480: true, 640: true, 720: true, 960: true, 1280: true, 1920: true}
 
-// deviceScreen returns one JPEG of what the receiver shows on the TV (video,
-// menus, or both) by asking the receiver's own web interface. The browser calls
-// it about once a second, which gives a live view without any extra software on
-// the receiver. The request goes only to the host of the saved device.
 func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
 	if !ok {
@@ -68,7 +63,7 @@ func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver sent an unusable picture.", "code": "web_error"})
 		return
 	}
-	// Never relay anything that is not a JPEG, whatever the device answered.
+
 	if len(body) < 3 || body[0] != 0xFF || body[1] != 0xD8 || body[2] != 0xFF {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return a picture (is the grab feature available on this image?).", "code": "web_error"})
 		return

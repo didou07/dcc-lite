@@ -24,10 +24,6 @@ const (
 	DefaultTelnetPort = 23
 )
 
-// Profile is one saved device. Port and Scheme describe the receiver's web
-// interface (OpenWebif), used by the live screen and "Reload on receiver"; 0 / ""
-// mean port 80 over plain HTTP. FTPPort and TelnetPort of 0 mean "use the default".
-// Old profile files that still contain an ssh_port are loaded and the value is ignored.
 type Profile struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -37,7 +33,7 @@ type Profile struct {
 	FTPPort     int       `json:"ftp_port,omitempty"`
 	TelnetPort  int       `json:"telnet_port,omitempty"`
 	Username    string    `json:"username,omitempty"`
-	Password    string    `json:"-"` // Stored locally; never returned by JSON API responses.
+	Password    string    `json:"-"`
 	Enabled     bool      `json:"enabled"`
 	InsecureTLS bool      `json:"tls_insecure_skip_verify,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -56,7 +52,6 @@ func (p Profile) EffectiveTelnetPort() int { return portOr(p.TelnetPort, Default
 
 func validPortOrZero(port int) bool { return port == 0 || (port >= 1 && port <= 65535) }
 
-// Validate checks receiver profile fields, including the locally stored password.
 func (p Profile) Validate() error {
 	p.Name = strings.TrimSpace(p.Name)
 	p.Host = strings.TrimSpace(p.Host)

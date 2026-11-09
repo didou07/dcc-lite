@@ -1,8 +1,6 @@
 "use strict";
-/* Transfers */
 async function transferSelection(direction, given = null, destPath = null) {
   if (!requireSession()) return;
-  // Remote session: "upload" means "from this device", "download" means "to this device".
   if (files.browserMode) {
     if (direction === "download") return downloadToDevice(given || selectedEntries(panes.remote));
     return chooseDeviceFiles(false);
@@ -46,8 +44,6 @@ function transferName(task) {
   return path.split("/").filter(Boolean).pop() || path || "item";
 }
 
-/* A row is rebuilt only when what it shows changed, and the list is reordered in place. Rebuilding every
-   row on every poll (as this used to) threw the scroll position back to the top while a transfer ran. */
 function taskSignature(task) {
   const p = task.progress || {};
   return [task.state, Math.round((p.fraction || 0) * 1000), Math.round((p.speed_bytes_per_second || 0) / 1024), p.eta_seconds || 0, p.bytes_done || 0, task.error || "", task.warning || "", task.can_resume ? 1 : 0, files.fetched.has(task.id) ? 1 : 0].join("|");
@@ -93,8 +89,6 @@ async function saveStagedDownload(task) {
   window.setTimeout(loadTransfers, 1500);
 }
 
-/* Uploads from this device: the browser sends each file to DCC Lite (rows below, with their own progress),
-   and DCC Lite then forwards it to the receiver as an ordinary queued transfer. */
 const PENDING_PARALLEL = 2, SERVER_QUEUE_LIMIT = 40;
 let pendingSeq = 0;
 function pendingSignature(item) { return [item.state, Math.floor((item.loaded / (item.total || 1)) * 100), Math.round(item.speed / 1024), item.error].join("|"); }
@@ -151,7 +145,7 @@ function sendPending(item) {
     item.xhr = null;
     if (xhr.status === 202) { files.pending = files.pending.filter((p) => p !== item); loadTransfers(); pumpUploads(); return; }
     let data = {};
-    try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+    try { data = JSON.parse(xhr.responseText); } catch { }
     if (xhr.status === 401 && data.code === "auth_required") { window.location.assign("/login"); return; }
     if (xhr.status === 404) { handleSessionLost(); }
     fail(data.error || `Upload failed (${xhr.status})`);
@@ -178,7 +172,6 @@ async function uploadFromDevice(items, destPath = null) {
   const fileItems = items.filter((it) => it.file);
   if (fileItems.length > 5000) { toast("That is more than 5000 files. Upload them in smaller batches.", "error"); return; }
 
-  // Names that already exist in the destination: ask once, like a normal copy.
   const tops = [...new Set(items.map((it) => (it.dir || it.rel).split("/")[0]))];
   let existing = new Set();
   try { const listing = await api(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/list?path=${encodeURIComponent(dest)}`); existing = new Set((listing.entries || []).map((e) => e.name)); }
@@ -192,7 +185,6 @@ async function uploadFromDevice(items, destPath = null) {
     overwrite = true;
   }
 
-  // Folders first (shallow to deep). "Already exists" is fine: the folder is merged.
   const dirs = new Set();
   for (const it of items) {
     const parts = (it.dir ? it.dir : it.rel.split("/").slice(0, -1).join("/")).split("/").filter(Boolean);
@@ -200,7 +192,7 @@ async function uploadFromDevice(items, destPath = null) {
   }
   for (const rel of [...dirs].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b))) {
     try { await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/mkdir`, { path: joinRemote(dest, rel) }); }
-    catch (error) { if (sessionLost(error)) { handleSessionLost(); return; } /* exists already */ }
+    catch (error) { if (sessionLost(error)) { handleSessionLost(); return; } }
   }
   for (const it of fileItems) {
     files.pending.push({ key: `p${++pendingSeq}`, file: it.file, name: it.rel, destPath: joinRemote(dest, it.rel), overwrite, state: "waiting", loaded: 0, total: it.file.size, speed: 0, error: "", xhr: null });
@@ -230,10 +222,9 @@ async function downloadToDevice(entries) {
   loadTransfers();
 }
 
-/* Dropping files or folders from the computer onto the device's list uploads them. */
 const hasOSFiles = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
 async function droppedItems(dataTransfer) {
-  const entries = Array.from(dataTransfer.items || []).filter((i) => i.kind === "file").map((i) => i.webkitGetAsEntry?.()).filter(Boolean); // read before the first await
+  const entries = Array.from(dataTransfer.items || []).filter((i) => i.kind === "file").map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
   if (!entries.length) return Array.from(dataTransfer.files || []).map((file) => ({ file, rel: file.name }));
   const out = [];
   const walk = async (entry, prefix) => {
@@ -256,7 +247,7 @@ async function droppedItems(dataTransfer) {
   target.addEventListener("dragover", (event) => {
     if (files.drag || !hasOSFiles(event) || !files.sessionID) return;
     event.preventDefault(); event.dataTransfer.dropEffect = "copy";
-    const folder = dropFolder(panes.remote, event); // dropping on a folder uploads into it
+    const folder = dropFolder(panes.remote, event);
     markDropRow(panes.remote, folder?.row || null);
     target.classList.toggle("drop-os", !folder);
   });
@@ -268,7 +259,6 @@ async function droppedItems(dataTransfer) {
     if (!files.sessionID) { toast("Connect to the device first"); return; }
     try { await uploadFromDevice(await droppedItems(event.dataTransfer), folder ? folder.path : null); } catch (error) { toastError(error); }
   });
-  // A file dropped anywhere else must not make the browser leave the page (and its terminals).
   for (const type of ["dragover", "drop"]) window.addEventListener(type, (event) => { if (hasOSFiles(event) && !target.contains(event.target)) event.preventDefault(); });
 }
 
@@ -287,7 +277,7 @@ async function retryTransfer(task) {
   } catch (error) { toastError(error); }
 }
 
-const queueRows = new Map(); // key -> { signature, element }
+const queueRows = new Map();
 function syncQueueList(list, wanted) {
   const scroll = list.scrollTop;
   const keep = new Set(wanted.map((w) => w.key));
@@ -336,19 +326,17 @@ async function loadTransfers() {
     const finished = files.transfers.filter((t) => t.state === "completed" && !files.seenDone.has(t.id));
     finished.forEach((t) => files.seenDone.add(t.id));
     if (finished.length && view.current === "files") refreshBoth();
-    // Downloads to this device: hand each finished file to the browser once.
     for (const t of files.transfers) {
       if (!(t.staged && t.direction === "download" && t.state === "completed") || files.autoDone.has(t.id)) continue;
       files.autoDone.add(t.id);
-      if (files.transfersSeen) saveStagedDownload(t); // a task already finished when the page opened is not saved again by itself
+      if (files.transfersSeen) saveStagedDownload(t);
     }
     files.transfersSeen = true;
-  } catch { /* queue unavailable */ }
+  } catch { }
   finally { files.queueBusy = false; }
 }
 function pumpUploadsIfWaiting() { if (files.pending.some((p) => p.state === "waiting")) pumpUploads(); }
 
-/* Queue height: drag the handle on top of the list (double-click resets, arrow keys fine-tune). */
 {
   const panel = $("#queuePanel"), handle = $("#queueResize");
   const apply = (px) => { panel.classList.toggle("sized", Boolean(px)); if (px) panel.style.setProperty("--queue-h", `${Math.round(px)}px`); else panel.style.removeProperty("--queue-h"); store.set("queue.height", px ? Math.round(px) : 0); };
@@ -387,7 +375,6 @@ $("#transferClear").addEventListener("click", async () => {
   try { await api("/api/v1/files/transfers", { method: "DELETE" }); loadTransfers(); } catch (error) { toastError(error); }
 });
 
-/* Terminal handoff from Files */
 function openTerminalHere(directory) {
   if (!requireSession()) return;
   const device = currentDevice();
@@ -417,7 +404,6 @@ async function runRemoteFile() {
 $("#fileTerminalHere").addEventListener("click", () => openTerminalHere());
 $("#fileRun").addEventListener("click", runRemoteFile);
 
-/* Keyboard */
 document.addEventListener("keydown", (event) => {
   if (view.current !== "files" || $("dialog[open]")) return;
   const tag = event.target.tagName;

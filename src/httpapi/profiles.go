@@ -26,8 +26,6 @@ func (s *Server) exportProfiles(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"schema_version": config.SchemaVersion, "profiles": s.app.Profiles.List()})
 }
 
-// importedProfile is a profile from an export file. Exports made before SSH was
-// removed still carry ssh_port; it is accepted and dropped.
 type importedProfile struct {
 	config.Profile
 	LegacySSHPort int `json:"ssh_port,omitempty"`
@@ -130,8 +128,7 @@ type profileRequest struct {
 	Host       string `json:"host"`
 	FTPPort    int    `json:"ftp_port"`
 	TelnetPort int    `json:"telnet_port"`
-	// WebPort and WebHTTPS describe the receiver's web interface (OpenWebif),
-	// used by the live screen and "Reload on receiver". 0 means 80 (443 for HTTPS).
+
 	WebPort  int    `json:"web_port"`
 	WebHTTPS bool   `json:"web_https"`
 	Username string `json:"username"`
@@ -213,7 +210,7 @@ func profileFromRequest(input profileRequest) config.Profile {
 		Username: username, Password: input.Password, Enabled: enabled,
 	}
 	if input.WebHTTPS {
-		// Receivers use self-signed certificates; ticking the box opts in to that.
+
 		p.Scheme, p.InsecureTLS = "https", true
 	}
 	return p

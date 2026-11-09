@@ -16,25 +16,15 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 )
 
-// Channel list, zapping, "now playing" and picons for the Screen page. Like the
-// live picture and the remote keys, everything is relayed to the web interface
-// (OpenWebif) of the saved device: the browser never supplies an address, only a
-// service reference, which is validated before it is put in a request.
-
 const (
 	maxChannelListBytes = 24 << 20
 	maxPiconBytes       = 512 << 10
 )
 
-// serviceRefPattern accepts an Enigma2 service reference: ten colon separated
-// fields (type, flags, service id, …) followed by an optional path/URL and name.
 var serviceRefPattern = regexp.MustCompile(`^[0-9]+:[0-9]+(:[0-9A-Fa-f]+){8}:[^\x00-\x1f\x7f]{0,900}$`)
 
-// piconRefPattern matches the first ten fields that name a picon file.
 var piconRefPattern = regexp.MustCompile(`^([0-9]+(?::[0-9A-Fa-f]+){9}):`)
 
-// piconSlots limits how many picons are fetched from the receiver at once, so
-// a long channel list cannot flood a small box.
 var piconSlots = make(chan struct{}, 4)
 
 func (s *Server) enabledProfile(w http.ResponseWriter, r *http.Request) (config.Profile, bool) {
@@ -50,7 +40,6 @@ func (s *Server) enabledProfile(w http.ResponseWriter, r *http.Request) (config.
 	return profile, true
 }
 
-// getBounded performs a GET on the device and returns status and a body of at most limit bytes.
 func (d deviceWeb) getBounded(ctx context.Context, pathAndQuery string, limit int64) (int, []byte, error) {
 	resp, err := d.get(ctx, pathAndQuery)
 	if err != nil {
@@ -67,8 +56,6 @@ func (d deviceWeb) getBounded(ctx context.Context, pathAndQuery string, limit in
 	return resp.StatusCode, body, nil
 }
 
-// writeWebStatus answers for a bad HTTP status or transport error and reports
-// whether it wrote an error. Unlike writeWebFailure it does not inspect the body.
 func writeWebStatus(w http.ResponseWriter, web deviceWeb, status int, err error) bool {
 	switch {
 	case err != nil:
@@ -97,7 +84,6 @@ type channelBouquet struct {
 	Channels []channelEntry `json:"channels"`
 }
 
-// serviceFlags returns the second field of a service reference (64 = marker).
 func serviceFlags(ref string) int {
 	parts := strings.SplitN(ref, ":", 3)
 	if len(parts) < 2 {
@@ -107,8 +93,6 @@ func serviceFlags(ref string) int {
 	return n
 }
 
-// piconFile returns the picon file name for a reference, or "" when the
-// reference has no picon by number (IPTV streams are named by channel).
 func piconFile(ref string) string {
 	m := piconRefPattern.FindStringSubmatch(strings.ToUpper(ref))
 	if m == nil {
@@ -117,7 +101,6 @@ func piconFile(ref string) string {
 	return strings.ReplaceAll(m[1], ":", "_") + ".png"
 }
 
-// deviceChannels returns the bouquets and channels of the receiver (TV or radio).
 func (s *Server) deviceChannels(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -127,7 +110,7 @@ func (s *Server) deviceChannels(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Query().Get("type") {
 	case "", "tv":
 	case "radio":
-		path += "?type=radio" // OpenWebif only looks for the presence of "type"
+		path += "?type=radio"
 	default:
 		writeError(w, http.StatusBadRequest, "type must be tv or radio")
 		return
@@ -182,7 +165,6 @@ type zapRequest struct {
 	Ref string `json:"ref"`
 }
 
-// deviceZap switches the receiver to a channel (OpenWebif "zap").
 func (s *Server) deviceZap(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -218,8 +200,6 @@ type currentEvent struct {
 	Remaining int64  `json:"remaining,omitempty"`
 }
 
-// deviceCurrent returns the channel the receiver is tuned to, with the running
-// and the next programme (OpenWebif "getcurrent").
 func (s *Server) deviceCurrent(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -269,9 +249,6 @@ func (s *Server) deviceCurrent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ref": ref, "name": strings.TrimSpace(raw.Info.Name), "now": event(raw.Now), "next": event(raw.Next), "standby": deviceStandby(ctx, web)})
 }
 
-// devicePicon relays a channel logo from the receiver. The file names are built
-// by piconCandidates from a validated service reference and the channel name,
-// the same fallbacks OpenWebif uses, and the first real PNG wins.
 func (s *Server) devicePicon(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -306,7 +283,7 @@ func (s *Server) devicePicon(w http.ResponseWriter, r *http.Request) {
 	for _, file := range candidates {
 		status, body, err := web.getBounded(ctx, "/picon/"+file, maxPiconBytes)
 		if err != nil {
-			unreachable = true // browser left or receiver down: do not remember a miss
+			unreachable = true
 			break
 		}
 		if status != http.StatusOK || len(body) < 8 || string(body[1:4]) != "PNG" {
@@ -323,7 +300,7 @@ func (s *Server) devicePicon(w http.ResponseWriter, r *http.Request) {
 		piconCache.put(key, "")
 	}
 	w.Header().Set("Cache-Control", "private, max-age=300")
-	w.WriteHeader(http.StatusNoContent) // no console noise for channels without a logo
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type epgNowEntry struct {
@@ -332,9 +309,6 @@ type epgNowEntry struct {
 	Duration int64  `json:"duration"`
 }
 
-// deviceEPGNow returns the programme running now on every channel of one
-// bouquet (OpenWebif "epgnow"), so the channel list can show what is on, like
-// the OpenWebif bouquet view does. The bouquet reference is validated first.
 func (s *Server) deviceEPGNow(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -378,15 +352,13 @@ func (s *Server) deviceEPGNow(w http.ResponseWriter, r *http.Request) {
 		}
 		events[e.Ref] = epgNowEntry{Title: title, Begin: num(e.Begin), Duration: num(e.Duration)}
 		if n := num(e.Now); n > 0 {
-			now = n // the receiver's own clock, so elapsed time is right even if clocks differ
+			now = n
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"now": now, "events": events})
 }
 
-// powerActions maps the names the browser may send to OpenWebif "powerstate"
-// values (0 toggle, 1 deep standby, 2 reboot, 3 restart GUI, 4 wake up, 5 standby).
 var powerActions = map[string]string{
 	"toggle": "0", "deep": "1", "reboot": "2", "restart_gui": "3", "wakeup": "4", "standby": "5",
 }
@@ -395,8 +367,6 @@ type powerRequest struct {
 	Action string `json:"action"`
 }
 
-// devicePower runs a power action on the receiver, or reloads its channel lists
-// (action "reload"). Only names from a fixed list are accepted.
 func (s *Server) devicePower(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -421,7 +391,7 @@ func (s *Server) devicePower(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	status, body, err := web.press(ctx, path)
-	// A receiver that is rebooting may drop the connection before it answers.
+
 	if err != nil && (action == "deep" || action == "reboot" || action == "restart_gui") {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
@@ -432,8 +402,7 @@ func (s *Server) devicePower(w http.ResponseWriter, r *http.Request) {
 	if action == "reload" {
 		piconCache.forget()
 	}
-	// OpenWebif reports the standby state from before the action ran (it reads the
-	// state before opening the Standby screen), so callers must poll for the new one.
+
 	var reply struct {
 		InStandby *bool `json:"instandby"`
 	}
@@ -444,7 +413,6 @@ func (s *Server) devicePower(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// deviceStandby reports whether the receiver is in standby (nil when unknown).
 func deviceStandby(ctx context.Context, web deviceWeb) *bool {
 	status, body, err := web.press(ctx, "/api/powerstate")
 	if err != nil || status != http.StatusOK {

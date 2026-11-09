@@ -13,9 +13,6 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// MemoryFS is an in-memory core.FileTransfer used by API tests and demos. It
-// follows the rules of the real adapters: listings report permissions, and a
-// download never overwrites an existing local file.
 type MemoryFS struct {
 	mu    sync.Mutex
 	files map[string][]byte
@@ -23,12 +20,10 @@ type MemoryFS struct {
 	dirs  map[string]bool
 }
 
-// NewMemoryFS returns an empty file system containing only "/".
 func NewMemoryFS() *MemoryFS {
 	return &MemoryFS{files: map[string][]byte{}, modes: map[string]uint32{}, dirs: map[string]bool{"/": true}}
 }
 
-// Set creates or replaces a file (and its parent folders).
 func (m *MemoryFS) Set(name, content string, mode uint32) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -37,7 +32,6 @@ func (m *MemoryFS) Set(name, content string, mode uint32) {
 	m.modes[name] = mode
 }
 
-// Get returns a file's content.
 func (m *MemoryFS) Get(name string) (string, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -45,7 +39,6 @@ func (m *MemoryFS) Get(name string) (string, bool) {
 	return string(data), ok
 }
 
-// Names lists every file path, sorted.
 func (m *MemoryFS) Names() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -179,8 +172,6 @@ func (m *MemoryFS) Chmod(_ context.Context, name string, mode uint32) error {
 
 func (m *MemoryFS) Close() error { return nil }
 
-// AttachAdapter registers an already-connected adapter as a file session. It
-// exists for API tests and demos; real sessions are created with Open.
 func (m *Manager) AttachAdapter(info SessionInfo, adapter core.FileTransfer) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -26,15 +26,13 @@ const (
 	certRenewWhen = 30 * 24 * time.Hour
 )
 
-// Certificate is the TLS identity of the remote listener.
 type Certificate struct {
 	TLS         tls.Certificate
-	Fingerprint string // SHA-256 of the DER certificate, colon separated
-	Source      string // "provided" or "self-signed"
+	Fingerprint string
+	Source      string
 	Hosts       []string
 }
 
-// LoadProvided loads a user-supplied PEM certificate and key.
 func LoadProvided(certFile, keyFile string) (Certificate, error) {
 	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -43,9 +41,6 @@ func LoadProvided(certFile, keyFile string) (Certificate, error) {
 	return describe(pair, "provided")
 }
 
-// LoadOrCreateSelfSigned returns the self-signed certificate stored in dir/tls,
-// creating or renewing it when it is missing, close to expiry, or does not
-// cover every requested host name or IP address.
 func LoadOrCreateSelfSigned(dir string, hosts []string) (Certificate, error) {
 	hosts = normalizeHosts(hosts)
 	certPath := filepath.Join(dir, "tls", "cert.pem")
@@ -104,8 +99,6 @@ func LoadOrCreateSelfSigned(dir string, hosts []string) (Certificate, error) {
 	return describe(pair, "self-signed")
 }
 
-// DefaultHosts lists names a LAN client may use: localhost, this machine's
-// host name and every interface address.
 func DefaultHosts() []string {
 	hosts := []string{"localhost", "127.0.0.1", "::1"}
 	if name, err := os.Hostname(); err == nil && name != "" {
@@ -211,7 +204,6 @@ func describe(pair tls.Certificate, source string) (Certificate, error) {
 	return Certificate{TLS: pair, Fingerprint: strings.Join(parts, ":"), Source: source, Hosts: hosts}, nil
 }
 
-// ServerConfig returns a hardened TLS configuration for the listener.
 func (c Certificate) ServerConfig() *tls.Config {
 	return &tls.Config{
 		Certificates: []tls.Certificate{c.TLS},

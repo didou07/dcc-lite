@@ -1,5 +1,3 @@
-// Package connection probes whether a saved device answers on the services
-// DCC Lite uses: FTP and Telnet.
 package connection
 
 import (
@@ -13,7 +11,6 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 )
 
-// Service describes the result of one TCP probe.
 type Service struct {
 	Name      string `json:"name"`
 	Port      int    `json:"port"`
@@ -22,10 +19,9 @@ type Service struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// Status is the last known reachability of a saved device.
 type Status struct {
 	ProfileID string    `json:"profile_id"`
-	State     string    `json:"state"` // checking, online, partial, offline, error
+	State     string    `json:"state"`
 	Message   string    `json:"message"`
 	Services  []Service `json:"services,omitempty"`
 	CheckedAt time.Time `json:"checked_at,omitempty"`
@@ -52,8 +48,6 @@ func NewManager(checker Checker) *Manager {
 
 func NewTCPChecker() *TCPChecker { return &TCPChecker{Timeout: 3 * time.Second} }
 
-// Test probes the device and stores the newest result. A newer test for the
-// same profile cancels the older one so a slow probe cannot overwrite fresh data.
 func (m *Manager) Test(ctx context.Context, profile config.Profile) Status {
 	m.mu.Lock()
 	if previous := m.active[profile.ID]; previous != nil {
@@ -105,7 +99,6 @@ func (m *Manager) Forget(profileID string) {
 	m.sequence[profileID]++
 }
 
-// TCPChecker opens a plain TCP connection to the FTP and Telnet ports.
 type TCPChecker struct{ Timeout time.Duration }
 
 func (c *TCPChecker) Check(parent context.Context, profile config.Profile) Status {

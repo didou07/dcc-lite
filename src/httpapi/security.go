@@ -56,7 +56,6 @@ func isLoopbackHost(hostport string) bool {
 
 const baseCSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; connect-src %s; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 
-// localCSP allows the terminal WebSocket on the loopback addresses.
 func localCSP(*http.Request) string {
 	return strings.Replace(baseCSP, "%s", "'self' ws://127.0.0.1:* ws://localhost:* wss://127.0.0.1:* wss://localhost:*", 1)
 }

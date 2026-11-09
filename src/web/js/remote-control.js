@@ -1,15 +1,10 @@
 "use strict";
-/* ───────────── Remote control ─────────────
-   The on-screen remote sits beside the live picture. A key is sent by name to
-   DCC Lite, which presses it on the saved receiver through its web interface; the
-   page never sends a raw key code or an address. */
 const GLYPHS = {
   rewind: '<path d="M11 6v12L3 12zM21 6v12l-8-6z"/>', play: '<path d="M7 5v14l12-7z"/>', pause: '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>',
   forward: '<path d="M13 6v12l8-6zM3 6v12l8-6z"/>', skipback: '<path d="M6 5h2.5v14H6zM20 5v14L9 12z"/>', record: '<circle cx="12" cy="12" r="6"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="1"/>', skipnext: '<path d="M15.5 5H18v14h-2.5zM4 5v14l11-7z"/>',
   up: '<path d="M12 7l7 10H5z"/>', down: '<path d="M12 17 5 7h14z"/>', left: '<path d="M7 12l10-7v14z"/>', right: '<path d="M17 12 7 19V5z"/>',
 };
-// [key, label or glyph, extra classes]
 const REMOTE_ROWS = [
   [["1", "1"], ["2", "2"], ["3", "3"]], [["4", "4"], ["5", "5"], ["6", "6"]], [["7", "7"], ["8", "8"], ["9", "9"]],
   [["prev", "<", "nav"], ["0", "0"], ["next", ">", "nav"]],
@@ -46,7 +41,6 @@ function sendRemoteKey(key, long = false, button = null) {
     try {
       await post(`/api/v1/profiles/${encodeURIComponent(profileID)}/remote-key`, long ? { key, long: true } : { key });
       remoteError("");
-      // Give the receiver a moment to redraw, then show the result.
       if ($("#remoteRefresh").checked && profileID === screenView.profileID) window.setTimeout(() => { if (profileID === screenView.profileID && !screenView.paused) screenRestart(); }, 350);
     } catch (error) { remoteError(error.message); }
     finally { remote.pending -= 1; button?.classList.remove("sending"); }
@@ -65,7 +59,6 @@ function buildRemote() {
       return button;
     })));
   });
-  // Phones: only the main keys are shown under the picture; "More keys" opens the rest.
   const more = $("#remoteMore");
   more.onclick = () => {
     const open = $("#remotePad").classList.toggle("more");
@@ -75,7 +68,6 @@ function buildRemote() {
 }
 function remoteBind() {
   const holder = $("#remoteKeys");
-  // A long press: shift + click, or holding the key for about 0.7 s.
   holder.addEventListener("pointerdown", (event) => {
     const button = event.target.closest(".rk");
     if (!button || event.button > 0) return;
@@ -90,7 +82,7 @@ function remoteBind() {
     if (remote.holdFired) { remote.holdFired = false; return; }
     sendRemoteKey(button.dataset.key, event.shiftKey, button);
   });
-  holder.addEventListener("contextmenu", (event) => { if (event.target.closest(".rk")) event.preventDefault(); }); // touch long press
+  holder.addEventListener("contextmenu", (event) => { if (event.target.closest(".rk")) event.preventDefault(); });
   $("#remotePower").addEventListener("click", (event) => {
     if (event.shiftKey) { sendRemoteKey("power", true, event.currentTarget); return; }
     openPowerDialog();

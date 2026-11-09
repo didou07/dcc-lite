@@ -19,10 +19,6 @@ type fileSessionRequest struct {
 	Port      int    `json:"port"`
 }
 
-// denyHostFiles answers true (after replying 403) for a signed-in remote user.
-// The "local" file API reads and writes the home folder of the machine that runs
-// DCC Lite; a remote user works from their own device instead (see
-// files_browser.go), and must not reach into the host's files.
 func (s *Server) denyHostFiles(w http.ResponseWriter) bool {
 	if s.remote == nil {
 		return false
@@ -277,7 +273,6 @@ func (s *Server) chmodRemoteFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// readRemoteText returns a small remote text file for the in-browser editor.
 func (s *Server) readRemoteText(w http.ResponseWriter, r *http.Request) {
 	remotePath := r.URL.Query().Get("path")
 	if remotePath == "" {
@@ -292,7 +287,6 @@ func (s *Server) readRemoteText(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"file": file, "max_bytes": filetransfer.MaxEditBytes})
 }
 
-// writeRemoteText saves editor content back to the receiver.
 func (s *Server) writeRemoteText(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Path               string    `json:"path"`
@@ -304,8 +298,7 @@ func (s *Server) writeRemoteText(w http.ResponseWriter, r *http.Request) {
 		Force              bool      `json:"force"`
 		Create             bool      `json:"create"`
 	}
-	// The body holds the whole file, so allow more than the 1 MiB default of
-	// decodeJSON (JSON escaping can inflate the text).
+
 	r.Body = http.MaxBytesReader(w, r.Body, 2*filetransfer.MaxEditBytes+4096)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()

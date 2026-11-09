@@ -9,27 +9,15 @@ import (
 )
 
 const (
-	// ftpKeepAliveEvery is how often an idle session sends NOOP. Enigma2 FTP
-	// daemons and many routers drop a control connection that stays silent for a
-	// few minutes; this keeps it open.
 	ftpKeepAliveEvery = 25 * time.Second
-	// ftpProbeAfter is how long a session may sit unused before the next
-	// operation first checks (with NOOP) that the connection is still alive.
-	ftpProbeAfter = 10 * time.Second
+	ftpProbeAfter     = 10 * time.Second
 )
 
-// ResilientFTP is one logical FTP session that survives a dropped control
-// connection. It keeps the connection alive while idle and, when the receiver
-// closed it anyway (idle timeout, reboot, Wi-Fi drop), opens a new one before the
-// next operation instead of failing it. Operations that are safe to repeat are
-// retried once on a fresh connection.
 type ResilientFTP struct {
 	options FTPOptions
 
-	// opMu serialises operations: an FTP control connection handles one at a time.
 	opMu sync.Mutex
 
-	// mu guards the fields below.
 	mu       sync.Mutex
 	client   *FTPClient
 	lastUsed time.Time
@@ -43,7 +31,6 @@ var (
 	_ core.FileTimePreserver     = (*ResilientFTP)(nil)
 )
 
-// OpenResilientFTP connects like OpenFTP and starts the keep-alive loop.
 func OpenResilientFTP(ctx context.Context, options FTPOptions) (*ResilientFTP, error) {
 	client, err := OpenFTP(ctx, options)
 	if err != nil {
@@ -62,7 +49,7 @@ func (r *ResilientFTP) keepAlive() {
 		case <-r.stop:
 			return
 		case <-ticker.C:
-			// A listing or transfer is running; the connection is clearly in use.
+
 			if !r.opMu.TryLock() {
 				continue
 			}
@@ -80,8 +67,6 @@ func (r *ResilientFTP) touch() {
 	r.mu.Unlock()
 }
 
-// ensureLocked returns a working client. The caller holds opMu. With force it
-// always probes the connection; otherwise only when the session was idle.
 func (r *ResilientFTP) ensureLocked(ctx context.Context, force bool) (*FTPClient, error) {
 	r.mu.Lock()
 	if r.closed {
@@ -107,7 +92,6 @@ func (r *ResilientFTP) ensureLocked(ctx context.Context, force bool) (*FTPClient
 	return r.reconnectLocked(ctx)
 }
 
-// reconnectLocked replaces the control connection with a new one. The caller holds opMu.
 func (r *ResilientFTP) reconnectLocked(ctx context.Context) (*FTPClient, error) {
 	r.mu.Lock()
 	old := r.client
@@ -132,8 +116,6 @@ func (r *ResilientFTP) reconnectLocked(ctx context.Context) (*FTPClient, error) 
 	return fresh, nil
 }
 
-// run executes one operation on a working connection. With retry set, an
-// operation that failed because the connection died is repeated once on a new one.
 func (r *ResilientFTP) run(ctx context.Context, retry bool, fn func(*FTPClient) error) error {
 	r.opMu.Lock()
 	defer r.opMu.Unlock()
@@ -205,8 +187,6 @@ func (r *ResilientFTP) ResumeUpload(ctx context.Context, localPath, remotePath s
 	return r.run(ctx, false, func(c *FTPClient) error { return c.ResumeUpload(ctx, localPath, remotePath, progress) })
 }
 
-// Close ends the session and its keep-alive loop. It does not wait for a running
-// operation; the manager cancels those first.
 func (r *ResilientFTP) Close() error {
 	r.mu.Lock()
 	if r.closed {

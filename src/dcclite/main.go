@@ -1,5 +1,3 @@
-// Command dcclite is the DCC Lite program: it parses the flags, starts the local web
-// server (and optionally the password-protected HTTPS listener) and opens the browser.
 package main
 
 import (
@@ -102,9 +100,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The passphrase vault was removed. Existing version-1 device profiles are
-	// migrated to the user's requested Enigma2 defaults (root/dreambox) by
-	// ProfileStore before the obsolete encrypted vault file is removed.
 	if err := removeLegacyVault(root); err != nil {
 		slog.Warn("could not remove obsolete credential vault file", "error", err)
 	}
@@ -154,7 +149,6 @@ func main() {
 	}
 }
 
-// displayHosts picks the addresses worth showing to the operator (no loopback).
 func displayHosts(hosts []string) []string {
 	var out []string
 	for _, host := range hosts {
@@ -226,8 +220,7 @@ func resolveDataDir(override string, portable bool) (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(base, "DCCLite")
-	// Earlier builds were called "DCC Next" (folder DCCNext) and "BoxDeck" (folder
-	// BoxDeck). Move that folder to the new name once, so saved devices are kept.
+
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		for _, old := range []string{"BoxDeck", "DCCNext"} {
 			legacy := filepath.Join(base, old)
@@ -235,7 +228,7 @@ func resolveDataDir(override string, portable bool) (string, error) {
 				continue
 			}
 			if err := os.Rename(legacy, dir); err != nil {
-				return legacy, nil // could not move it: keep using the old folder
+				return legacy, nil
 			}
 			break
 		}
@@ -244,7 +237,7 @@ func resolveDataDir(override string, portable bool) (string, error) {
 }
 
 func openBrowser(url string) {
-	// Browser launching is best-effort; the server remains usable by opening the URL manually.
+
 	var cmd string
 	var args []string
 	switch runtime.GOOS {

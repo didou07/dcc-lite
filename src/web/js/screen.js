@@ -1,9 +1,4 @@
 "use strict";
-/* ───────────── Live screen ─────────────
-   The receiver can take a picture of what it shows on the TV (/grab in its web interface).
-   DCC Lite asks for one picture after the other, so the dialog behaves like a live view
-   without installing anything on the receiver. Only one picture is in flight at a time,
-   so a slow receiver is never flooded. */
 const screenView = { profileID: "", running: false, gen: 0, paused: false, controller: null, wake: null, objectURL: "", blob: null, stamps: [], failures: 0 };
 const screenSleep = (ms) => new Promise((resolve) => { const timer = window.setTimeout(resolve, ms); screenView.wake = () => { window.clearTimeout(timer); resolve(); }; });
 
@@ -27,14 +22,12 @@ function screenShowStats(extra = "") {
   $("#screenStats").textContent = parts.join(" · ");
 }
 async function screenSetPicture(blob, gen) {
-  // Decode the new picture off screen first, so the visible one is replaced in one
-  // step and never flashes blank between two frames.
   const url = URL.createObjectURL(blob);
   try {
     const probe = new Image();
     probe.src = url;
     if (probe.decode) await probe.decode();
-  } catch { /* show it anyway; the load handler reports a broken picture */ }
+  } catch { }
   if (gen !== screenView.gen) { URL.revokeObjectURL(url); return false; }
   const previous = screenView.objectURL;
   screenView.objectURL = url;
@@ -72,14 +65,14 @@ async function screenLoop(gen) {
       screenShowStats();
     } catch (error) {
       if (gen !== screenView.gen) return;
-      if (error.name === "AbortError") continue; // the mode or size changed: ask again at once
+      if (error.name === "AbortError") continue;
       screenView.failures += 1;
       screenShowError(error.message);
       screenShowStats("retrying…");
-      if (error.fatal) { screenView.running = false; return; } // entering the tab again starts over
-      delay = Math.min(8000, 1000 * screenView.failures);
+      if (error.fatal) { screenView.running = false; return; }
+      delay = Math.min(20000, 2000 * screenView.failures);
     }
-    await screenSleep(Math.max(100, delay - (performance.now() - began)));
+    await screenSleep(Math.max(250, delay - (performance.now() - began)));
   }
 }
 
@@ -100,12 +93,10 @@ function screenStop() {
   img.hidden = true;
 }
 function screenRestart() {
-  // A new mode or size should show up at once instead of after the current wait.
   screenView.controller?.abort();
   screenView.wake?.();
 }
 
-/** Called when the Screen tab is shown or the selected device changes while it is shown. */
 function screenEnter() {
   const device = currentDevice();
   if (!device) {

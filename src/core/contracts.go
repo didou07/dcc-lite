@@ -1,5 +1,3 @@
-// Package core defines stable contracts shared by the file-transfer and terminal adapters.
-// Protocol implementations live in separate packages so one transport cannot leak into another.
 package core
 
 import (
@@ -39,19 +37,12 @@ type FileTransfer interface {
 	Close() error
 }
 
-// ResumableFileTransfer is an optional capability implemented by protocol
-// adapters that can preserve partial files and continue from a byte offset.
-// Partial downloads are stored at an application-owned temporary path and
-// committed to the requested destination only after the transfer completes.
 type ResumableFileTransfer interface {
 	DownloadPartial(context.Context, string, string, func(TransferProgress)) error
 	ResumeDownload(context.Context, string, string, func(TransferProgress)) error
 	ResumeUpload(context.Context, string, string, func(TransferProgress)) error
 }
 
-// FileTimePreserver is an optional protocol extension. Adapters
-// normally preserve upload times through their native put/reput -p commands;
-// FTP adapters may implement MFMT when the server supports the extension.
 type FileTimePreserver interface {
 	SetModTime(context.Context, string, time.Time) error
 }

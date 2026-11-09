@@ -110,7 +110,6 @@
 </header>
 
 <main>
-  <!-- DEVICES -->
   <section class="view" id="view-devices" aria-label="Devices">
     <div class="view-head">
       <div class="view-actions">
@@ -132,7 +131,6 @@
     </div>
   </section>
 
-  <!-- FILES -->
   <section class="view" id="view-files" aria-label="Files" hidden>
     <div class="connbar" id="fileConnBar">
       <span class="status-pill" id="fileStatus" data-state="idle" role="img" aria-label="Not connected" title="Not connected"></span>
@@ -152,7 +150,6 @@
       <button type="button" role="tab" data-pane="local" aria-selected="false">This computer</button>
     </div>
 
-    <!-- Shown in a remote (signed-in) session: files travel between the receiver and THIS device -->
     <div class="devicebar" id="deviceBar" hidden>
       <button class="btn primary" id="deviceUpload" type="button" title="Choose files on this device and send them to the current device folder"><svg class="ic"><use href="#i-upload"/></svg>Upload files…</button>
       <button class="btn" id="deviceUploadFolder" type="button" title="Choose a folder on this device and send all of it"><svg class="ic"><use href="#i-newfolder"/></svg>Upload folder…</button>
@@ -247,7 +244,6 @@
     </section>
   </section>
 
-  <!-- CHANNEL LISTS -->
   <section class="view" id="view-lists" aria-label="Channel lists" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
@@ -261,7 +257,6 @@
     <h1 id="listsTitle" class="sr-only">Channel editor <span id="listsDevice"></span></h1>
     <p id="listsLead" class="sr-only"></p>
 
-    <!-- Edit bouquets -->
     <div class="lists-pane" id="listsEdit">
       <div class="bq-body">
         <aside class="bq-side">
@@ -306,7 +301,6 @@
       </div>
     </div>
 
-    <!-- Backup & restore -->
     <div class="lists-pane" id="listsBackup" hidden>
       <div class="tools-body">
         <section class="tools-sec" aria-labelledby="toolsBackupTitle">
@@ -338,7 +332,6 @@
     </div>
   </section>
 
-  <!-- TERMINAL -->
   <section class="view" id="view-terminal" aria-label="Terminal" hidden>
     <div class="term-top">
     <div class="termtabs">
@@ -394,7 +387,6 @@
       </div>
     </div>
   </section>
-  <!-- SIGNAL -->
   <section class="view" id="view-signal" aria-label="Signal meter" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
@@ -417,17 +409,14 @@
     <div class="sig-body" id="sigBody">
       <div class="sig-card sig-main" id="sigMain" data-level="none">
         <div class="sig-channel" id="sigChannel"></div>
-        <div class="sig-gauge">
-          <svg viewBox="0 0 200 172" aria-hidden="true">
-            <path class="g-track" d="M43.4 156.6A80 80 0 1 1 156.6 156.6" pathLength="100" stroke-dasharray="100 100"/>
-            <path class="g-fill" id="sigArc" d="M43.4 156.6A80 80 0 1 1 156.6 156.6" pathLength="100" stroke-dasharray="0 100"/>
-            <g class="g-ticks" id="sigTicks"></g>
-            <line class="g-thr" id="sigThr" x1="168" y1="100" x2="190" y2="100"/>
-            <line class="g-peak" id="sigPeakMark" x1="170" y1="100" x2="188" y2="100" style="display:none"/>
-          </svg>
-          <div class="sig-readout" role="meter" aria-label="Signal quality (SNR)" aria-valuemin="0" aria-valuemax="100" id="sigMeter">
-            <div class="sig-big"><span id="sigValue">—</span><small>%</small></div>
-            <div class="sig-cap">SNR</div>
+        <div class="sig-meter" role="meter" aria-label="Signal quality (SNR)" aria-valuemin="0" aria-valuemax="100" id="sigMeter">
+          <div class="sig-big"><span id="sigValue">—</span><small>%</small></div>
+          <div class="sig-cap">SNR</div>
+          <div class="sig-trend" id="sigTrend" data-dir="none"><span id="sigTrendText"></span></div>
+          <div class="sig-bar-wrap">
+            <div class="sig-flags"><span class="flag-best" id="sigPeakMark" style="display:none">▼<b>best</b></span></div>
+            <div class="sig-bar" id="sigBar"><i class="thr" id="sigThr"></i></div>
+            <div class="sig-axis"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
           </div>
         </div>
         <div class="sig-state" id="sigState" role="status" aria-live="polite"><i></i><span>Waiting for the first reading…</span></div>
@@ -450,7 +439,6 @@
     </div>
     <p class="form-error" id="sigError" role="alert" hidden></p>
   </section>
-  <!-- SCREEN -->
   <section class="view" id="view-screen" aria-label="Live screen" hidden>
     <div class="screen-head sr-only">
       <h2 id="screenTitle">Live screen</h2><code id="screenSub" class="ellipsis"></code>
@@ -533,7 +521,6 @@
       </aside>
     </div>
   </section>
-  <!-- INSTALL .IPK -->
   <section class="view" id="view-ipk" aria-label="Install a plugin" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
@@ -575,7 +562,6 @@
   </section>
 </main>
 
-<!-- Device dialog -->
 <dialog id="deviceDialog" aria-labelledby="deviceDialogTitle">
   <form method="dialog" id="deviceForm" class="dialog-card" autocomplete="off">
     <h2 id="deviceDialogTitle">Add device</h2>
@@ -607,7 +593,6 @@
 
 <input type="file" id="dccScriptFile" accept=".ini,text/plain" hidden>
 
-<!-- Terminal: previous commands -->
 <dialog id="histDialog" aria-labelledby="histTitle">
   <div class="dialog-card">
     <h2 id="histTitle">Previous commands</h2>
@@ -623,7 +608,6 @@
   </div>
 </dialog>
 
-<!-- Terminal: paste box (browsers block the clipboard on plain HTTP) -->
 <dialog id="pasteDialog" aria-labelledby="pasteTitle">
   <form class="dialog-card" id="pasteForm" method="dialog">
     <h2 id="pasteTitle">Paste into the terminal</h2>
@@ -636,7 +620,6 @@
   </form>
 </dialog>
 
-<!-- Remote access (HTTPS) -->
 <dialog id="raDialog" aria-labelledby="raTitle">
   <form id="raForm" class="dialog-card ra-card" autocomplete="off">
     <div class="ra-head">
@@ -677,7 +660,6 @@
   </form>
 </dialog>
 
-<!-- Network scan -->
 <dialog id="scanDialog" aria-labelledby="scanTitle">
   <div class="dialog-card scan-card">
     <h2 id="scanTitle">Find devices on your network</h2>
@@ -694,7 +676,6 @@
   </div>
 </dialog>
 
-<!-- Add channels to the open bouquet -->
 <dialog id="bqAddDialog" aria-labelledby="bqAddTitle">
   <div class="dialog-card bq-add-card">
     <header class="editor-head"><div class="editor-title"><h2 id="bqAddTitle">Add channels</h2><code id="bqAddSub" class="ellipsis"></code></div></header>
@@ -712,7 +693,6 @@
   </div>
 </dialog>
 
-<!-- Remote text editor -->
 <dialog id="editorDialog" aria-labelledby="editorTitle">
   <div class="dialog-card editor-card">
     <header class="editor-head">
@@ -738,7 +718,6 @@
   </div>
 </dialog>
 
-<!-- Receiver power -->
 <dialog id="powerDialog" aria-labelledby="powerTitle">
   <div class="dialog-card power-card">
     <header class="power-head">
@@ -808,7 +787,6 @@
   </div>
 </dialog>
 
-<!-- Generic dialogs -->
 <dialog id="askDialog" aria-labelledby="askTitle">
   <form method="dialog" id="askForm" class="dialog-card">
     <h2 id="askTitle">Title</h2>

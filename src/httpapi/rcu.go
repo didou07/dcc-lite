@@ -12,14 +12,6 @@ import (
 	"time"
 )
 
-// remoteKeys maps the key names used by the on-screen remote to the Linux input
-// key codes that Enigma2 understands (OpenWebif "remotecontrol" command). The
-// browser only ever sends a name from this list, never a raw code.
-//
-// The digits, colours, arrows, OK, volume, channel, menu/exit/info/EPG, the
-// transport keys and the TV/radio/text/audio/subtitle/video keys are standard.
-// Setup, Portal, Timer, History, PIP, Opt, Context and Aspect differ between
-// remote controls; change their numbers here if a key does nothing on a receiver.
 var remoteKeys = map[string]int{
 	"power": 116,
 	"1":     2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8, "8": 9, "9": 10, "0": 11,
@@ -43,8 +35,6 @@ type remoteKeyRequest struct {
 	Long bool   `json:"long,omitempty"`
 }
 
-// deviceRemoteKey presses one key of the receiver's remote control by asking the
-// receiver's own web interface. The request goes only to the saved device.
 func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
 	if !ok {
@@ -75,7 +65,7 @@ func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
 	}
 	status, body, err := web.press(ctx, "/api/remotecontrol"+suffix)
 	if err == nil && status == http.StatusNotFound {
-		// Older OpenWebif versions only have the /web/ interface.
+
 		status, body, err = web.press(ctx, "/web/remotecontrol"+suffix)
 	}
 	if writeWebFailure(w, web, status, body, err) {
@@ -88,9 +78,6 @@ type deviceTextRequest struct {
 	Text string `json:"text"`
 }
 
-// deviceRemoteText types text into the receiver's on-screen keyboard or search
-// box (OpenWebif "remotecontrol?text="). The receiver turns each character into a
-// key code, which only works for plain ASCII, so anything else is refused here.
 func (s *Server) deviceRemoteText(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -115,7 +102,7 @@ func (s *Server) deviceRemoteText(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 8*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	// The receiver percent-decodes the text a second time, so a literal % is doubled up.
+
 	query := url.Values{}
 	query.Set("text", strings.ReplaceAll(text, "%", "%25"))
 	status, body, err := web.press(ctx, "/api/remotecontrol?"+query.Encode())
@@ -133,8 +120,6 @@ type deviceMessageRequest struct {
 	Seconds int    `json:"seconds,omitempty"`
 }
 
-// deviceMessage shows a short text message on the TV connected to the receiver
-// (OpenWebif "message"). The text is URL-encoded and bounded.
 func (s *Server) deviceMessage(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
 	if !ok {
@@ -176,8 +161,6 @@ func (s *Server) deviceMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// writeWebFailure answers for a failed request to the receiver's web interface
-// and reports whether it wrote an error.
 func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []byte, err error) bool {
 	switch {
 	case err != nil:
@@ -190,7 +173,7 @@ func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []by
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("The web interface answered HTTP %d.", status), "code": "web_error"})
 		return true
 	}
-	// OpenWebif answers {"result": false, "message": "..."} when it refused the request.
+
 	var reply struct {
 		Result  *bool  `json:"result"`
 		Message string `json:"message"`
@@ -206,8 +189,6 @@ func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []by
 	return false
 }
 
-// press performs a GET on the device's web interface and returns the status and
-// a bounded copy of the body.
 func (d deviceWeb) press(ctx context.Context, pathAndQuery string) (int, []byte, error) {
 	resp, err := d.get(ctx, pathAndQuery)
 	if err != nil {

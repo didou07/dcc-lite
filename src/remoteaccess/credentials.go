@@ -1,6 +1,3 @@
-// Package remoteaccess implements the optional authenticated HTTPS listener:
-// a password store, login sessions with brute-force throttling, and a
-// self-signed certificate helper.
 package remoteaccess
 
 import (
@@ -20,14 +17,12 @@ import (
 )
 
 const (
-	// MinPasswordLength is enforced for passwords chosen by the user.
 	MinPasswordLength = 10
 	maxPasswordLength = 256
 	pbkdf2Iterations  = 310_000
 	credentialsFile   = "remote.json"
 )
 
-// ErrPasswordNotSet is returned when remote access has no password yet.
 var ErrPasswordNotSet = errors.New("remote access password is not set")
 
 type credentialRecord struct {
@@ -38,8 +33,6 @@ type credentialRecord struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// Credentials stores one salted PBKDF2-HMAC-SHA256 password hash in the data
-// directory. The password itself is never written to disk.
 type Credentials struct {
 	mu     sync.Mutex
 	path   string
@@ -47,7 +40,6 @@ type Credentials struct {
 	set    bool
 }
 
-// OpenCredentials loads remote.json from dir if it exists.
 func OpenCredentials(dir string) (*Credentials, error) {
 	c := &Credentials{path: filepath.Join(dir, credentialsFile)}
 	data, err := os.ReadFile(c.path)
@@ -67,14 +59,12 @@ func OpenCredentials(dir string) (*Credentials, error) {
 	return c, nil
 }
 
-// Configured reports whether a password is stored.
 func (c *Credentials) Configured() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.set
 }
 
-// Set stores a user-chosen password.
 func (c *Credentials) Set(password string) error {
 	if err := ValidatePassword(password); err != nil {
 		return err
@@ -82,12 +72,10 @@ func (c *Credentials) Set(password string) error {
 	return c.store(password)
 }
 
-// Generate stores and returns a new random password (shown once to the operator).
-// It is 20 characters from a 31-symbol alphabet without look-alikes (about 99 bits).
 func (c *Credentials) Generate() (string, error) {
 	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 	const length = 20
-	// Rejection sampling keeps every symbol equally likely.
+
 	limit := byte(256 - 256%len(alphabet))
 	var b strings.Builder
 	buffer := make([]byte, 64)
@@ -116,7 +104,6 @@ func (c *Credentials) Generate() (string, error) {
 	return password, nil
 }
 
-// ValidatePassword applies the length policy for chosen passwords.
 func ValidatePassword(password string) error {
 	if len(password) < MinPasswordLength {
 		return fmt.Errorf("the remote password must be at least %d characters", MinPasswordLength)
@@ -154,7 +141,7 @@ func (c *Credentials) store(password string) error {
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 	if err := tmp.Chmod(0o600); err != nil && !errors.Is(err, os.ErrPermission) {
-		// Windows ignores most mode bits; other failures are real.
+
 		_ = tmp.Close()
 		return err
 	}
@@ -174,7 +161,6 @@ func (c *Credentials) store(password string) error {
 	return nil
 }
 
-// Verify checks a password in constant time with respect to the stored hash.
 func (c *Credentials) Verify(password string) bool {
 	c.mu.Lock()
 	record, set := c.record, c.set

@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Download the patched Go toolchain that builds programs able to run on Windows 7/8/8.1
-# (https://github.com/XTLS/go-win7) and print the path of its `go` binary on stdout.
-#   export GO_WIN7="$(scripts/setup-go-win7.sh)"
-#   scripts/build.sh windows7/386 windows7/amd64
-# GO_WIN7_TAG pins the release (default: patched-1.26.5, the newest line that still supports
-# every Windows 7 SP1 install). GO_WIN7_DIR chooses where it is unpacked.
 set -euo pipefail
 
 TAG="${GO_WIN7_TAG:-patched-1.26.5}"

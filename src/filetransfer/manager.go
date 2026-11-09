@@ -1,4 +1,3 @@
-// Package filetransfer lists, copies, edits and transfers files over FTP and on the local disk.
 package filetransfer
 
 import (
@@ -23,7 +22,7 @@ import (
 
 var (
 	ErrSessionNotFound = errors.New("file transfer session not found")
-	ErrSessionLimit    = errors.New("file transfer session limit reached")
+	ErrSessionLimit    = errors.New("Too many file connections to this receiver are busy with transfers. Cancel a transfer or wait for it to finish, then connect again.")
 	ErrTaskNotFound    = errors.New("transfer task not found")
 )
 
@@ -32,6 +31,7 @@ const (
 	maxFileSessionsPerDevice = 2
 	maxTransferTasks         = 100
 	idleSessionTTL           = 2 * time.Hour
+	stalledTransferAfter     = 90 * time.Second
 	maxDirectoryEntries      = 100000
 	maxDirectoryDepth        = 64
 )
@@ -49,7 +49,7 @@ type managedSession struct {
 	adapter core.FileTransfer
 	mu      sync.Mutex
 	closed  bool
-	// lastUsed is guarded by Manager.mu. It decides which idle session is closed first when the limit is reached.
+
 	lastUsed time.Time
 }
 type Manager struct {
@@ -87,8 +87,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		m.mu.Unlock()
 		return SessionInfo{}, errors.New("file transfer manager is closed")
 	}
-	// Sessions left behind by a closed tab, a reload or a dropped connection must never lock the user out:
-	// when a limit is reached, the least recently used session with no running transfer is closed to make room.
+
 	var evicted []*managedSession
 	for {
 		count := m.openingByProfile[profile.ID]
@@ -108,6 +107,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 			return SessionInfo{}, ErrSessionLimit
 		}
 		delete(m.sessions, victim.info.ID)
+		m.cancelSessionTasksLocked(victim.info.ID)
 		evicted = append(evicted, victim)
 	}
 	m.opening++
@@ -138,7 +138,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		adapter, err = OpenResilientFTP(ctx, FTPOptions{Host: profile.Host, Port: port, Username: profile.Username, Password: password})
 	}
 	if err != nil {
-		return SessionInfo{}, err
+		return SessionInfo{}, friendlyConnectError(profile.Host, port, err)
 	}
 	id, err := newFileID()
 	if err != nil {
@@ -204,8 +204,6 @@ func (m *Manager) List(ctx context.Context, sessionID, remotePath string) ([]cor
 	return entries, nil
 }
 
-// DownloadFile and UploadFile expose synchronous operations for trusted internal
-// workflows such as backup/restore. They use the already validated session.
 func (m *Manager) DownloadFile(ctx context.Context, sessionID, remotePath, localPath string) error {
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
 		return adapter.Download(ctx, remotePath, localPath, nil)
@@ -253,8 +251,6 @@ func (m *Manager) get(id string) (*managedSession, error) {
 	return session, nil
 }
 
-// idleSessionLocked returns the least recently used session that has no queued or running transfer,
-// or nil when every candidate is busy. With deviceOnly it only considers the given device. Manager.mu must be held.
 func (m *Manager) idleSessionLocked(profileID string, deviceOnly bool) *managedSession {
 	busy, latest := m.sessionUsageLocked()
 	var victim *managedSession
@@ -272,20 +268,33 @@ func (m *Manager) idleSessionLocked(profileID string, deviceOnly bool) *managedS
 	return victim
 }
 
-// sessionUsageLocked reports which sessions have a queued or running transfer and when each session's tasks last changed.
 func (m *Manager) sessionUsageLocked() (map[string]bool, map[string]time.Time) {
 	busy := make(map[string]bool)
 	latest := make(map[string]time.Time)
+	now := time.Now()
 	for _, task := range m.tasks {
 		id := task.info.SessionID
-		if task.info.State == "queued" || task.info.State == "running" {
+		switch task.info.State {
+		case "queued":
 			busy[id] = true
+		case "running":
+			if now.Sub(task.info.UpdatedAt) < stalledTransferAfter {
+				busy[id] = true
+			}
 		}
 		if task.info.UpdatedAt.After(latest[id]) {
 			latest[id] = task.info.UpdatedAt
 		}
 	}
 	return busy, latest
+}
+
+func (m *Manager) cancelSessionTasksLocked(sessionID string) {
+	for _, task := range m.tasks {
+		if task.info.SessionID == sessionID && (task.info.State == "queued" || task.info.State == "running") {
+			task.cancel()
+		}
+	}
 }
 
 func lastUse(session *managedSession, lastTask time.Time) time.Time {
@@ -299,9 +308,6 @@ func lastUse(session *managedSession, lastTask time.Time) time.Time {
 	return used
 }
 
-// reapIdleLoop closes sessions nobody has used for idleSessionTTL (and that have no running transfer), so a page that was
-// left open for days, or a browser that vanished, does not keep FTP connections open on the receiver. A page that comes
-// back simply reconnects. The loop ends when the manager is closed.
 func (m *Manager) reapIdleLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -395,7 +401,6 @@ func (m *Manager) Sessions() []SessionInfo {
 	return out
 }
 
-// Transfer tasks run outside HTTP requests, exposing bounded progress and cancellation.
 type TaskInfo struct {
 	ID          string                `json:"id"`
 	SessionID   string                `json:"session_id"`
@@ -407,8 +412,7 @@ type TaskInfo struct {
 	Progress    core.TransferProgress `json:"progress"`
 	Error       string                `json:"error,omitempty"`
 	Warning     string                `json:"warning,omitempty"`
-	// Staged marks a transfer whose local side is the private staging folder:
-	// the file comes from, or goes to, the user's browser.
+
 	Staged    bool      `json:"staged,omitempty"`
 	CanResume bool      `json:"can_resume"`
 	CreatedAt time.Time `json:"created_at"`
@@ -434,9 +438,6 @@ func (m *Manager) StartTransfer(sessionID, direction, localRelative, remotePath 
 	return m.startTransfer(sessionID, direction, localRelative, remotePath, overwrite, isDirectory, local, false)
 }
 
-// StartStagedTransfer is StartTransfer for a file that lives in the staging
-// folder: an upload whose bytes the browser just sent, or a download the browser
-// will fetch when it finishes.
 func (m *Manager) StartStagedTransfer(sessionID, direction, stagedRelative, remotePath string, overwrite bool, staging *LocalFS) (TaskInfo, error) {
 	return m.startTransfer(sessionID, direction, stagedRelative, remotePath, overwrite, false, staging, true)
 }
@@ -635,8 +636,7 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 		info.Progress.Fraction = 1
 		info.UpdatedAt = time.Now().UTC()
 	})
-	// The bytes that came from the browser are no longer needed once the
-	// receiver has them. (A staged download stays until the browser fetched it.)
+
 	if task.info.Staged && task.info.Direction == "upload" {
 		removeStagedFiles(task)
 	}
@@ -670,8 +670,7 @@ func commitRemoteFile(ctx context.Context, adapter core.FileTransfer, partialPat
 		if err := adapter.Rename(ctx, partialPath, remotePath); err != nil {
 			return err
 		}
-		// Recover a previous commit attempt that preserved the original file
-		// but lost the connection before the new file could be installed.
+
 		if backupExists {
 			_ = adapter.Remove(ctx, backup, false)
 		}
@@ -817,13 +816,13 @@ func estimateTransferProgress(progress core.TransferProgress, previousBytes int6
 		if previousSpeed <= 0 {
 			previousSpeed = instant
 		} else {
-			// Smooth short bursts while keeping the display responsive to changes.
+
 			previousSpeed = previousSpeed*0.70 + instant*0.30
 		}
 		previousBytes = progress.BytesDone
 		previousAt = now
 	} else if elapsed >= 2 {
-		// Do not keep showing an old transfer rate when the remote has stalled.
+
 		previousSpeed = 0
 		previousBytes = progress.BytesDone
 		previousAt = now
@@ -857,8 +856,6 @@ func (m *Manager) finishTask(task *taskEntry, state, message string) {
 	current.info.CanResume = (state == "failed" || state == "cancelled") && !current.info.IsDirectory && supportsResume
 }
 
-// ResumeTask continues a failed or cancelled single-file transfer in the same
-// task row. It refuses changed local upload sources and closed sessions.
 func (m *Manager) ResumeTask(id string) (TaskInfo, error) {
 	m.mu.Lock()
 	entry, ok := m.tasks[id]
@@ -912,9 +909,6 @@ func (m *Manager) ResumeTask(id string) (TaskInfo, error) {
 	return initial, nil
 }
 
-// RestartTask restarts a finished single-file or directory transfer from byte
-// zero. It reuses the task row and the task-owned temporary name, and removes
-// an interrupted local download part before creating it again.
 func (m *Manager) RestartTask(id string) (TaskInfo, error) {
 	m.mu.Lock()
 	entry, ok := m.tasks[id]
@@ -969,9 +963,6 @@ func (m *Manager) RestartTask(id string) (TaskInfo, error) {
 	return initial, nil
 }
 
-// findTaskSessionLocked prefers the original live session, then the most
-// recently opened session for the exact same saved device and protocol.
-// Caller must hold m.mu.
 func (m *Manager) findTaskSessionLocked(entry *taskEntry) *managedSession {
 	if entry == nil || entry.session == nil {
 		return nil
@@ -1105,9 +1096,7 @@ func (m *Manager) pruneTasksLocked() []*taskEntry {
 			removed = append(removed, entry)
 		}
 	}
-	// A big batch (a whole folder of files) can fill the list within minutes.
-	// Finished transfers are only history, so make room by dropping the oldest
-	// completed ones rather than refusing new work.
+
 	if len(m.tasks) >= maxTransferTasks {
 		var done []*taskEntry
 		for _, entry := range m.tasks {
@@ -1372,3 +1361,21 @@ func downloadFile(ctx context.Context, adapter core.FileTransfer, local *LocalFS
 func RemoteParent(value string) string { return path.Dir(value) }
 
 var _ = fmt.Sprintf
+
+func friendlyConnectError(host string, port int, err error) error {
+	lower := strings.ToLower(err.Error())
+	at := host + ":" + strconv.Itoa(port)
+	switch {
+	case strings.Contains(lower, "login failed"):
+		return errors.New("The receiver rejected the user name or password for FTP.")
+	case strings.Contains(lower, "refused"):
+		return fmt.Errorf("Nothing answers for FTP at %s. Check the FTP port, and that the receiver is on (its FTP service may be off or restarting).", at)
+	case strings.Contains(lower, "no route to host") || strings.Contains(lower, "network is unreachable") || strings.Contains(lower, "no such host"):
+		return fmt.Errorf("Cannot reach %s. Check that the receiver is on and on the same network.", at)
+	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded"):
+		return fmt.Errorf("The receiver at %s did not reply in time for FTP. It may be busy; try again in a moment.", at)
+	case strings.Contains(lower, "reset by peer") || strings.Contains(lower, "eof"):
+		return fmt.Errorf("The receiver closed the FTP connection at %s (busy or restarting). Try again in a moment.", at)
+	}
+	return err
+}

@@ -13,21 +13,19 @@ import (
 	"github.com/didou07/dcc-lite/src/remoteaccess"
 )
 
-// remoteSettings are the command-line options of the optional HTTPS listener.
 type remoteSettings struct {
 	Listen    string
 	CertFile  string
 	KeyFile   string
-	ExtraHost string // comma-separated names or IPs added to the self-signed certificate
-	Plain     bool   // serve plain HTTP instead of HTTPS (not encrypted)
+	ExtraHost string
+	Plain     bool
 }
 
-// remotePlan is everything needed to start the HTTPS listener.
 type remotePlan struct {
 	Auth        *remoteaccess.Auth
 	Creds       *remoteaccess.Credentials
 	Certificate remoteaccess.Certificate
-	// NewPassword is set only when a password was generated on this start.
+
 	NewPassword string
 }
 
@@ -49,7 +47,6 @@ func validateRemoteListen(address, loopback string) error {
 	return nil
 }
 
-// prepareRemote loads or creates the password and TLS certificate.
 func prepareRemote(dataDir string, settings remoteSettings) (remotePlan, error) {
 	if (settings.CertFile == "") != (settings.KeyFile == "") {
 		return remotePlan{}, errors.New("--tls-cert and --tls-key must be given together")
@@ -68,7 +65,7 @@ func prepareRemote(dataDir string, settings remoteSettings) (remotePlan, error) 
 	}
 	plan.Creds = creds
 	if settings.Plain {
-		// No certificate at all: the listener speaks plain HTTP.
+
 		plan.Auth = remoteaccess.NewPlainAuth(creds)
 		return plan, nil
 	}
@@ -94,8 +91,6 @@ func prepareRemote(dataDir string, settings remoteSettings) (remotePlan, error) 
 	return plan, nil
 }
 
-// manageRemotePassword implements --set-remote-password and --reset-remote-password.
-// It returns true when a management action ran and the program should exit.
 func manageRemotePassword(dataDir string, set, reset bool, in io.Reader, out io.Writer) (bool, error) {
 	if !set && !reset {
 		return false, nil
@@ -128,8 +123,6 @@ func manageRemotePassword(dataDir string, set, reset bool, in io.Reader, out io.
 	return true, nil
 }
 
-// tlsNoiseFilter drops the "TLS handshake error" lines Go logs whenever a
-// browser rejects a self-signed certificate or a scanner connects.
 type tlsNoiseFilter struct{}
 
 func (tlsNoiseFilter) Write(p []byte) (int, error) {

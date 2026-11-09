@@ -1,5 +1,3 @@
-// Package httpapi is the HTTP and WebSocket server. server.go registers every route;
-// the other files hold the handlers, one topic per file (see the table in README.md).
 package httpapi
 
 import (
@@ -16,23 +14,22 @@ import (
 
 type Server struct {
 	app *app.App
-	// remote is nil for the loopback listener and set for the authenticated HTTPS listener.
+
 	remote *remoteMode
-	// names caches channel names read from lamedb.
+
 	names nameCache
-	// scanning is set while a network scan runs; only one runs at a time.
+
 	scanning atomic.Bool
 }
 
-// New returns the handler for the loopback-only listener.
 func New(application *app.App) http.Handler {
 	s := &Server{app: application}
 	mux := s.routes()
-	// Only the loopback interface may manage remote access.
+
 	mux.HandleFunc("GET /api/v1/remote-access", s.getRemoteAccess)
 	mux.HandleFunc("PUT /api/v1/remote-access", s.putRemoteAccess)
 	mux.HandleFunc("POST /api/v1/remote-access/password", s.setRemotePassword)
-	// A saved receiver password is shown back only on this computer, never to a remote visitor.
+
 	mux.HandleFunc("GET /api/v1/profiles/{id}/password", s.revealCredential)
 	return secureHeaders(localOnly(mux))
 }
@@ -114,7 +111,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/files/transfers/{id}/restart", s.restartFileTransfer)
 	mux.HandleFunc("PUT /api/v1/profiles/{id}/password", s.setCredential)
 	mux.HandleFunc("DELETE /api/v1/profiles/{id}/password", s.deleteCredential)
-	// Compatibility aliases for early preview builds; these now store passwords locally.
+
 	mux.HandleFunc("PUT /api/v1/profiles/{id}/credential", s.setCredential)
 	mux.HandleFunc("DELETE /api/v1/profiles/{id}/credential", s.deleteCredential)
 	mux.HandleFunc("POST /api/v1/profiles", s.createProfile)
@@ -156,7 +153,7 @@ func (s *Server) staticFiles() http.Handler {
 	}
 	files := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The UI ships inside the executable; always revalidate so an upgrade is never masked by a stale cache.
+
 		w.Header().Set("Cache-Control", "no-cache")
 		files.ServeHTTP(w, r)
 	})

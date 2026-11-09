@@ -1,13 +1,11 @@
 "use strict";
-/* ───────────── Remote access (HTTPS) settings ─────────────
-   Only the local page (127.0.0.1) can change these; the HTTPS page never offers them. */
 function raShowError(message) {
   const node = $("#raError");
   node.hidden = !message;
   node.textContent = message || "";
 }
 function raShowSecret(password) {
-  $("#raPass").value = password || ""; // a generated password is shown right in the password field
+  $("#raPass").value = password || "";
 }
 function raRender(status) {
   if (!status) return;

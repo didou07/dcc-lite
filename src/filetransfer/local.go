@@ -31,9 +31,6 @@ func NewLocalFS() (*LocalFS, error) {
 	return &LocalFS{root: filepath.Clean(root)}, nil
 }
 
-// NewLocalFSAt roots a LocalFS at an explicit directory (created when missing).
-// DCC Lite uses it for the private staging folder that carries files between
-// the browser and the receiver.
 func NewLocalFSAt(dir string) (*LocalFS, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create staging directory: %w", err)
@@ -45,7 +42,6 @@ func NewLocalFSAt(dir string) (*LocalFS, error) {
 	return &LocalFS{root: filepath.Clean(root)}, nil
 }
 
-// Root is the absolute directory this LocalFS is confined to.
 func (f *LocalFS) Root() string { return f.root }
 
 func (f *LocalFS) RootLabel() string { return "Home" }
@@ -120,8 +116,6 @@ func (f *LocalFS) cleanRelativePath(relative string) (string, error) {
 	return clean, nil
 }
 
-// EnsureDir creates missing path components one at a time. This avoids
-// os.MkdirAll following an unchecked symlink outside the permitted root.
 func (f *LocalFS) EnsureDir(relative string) error {
 	clean, err := f.cleanRelativePath(relative)
 	if err != nil {

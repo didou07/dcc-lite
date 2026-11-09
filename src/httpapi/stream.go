@@ -13,8 +13,6 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 )
 
-// Watch on the computer: an .m3u playlist for VLC or any other player.
-
 const defaultStreamPort = 8001
 
 var m3uFileName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -33,8 +31,6 @@ func cleanChannelName(name string) string {
 	return out
 }
 
-// streamM3U builds the playlist the receiver itself would give, as a fallback:
-// the standard Enigma2 streaming port serves the channel at /<service reference>.
 func streamM3U(profile config.Profile, ref, name string) string {
 	host := strings.TrimSpace(profile.Host)
 	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil && strings.Contains(ip.String(), ":") {
@@ -49,9 +45,6 @@ func streamM3U(profile config.Profile, ref, name string) string {
 	return b.String()
 }
 
-// deviceStream sends an .m3u file for one channel. The receiver's own playlist
-// is used when it answers (it knows the streaming port and any login); if not,
-// the standard address is written.
 func (s *Server) deviceStream(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {

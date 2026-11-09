@@ -1,4 +1,4 @@
-/* DCC Lite — FTP & Terminal. One stylesheet, light and dark themes. */
+
 :root {
   --bg: #f2f3f5; --surface: #ffffff; --surface-2: #f0f2f4; --surface-3: #e3e6ea;
   --border: #d3d8de; --border-strong: #aeb6bf;
@@ -54,11 +54,9 @@ kbd { background: var(--surface-3); border: 1px solid var(--border); border-bott
 .vr { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--border); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Icons */
 .ic { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .ic.sm { width: 15px; height: 15px; } .ic.xl { width: 44px; height: 44px; stroke-width: 1.4; }
 
-/* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 13px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-weight: 550; cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, transform .05s; }
 .btn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--accent); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
@@ -74,7 +72,6 @@ kbd { background: var(--surface-3); border: 1px solid var(--border); border-bott
 .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .icon-btn.on { color: var(--accent-ink); background: var(--accent-soft); }
 
-/* Top bar */
 .topbar { flex: none; height: var(--topbar-h); display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: 0 2px 10px rgb(0 0 0 / .08); position: relative; z-index: 2; }
 .topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: linear-gradient(90deg, var(--accent), transparent 70%); opacity: .7; pointer-events: none; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 600; letter-spacing: .2px; }
@@ -97,7 +94,6 @@ input:focus, select:focus { border-color: var(--accent); outline: 2px solid var(
 .dot[data-state="checking"] { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
 
-/* Layout */
 main { flex: 1 1 auto; min-height: 0; display: flex; }
 .view { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 12px; overflow: auto; }
 #view-files, #view-terminal { overflow: hidden; }
@@ -107,7 +103,6 @@ main { flex: 1 1 auto; min-height: 0; display: flex; }
 .view-head p { margin: 4px 0 0; }
 .view-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* Devices */
 .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 14px; align-content: start; }
 .device-card { transition: transform .12s, box-shadow .12s, border-color .12s; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .device-card:hover { transform: translateY(-1px); border-color: var(--border-strong); }
@@ -127,7 +122,6 @@ main { flex: 1 1 auto; min-height: 0; display: flex; }
 .empty { margin: auto; max-width: 440px; text-align: center; display: grid; gap: 10px; justify-items: center; padding: 40px 10px; color: var(--muted); }
 .empty h2 { color: var(--text); font-size: 20px; } .empty p { margin: 0; }
 
-/* Connection bar */
 .connbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: var(--radius-sm); }
 .seg button { min-height: 30px; padding: 0 14px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
@@ -138,7 +132,6 @@ main { flex: 1 1 auto; min-height: 0; display: flex; }
 .notice { margin: 0; padding: 6px 12px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }
 .notice.safe { background: var(--ok-soft); color: var(--ok); }
 
-/* File commander */
 .pane-switch { display: none; gap: 4px; padding: 3px; background: var(--surface-3); border-radius: var(--radius-sm); }
 .pane-switch button { flex: 1; min-height: 34px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
 .pane-switch button[aria-selected="true"] { background: var(--surface); color: var(--accent-ink); }
@@ -186,12 +179,8 @@ table.files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .hint { color: var(--muted); font-size: 12.5px; }
 .only-mobile { display: none; }
 
-/* Transfers: compact rows, a short list, and nothing but the header when idle */
-/* The list used to be capped at 176 px (three rows) and was rebuilt every second, which also threw the scroll
-   position back to the top. It now gets a usable height that the user can change with the handle on top. */
 .queue { --queue-h: 280px; position: relative; flex: 0 0 auto; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-/* Compact by default: as tall as its rows, up to a small cap, so the file panes keep the room.
-   After the handle was dragged (.sized) the chosen height is used. */
+
 .queue:not(.empty):not(.collapsed) { height: auto; max-height: clamp(96px, 24vh, 180px); }
 .queue.sized:not(.empty):not(.collapsed) { height: clamp(96px, var(--queue-h), 72vh); max-height: none; }
 .queue.dragging-size { user-select: none; }
@@ -239,7 +228,6 @@ body.browser-files .actionbar .hint { display: none; }
 .t-actions { display: flex; gap: 2px; }
 .t-actions .icon-btn { width: 28px; height: 28px; }
 
-/* Terminal */
 .termtabs { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .termtabs-list { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; min-width: 0; padding-bottom: 2px; }
 .tt { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--muted); cursor: pointer; white-space: nowrap; flex: none; max-width: 240px; }
@@ -262,7 +250,6 @@ body.browser-files .actionbar .hint { display: none; }
 .quickkeys button { min-width: 44px; min-height: 36px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
 .termframe:fullscreen { border-radius: 0; }
 
-/* Dialogs, menu, toast */
 dialog { border: 0; padding: 0; background: transparent; color: var(--text); max-width: min(520px, calc(100vw - 24px)); width: 100%; }
 dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .dialog-card { display: grid; gap: 12px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); }
@@ -277,7 +264,7 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .ask-message { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
 .ask-message:empty { display: none; }
 .ask-message code { white-space: pre-wrap; }
-/* Remote text editor */
+
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .badge:empty { display: none; }
 #editorDialog { max-width: min(1000px, calc(100vw - 24px)); }
@@ -307,7 +294,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.error { background: #8e1d24; }
 
-/* Responsive */
 @media (max-width: 1100px) { .hide-sm { display: none; } .files th:nth-child(1) { width: auto; } }
 @media (max-width: 900px) {
   :root { --topbar-h: 52px; }
@@ -343,14 +329,12 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 @media (hover: none) { .quickkeys { display: flex; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
-/* Remote access sign-in page */
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); }
 .login-card { width: min(400px, 100%); display: grid; gap: 14px; padding: 28px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); }
 .login-card h1 { margin: 0; font-size: 20px; }
 .login-card p { margin: 0; }
 .login-card .btn { justify-content: center; min-height: 40px; }
 
-/* Network scan */
 #scanDialog { max-width: min(620px, calc(100vw - 24px)); }
 .scan-card { gap: 10px; }
 .scan-card h2, .scan-card p { margin: 0; }
@@ -363,7 +347,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .scan-host small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scan-tags { display: flex; gap: 4px; flex-wrap: wrap; }
 
-/* Bouquet editor */
 #bouquetDialog { max-width: min(1040px, calc(100vw - 24px)); }
 #bqDir { width: 190px; }
 .bq-body { display: grid; grid-template-columns: minmax(190px, 260px) 1fr; gap: 12px; min-height: 0; }
@@ -383,7 +366,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .bq-toolbar h2 { font-size: 15px; } .bq-toolbar code { max-width: 28ch; color: var(--muted); }
 @media (max-width: 720px) { .bq-body { grid-template-columns: 1fr; } .bq-list, .bq-entries { height: 30vh; } #bqDir { width: 130px; } .lists-bar { gap: 8px; } }
 
-/* Live screen (a main tab, next to Terminal) */
 #view-screen { overflow: auto; gap: 10px; }
 .screen-head { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .screen-head h2 { margin: 0; }
@@ -396,7 +378,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .screen-stage p { margin: 0; color: #9aa4b8; }
 #screenStats { margin: 0; }
 
-/* Terminal: the hidden keyboard box must never show a caret, handle, ring or helper icon (Edge). */
 .terminal-screen .xterm-helper-textarea {
   caret-color: transparent !important; color: transparent !important; background: transparent !important;
   outline: 0 !important; box-shadow: none !important; border: 0 !important;
@@ -408,7 +389,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .terminal-screen .xterm-helper-textarea::-ms-clear,
 .terminal-screen .xterm-helper-textarea::-ms-reveal { display: none !important; }
 
-/* Live screen: remote | picture | channels */
 .screen-body { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
 .screen-main { flex: 1 1 0; min-width: 0; display: grid; gap: 8px; }
 .remote, .channels { flex: none; position: sticky; top: 0; display: grid; gap: 8px; padding: 8px; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: var(--shadow); }
@@ -436,7 +416,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .remote-refresh { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .remote .form-error { margin: 0; font-size: 12px; }
 
-/* Now playing strip (modelled on the OpenWebif "current channel" box) */
 .nowbar { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 8px 12px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .now-text { min-width: 0; display: grid; gap: 1px; }
 .now-ch { font-weight: 700; font-size: 15px; }
@@ -453,7 +432,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .picon-letter { font-weight: 700; color: var(--muted); }
 .picon.has-img .picon-letter { visibility: hidden; }
 
-/* Channel list (right) */
 .channels { width: 290px; order: 2; height: min(calc(100vh - 210px), 820px); min-height: 320px; grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .ch-tools { display: grid; gap: 6px; }
 .ch-tools .seg { justify-self: stretch; } .ch-tools .seg button { flex: 1; }
@@ -488,7 +466,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
   .screen-stage img { max-height: 60vh; }
 }
 
-/* Remote access dialog */
 .ra-state { margin: 0; font-weight: 650; }
 .ra-state[data-state="on"] { color: var(--ok); } .ra-state[data-state="off"] { color: var(--muted); }
 .ra-info { display: grid; gap: 6px; padding: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
@@ -501,7 +478,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .ra-cert { display: grid; gap: 6px; } .ra-cert p { margin: 0; } .ra-cert[hidden] { display: none; }
 #raDialog select { width: 100%; }
 
-/* Terminal: history and paste */
 .hist-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; background: var(--surface-2); }
 .hist-item { display: flex; align-items: center; gap: 4px; }
 .hist-cmd { flex: 1 1 auto; min-width: 0; text-align: left; padding: 6px 8px; border: 0; background: transparent; color: var(--text); border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -511,7 +487,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 #pasteText { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px; resize: vertical; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
 .tt.dragging { opacity: .5; }
 
-/* Receiver power dialog: power buttons on the left, MultiBoot slots on the right */
 #powerDialog { max-width: min(780px, calc(100vw - 24px)); }
 .power-head { display: flex; align-items: center; gap: 10px; }
 .power-head h2 { margin: 0; }
@@ -532,9 +507,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .power-note:empty { display: none; }
 @media (max-width: 640px) { .power-body { grid-template-columns: 1fr; } }
 
-/* One rule for every row of dialog buttons: secondary actions on the left, then a gap,
-   then Cancel/Close, and the main action last on the right. Rows wrap instead of overflowing,
-   and on a phone the buttons share the width so they are easy to hit. */
 .dialog-actions { flex-wrap: wrap; }
 .dialog-actions .spacer { flex: 1 1 0; min-width: 0; }
 @media (max-width: 520px) {
@@ -543,7 +515,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
   .dialog-actions .spacer { display: none; }
 }
 
-/* Device information on the device card */
 .device-info { display: grid; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12.5px; }
 .device-info .info-head { display: flex; align-items: center; gap: 6px; }
 .device-info .info-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; margin: 0; }
@@ -558,7 +529,6 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .info-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .info-list .muted { color: var(--muted); }
 
-/* Device tools dialog */
 .tools-card { width: min(640px, 94vw); }
 .tools-body { display: grid; gap: 14px; padding: 4px 2px; max-height: 70vh; overflow: auto; }
 .tools-sec { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
@@ -573,14 +543,12 @@ dialog::backdrop { background: rgb(4 7 9 / .6); backdrop-filter: blur(2px); }
 .ch-item:hover .ch-pc, .ch-item:focus-visible .ch-pc { display: inline-flex; }
 .ch-pc:hover { color: var(--accent-ink); background: var(--surface-3); }
 
-/* ───────── Polish: depth, colour and consistency ───────── */
 :root { --ft-image: #a855f7; --ft-archive: #e0752b; --ft-code: #3b82f6; --ft-box: #22a35a; --ft-video: #ec4899; --ft-audio: #0ea5e9; --ft-gear: #8794a3; --ft-text: #6b7a88; --radius: 12px; --radius-sm: 8px; }
 body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%), var(--bg); }
 ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; } ::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: content-box; border: 2px solid transparent; }
 
-/* Buttons */
 .btn { box-shadow: 0 1px 1px rgb(15 23 42 / .06); font-weight: 600; }
 .btn:hover:not(:disabled) { box-shadow: 0 2px 6px rgb(15 23 42 / .12); }
 .btn.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent)); box-shadow: 0 1px 2px rgb(13 124 114 / .35), inset 0 1px 0 rgb(255 255 255 / .18); }
@@ -590,13 +558,11 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .icon-btn[title*="Delete"]:hover:not(:disabled), .icon-btn[title*="delete"]:hover:not(:disabled) { background: var(--bad-soft); color: var(--bad); }
 .seg button { transition: background .12s, color .12s; }
 
-/* Top bar and tabs */
 .topbar { background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(8px); }
 .tab { border-radius: 9px; transition: background .12s, color .12s; }
 .tab .ic { opacity: .85; }
 .tab[aria-selected="true"] .ic { opacity: 1; }
 
-/* Device cards */
 .device-card { border-radius: 14px; position: relative; overflow: hidden; }
 .device-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--border); }
 .device-card.current::before { background: linear-gradient(90deg, var(--accent), transparent); }
@@ -610,7 +576,6 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .device-actions .btn { flex: 1 1 0; min-width: 84px; padding: 0 8px; }
 .empty .ic.xl { box-sizing: content-box; padding: 18px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); }
 
-/* File lists */
 .files th { text-transform: uppercase; font-size: 11px; letter-spacing: .5px; }
 .files .ic.ft-image { color: var(--ft-image); } .files .ic.ft-archive { color: var(--ft-archive); } .files .ic.ft-code { color: var(--ft-code); }
 .files .ic.ft-box { color: var(--ft-box); } .files .ic.ft-video { color: var(--ft-video); } .files .ic.ft-audio { color: var(--ft-audio); }
@@ -624,7 +589,6 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .actionbar .btn kbd { margin-left: 2px; }
 .queue, .connbar, .screen-tools, .nowbar { box-shadow: var(--shadow); }
 
-/* Remote control: round D-pad, tinted volume / channel keys */
 .remote, .channels { border-radius: 16px; }
 .rk { border-radius: 8px; box-shadow: 0 1px 0 rgb(15 23 42 / .12); }
 .rk.nav { background: var(--surface-3); }
@@ -634,12 +598,10 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .rk.vol:hover, .rk.ch:hover { background: var(--accent-soft); }
 .rk.red, .rk.green, .rk.yellow, .rk.blue { border-radius: 99px; min-height: 16px; box-shadow: none; }
 
-/* Channels */
 .ch-item { border-radius: 9px; transition: background .1s; }
 .ch-item.current { box-shadow: inset 3px 0 0 var(--accent); }
 .picon { border-radius: 7px; }
 
-/* Dialogs, menus, toast */
 .dialog-card { border-radius: 16px; }
 .menu { border-radius: 12px; }
 .menu button { border-radius: 8px; }
@@ -650,7 +612,6 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .device-card .avatar { width: 40px; height: 40px; }
 .device-name { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 
-/* Clickable path (breadcrumbs) */
 .crumbs { display: flex; align-items: center; gap: 2px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; padding: 1px 0; }
 .crumbs::-webkit-scrollbar { display: none; }
 .crumb { display: inline-flex; align-items: center; min-height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
@@ -658,17 +619,14 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .crumb.last { color: var(--accent-ink); background: var(--accent-soft); }
 .crumb-sep { color: var(--faint); font-size: 14px; }
 
-/* Loading: shimmering placeholder rows instead of bare text */
 .pane-empty.loading::before { content: ""; position: absolute; left: 12px; right: 12px; top: 0; height: 120px; border-radius: 8px; opacity: .6; background: repeating-linear-gradient(180deg, var(--surface-3) 0 14px, transparent 14px 34px); -webkit-mask-image: linear-gradient(90deg, #000 20%, transparent 60%, #000 85%); mask-image: linear-gradient(90deg, #000 20%, transparent 60%, #000 85%); animation: shimmer 1.2s ease-in-out infinite; }
 .pane-empty.loading { padding-top: 140px; }
 @keyframes shimmer { 50% { opacity: .25; } }
 
-/* Toast with an icon bubble */
 .toast { display: flex; align-items: center; gap: 10px; }
 .toast::before { content: "✓"; display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 800; }
 .toast.error::before { content: "!"; background: #ffb4b8; color: #6b0f16; }
 
-/* ───────── Guide: programmes, timers and recordings ───────── */
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
@@ -735,7 +693,6 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
   .gd-tools select { flex: 1 1 40%; max-width: none; }
 }
 
-/* Phones: the Screen toolbar is two short rows (three selects, then icon buttons) instead of four */
 @media (max-width: 640px) {
   .screen-tools { gap: 6px; padding: 8px; }
   .screen-tools .field-inline { display: grid; flex: 1 1 28%; gap: 2px; min-width: 0; font-size: 11.5px; color: var(--muted); }
@@ -745,7 +702,6 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
   .screen-tools .btn .ic { margin: 0; }
 }
 
-/* Signal meter */
 #view-signal { overflow: auto; gap: 12px; }
 .sig-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .sig-title { display: flex; align-items: baseline; gap: 12px; min-width: 0; } .sig-title h2 { margin: 0; }
@@ -755,20 +711,27 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
 .sig-main { --sig: var(--faint); display: flex; flex-direction: column; gap: 14px; padding: 18px; position: relative; overflow: hidden; }
 .sig-main::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 160px; pointer-events: none; background: radial-gradient(ellipse 70% 100% at 50% 0, color-mix(in srgb, var(--sig) 22%, transparent), transparent); transition: background .4s; }
 .sig-main > * { position: relative; }
-.sig-main[data-level="ok"] { --sig: var(--ok); } .sig-main[data-level="mid"] { --sig: var(--warn); } .sig-main[data-level="low"] { --sig: var(--bad); }
+.sig-main[data-level="ok"] { --sig: var(--ok); } .sig-main[data-level="mid"] { --sig: color-mix(in srgb, var(--warn) 70%, #ffb000); } .sig-main[data-level="low"] { --sig: var(--bad); }
 .sig-channel { min-height: 1.4em; text-align: center; font-weight: 650; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sig-gauge { position: relative; width: min(100%, 340px); margin: 0 auto; flex: 1 1 auto; display: grid; align-items: center; }
-.sig-gauge svg { width: 100%; height: auto; display: block; overflow: visible; }
-.sig-gauge path { fill: none; stroke-linecap: round; stroke-width: 12; }
-.g-track { stroke: var(--surface-3); }
-.g-fill { stroke: var(--sig); transition: stroke-dasharray .3s ease, stroke .3s; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--sig) 70%, transparent)); }
-.g-ticks line { stroke: var(--border-strong); stroke-width: 1.4; stroke-linecap: round; }
-.g-thr { stroke: var(--ok); stroke-width: 2.5; stroke-linecap: round; transform-origin: 100px 100px; }
-.g-peak { stroke: var(--text); stroke-width: 3; stroke-linecap: round; transform-origin: 100px 100px; transition: transform .3s; }
-.sig-readout { position: absolute; left: 0; right: 0; top: 36%; text-align: center; }
-.sig-big { display: flex; align-items: baseline; justify-content: center; gap: 4px; font-weight: 780; line-height: 1; color: var(--sig); font-variant-numeric: tabular-nums; transition: color .3s; }
-.sig-big span { font-size: clamp(52px, 11vw, 84px); letter-spacing: -.02em; } .sig-big small { font-size: 24px; color: var(--muted); font-weight: 650; }
-.sig-cap { margin-top: 6px; font-size: 12px; font-weight: 750; letter-spacing: .22em; color: var(--faint); }
+.sig-meter { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 6px 0 4px; }
+.sig-big { display: flex; align-items: baseline; justify-content: center; gap: 6px; font-weight: 780; line-height: 1; color: var(--sig); font-variant-numeric: tabular-nums; transition: color .3s; }
+.sig-big span { font-size: clamp(76px, 14vw, 112px); letter-spacing: -.035em; } .sig-big small { font-size: 28px; color: var(--muted); font-weight: 650; }
+.sig-cap { font-size: 11.5px; font-weight: 750; letter-spacing: .24em; color: var(--faint); }
+.sig-trend { margin-top: 10px; min-height: 24px; display: flex; justify-content: center; }
+.sig-trend span { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--surface-2); color: var(--muted); }
+.sig-trend span:empty { display: none; }
+.sig-trend[data-dir="up"] span { background: var(--ok-soft); color: var(--ok); }
+.sig-trend[data-dir="down"] span { background: var(--bad-soft); color: var(--bad); }
+.sig-bar-wrap { width: 100%; margin-top: 14px; }
+.sig-flags { position: relative; height: 18px; }
+.flag-best { position: absolute; bottom: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; font-size: 11px; line-height: 1; color: var(--ok); transition: left .3s; }
+.flag-best b { display: none; }
+.sig-bar { position: relative; display: flex; gap: 2px; height: 52px; }
+.sig-bar > span { flex: 1 1 0; border-radius: 3px; background: color-mix(in srgb, var(--c) 13%, var(--surface-3)); transition: background .15s; }
+.sig-bar > span[data-z="bad"] { --c: var(--bad); } .sig-bar > span[data-z="warn"] { --c: color-mix(in srgb, var(--warn) 70%, #ffb000); } .sig-bar > span[data-z="ok"] { --c: var(--ok); }
+.sig-bar > span.on { background: var(--c); }
+.sig-bar .thr { position: absolute; top: -5px; bottom: -5px; width: 0; border-left: 2px dashed var(--text); opacity: .5; transform: translateX(-1px); pointer-events: none; }
+.sig-axis { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; font-weight: 650; color: var(--faint); font-variant-numeric: tabular-nums; }
 .sig-state { align-self: center; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 13.5px; color: var(--sig); background: color-mix(in srgb, var(--sig) 14%, transparent); text-align: center; }
 .sig-state i { width: 9px; height: 9px; border-radius: 50%; background: var(--sig); flex: none; box-shadow: 0 0 8px var(--sig); }
 .sig-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -795,11 +758,13 @@ body { background: radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, 
   .sig-tools .field-inline select { flex: 1; }
 }
 @media (max-width: 900px) {
-  .screen-tools.sig-tools .btn { flex: 1 1 calc(50% - 6px); gap: 7px; font-size: 13px; }
-  .screen-tools.sig-tools .field-inline { flex: 1 1 calc(50% - 6px); font-size: 12.5px; }
+  .screen-tools.sig-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .screen-tools.sig-tools .btn, .screen-tools.sig-tools .field-inline { min-width: 0; width: 100%; flex: none; justify-content: center; gap: 6px; font-size: 13px; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+  .screen-tools.sig-tools .field-inline { justify-content: space-between; }
+  .screen-tools.sig-tools .btn span { overflow: hidden; text-overflow: ellipsis; }
+  .sig-bar { height: 44px; }
 }
 
-/* ═══════════ Polish layer (whole app) ═══════════ */
 :root { color-scheme: light; --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent); --ease: cubic-bezier(.2, .7, .2, 1); }
 :root[data-theme="dark"] { color-scheme: dark; }
 @media (prefers-color-scheme: dark) { :root[data-theme="auto"] { color-scheme: dark; } }
@@ -809,14 +774,12 @@ body { background:
   radial-gradient(900px 520px at -8% 112%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%),
   var(--bg); background-attachment: fixed; }
 
-/* Scrollbars */
 * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-thumb { background: var(--border-strong); border: 3px solid transparent; background-clip: content-box; border-radius: 99px; }
 *::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: content-box; }
 *::-webkit-scrollbar-track { background: transparent; }
 
-/* Top bar: frosted glass, glowing brand mark, pill tabs */
 .topbar { background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); }
 .brand-mark { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 4px 14px color-mix(in srgb, var(--accent) 45%, transparent); }
 .tab { position: relative; transition: background .15s, color .15s, transform .1s; }
@@ -824,11 +787,9 @@ body { background:
 .tab .ic { transition: transform .2s var(--ease); } .tab:hover .ic, .tab[aria-selected="true"] .ic { transform: translateY(-1px) scale(1.08); }
 .tab[aria-selected="true"] { background: linear-gradient(180deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 50%, transparent)); box-shadow: inset 0 -2px 0 var(--accent), 0 6px 14px -8px color-mix(in srgb, var(--accent) 60%, transparent); }
 
-/* Views fade in */
 .view:not([hidden]) { animation: viewIn .28s var(--ease); }
 @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-/* Buttons & fields */
 .btn { border-radius: 9px; transition: background .12s, border-color .12s, transform .08s, box-shadow .15s; }
 .btn:hover:not(:disabled) { box-shadow: 0 4px 12px -6px rgb(15 23 42 / .35); }
 .btn:active:not(:disabled) { transform: translateY(1px) scale(.985); box-shadow: none; }
@@ -840,7 +801,6 @@ select, input[type="text"], input[type="number"], input[type="password"], input[
 input:focus, select:focus { outline: none; box-shadow: var(--ring); }
 .seg { border-radius: 10px; } .seg button { border-radius: 8px; transition: background .12s, color .12s; }
 
-/* Cards */
 .device-card, .pane, .queue, .connbar, .screen-tools, .nowbar, .remote, .channels, .dialog-card { border-color: color-mix(in srgb, var(--border) 85%, transparent); }
 .device-card { border-radius: 16px; position: relative; overflow: hidden; transition: transform .2s var(--ease), box-shadow .2s, border-color .2s; }
 .device-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--accent), transparent 75%); opacity: .0; transition: opacity .2s; }
@@ -851,7 +811,7 @@ input:focus, select:focus { outline: none; box-shadow: var(--ring); }
 .device-card .avatar .dot[data-state="online"] { box-shadow: 0 0 0 3px var(--ok-soft), 0 0 10px var(--ok); }
 .device-name { font-size: 17px; letter-spacing: -.01em; }
 .device-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-/* Tonal quick actions: calmer than four solid buttons, the accent shows on hover */
+
 .device-actions .btn.primary { background: var(--accent-soft); color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 35%, transparent); box-shadow: none; }
 .device-actions .btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); border-color: var(--accent-strong); }
 .device-info { border-top-style: dashed; }
@@ -860,22 +820,18 @@ input:focus, select:focus { outline: none; box-shadow: var(--ring); }
 .connbar, .screen-tools, .queue { border-radius: 12px; }
 .empty .ic.xl { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 10%, transparent); }
 
-/* Banners */
 .notice { border-radius: 9px; border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-left-width: 4px; }
 .notice.safe { border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
 .form-error { border-radius: 9px; }
 
-/* File tables */
 .files th { position: sticky; top: 0; z-index: 1; background: color-mix(in srgb, var(--surface-2) 92%, transparent); backdrop-filter: blur(6px); }
 .files tr.row td { transition: background .08s; }
 .files tr.row:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 38%, transparent); }
 .files tr.row.selected td { background: var(--sel); }
 .files tr.row:hover td { background: var(--row-hover); }
 
-/* Transfers */
 .transfer .bar { border-radius: 99px; } .transfer .bar > i { border-radius: 99px; }
 
-/* Remote control & channels */
 .rk { transition: background .1s, border-color .1s, transform .06s, box-shadow .1s; }
 .rk:active { transform: scale(.94); box-shadow: none; }
 .remote, .channels { box-shadow: var(--shadow); overflow: hidden; }
@@ -883,10 +839,8 @@ input:focus, select:focus { outline: none; box-shadow: var(--ring); }
 .ch-item:hover { background: var(--row-hover); }
 .ch-item.current { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
-/* Terminal chrome */
 .termtabs-list .tab, .termtab { border-radius: 9px 9px 0 0; }
 
-/* Overlays */
 dialog[open] { animation: dlgIn .22s var(--ease); }
 dialog[open]::backdrop { animation: fadeIn .22s; backdrop-filter: blur(5px); }
 @keyframes dlgIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
@@ -896,10 +850,8 @@ dialog[open]::backdrop { animation: fadeIn .22s; backdrop-filter: blur(5px); }
 .toast { background: color-mix(in srgb, #1b2336 92%, transparent); backdrop-filter: blur(10px); border: 1px solid rgb(255 255 255 / .08); border-left: 4px solid var(--accent); }
 .toast.error { background: color-mix(in srgb, #8e1d24 94%, transparent); border-left-color: #ff9aa0; }
 
-/* Status chips get a soft ring */
 .chip { border: 1px solid transparent; } .chip.on { border-color: color-mix(in srgb, var(--ok) 25%, transparent); } .chip.off { border-color: color-mix(in srgb, var(--bad) 25%, transparent); }
 
-/* Phone: safe areas, roomier touch targets */
 @media (max-width: 900px) {
   .topbar { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
   .view { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -909,8 +861,6 @@ dialog[open]::backdrop { animation: fadeIn .22s; backdrop-filter: blur(5px); }
 }
 @media (hover: none) { .device-card:hover { transform: none; box-shadow: var(--shadow); } }
 
-/* Fixes found while reviewing every tab */
-/* "empty" is also the state of the transfer queue; the empty-page style must not squeeze it into a narrow centred box */
 .queue.empty { margin: 0; max-width: none; display: flex; padding: 0; gap: 0; text-align: left; justify-items: normal; color: inherit; }
 @media (max-width: 600px) {
   .brand { display: none; }
@@ -919,7 +869,6 @@ dialog[open]::backdrop { animation: fadeIn .22s; backdrop-filter: blur(5px); }
   .device-picker select { flex: 1 1 auto; width: 100%; max-width: none; text-overflow: ellipsis; }
 }
 
-/* Add channels to a bouquet */
 #bqAddDialog { max-width: min(640px, calc(100vw - 24px)); }
 .bq-add-card { gap: 10px; }
 .bq-add-list { height: min(46vh, 420px); }
@@ -927,7 +876,6 @@ dialog[open]::backdrop { animation: fadeIn .22s; backdrop-filter: blur(5px); }
 #bqAddCount { font-size: 12.5px; }
 .tools-row input#toolsDir { flex: 1 1 260px; min-width: 0; font-family: var(--mono); }
 
-/* Channel lists page */
 .lists-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .lists-pane { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .lists-pane[hidden] { display: none; }
@@ -936,8 +884,6 @@ dialog[open]::backdrop { animation: fadeIn .22s; backdrop-filter: blur(5px); }
 #view-lists .view-head h1 .badge { vertical-align: middle; margin-left: 6px; }
 #view-lists .view-head p { max-width: 70ch; }
 
-
-/* ───────── Calm palette: green is for the one main action and the open tab, not for every surface ───────── */
 body { background: var(--bg); }
 .topbar::after { display: none; }
 .topbar { box-shadow: none; }
@@ -968,7 +914,6 @@ body { background: var(--bg); }
 .empty .ic.xl, .avatar { background: var(--surface-3); color: var(--text); }
 .pane-badge.device { background: var(--surface-3); color: var(--text); }
 
-/* ───────── Tools: one tab, four pages ───────── */
 .toolsnav { display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; margin: 0 0 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; align-self: flex-start; max-width: 100%; }
 .toolsnav-btn { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
 .toolsnav-btn:hover { background: var(--surface-3); color: var(--text); }
@@ -976,7 +921,6 @@ body { background: var(--bg); }
 .toolsnav-btn .ic { width: 16px; height: 16px; }
 @media (max-width: 560px) { .toolsnav-btn { padding: 0 10px; } .toolsnav-btn { font-size: 13px; } }
 
-/* Install .ipk page */
 #view-ipk { overflow: auto; }
 #view-ipk .view-head h1 .badge { vertical-align: middle; margin-left: 6px; }
 .ipk-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); gap: 14px; align-items: start; max-width: 960px; }
@@ -1004,28 +948,23 @@ body { background: var(--bg); }
 .ipk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .remote-top:hover:not(:disabled) { background: var(--surface-3); }
 
-/* ───────── Small details ───────── */
 .pane-badge.local { background: var(--surface-3); color: var(--muted); }
 .pane-badge.device { color: var(--text); }
 .pane-head .pane-title { min-height: 24px; }
 
-/* Empty lists say what to do */
 .bq-list:empty::before, .bq-entries:empty::before { display: block; padding: 22px 14px; text-align: center; color: var(--muted); font-size: 13px; }
 .bq-list:empty::before { content: "No bouquets yet."; }
 .bq-entries:empty::before { content: "Pick a bouquet on the left to edit its channels."; }
 
-/* Channel editor: tidy the left column buttons into an even grid */
 .bq-side .bq-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .bq-side .bq-actions .btn { padding: 0 6px; min-width: 0; justify-content: center; }
 .bq-side .bq-actions #bqNew { grid-column: span 2; }
 .bq-side .bq-actions #bqListUp, .bq-side .bq-actions #bqListDown { grid-column: span 1; }
 .bq-side .bq-actions #bqListRemove, .bq-side .bq-actions #bqListDelete { grid-column: span 2; }
 
-/* Page titles: the same size on every Tools page */
 .sig-title h2 { font-size: 22px; }
 .view-head h1 { font-size: 22px; }
 
-/* Phones: the Tools menu is an even 2 × 2 grid; status pills never push the page sideways */
 @media (max-width: 560px) {
   .toolsnav { display: grid; grid-template-columns: 1fr 1fr; align-self: stretch; }
   .toolsnav-btn { justify-content: center; padding: 0 6px; }
@@ -1038,7 +977,6 @@ body { background: var(--bg); }
   .bq-main .bq-toolbar input { flex: 1 1 100%; width: 100%; }
 }
 
-/* ───────── One compact top row per page, no repeated titles ───────── */
 .tools-top { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
 .tools-top .toolsnav { margin: 0; }
 .tools-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; min-width: 0; }
@@ -1052,13 +990,11 @@ body { background: var(--bg); }
 #bqTitle { display: none; }
 .tile span { white-space: nowrap; }
 
-/* Backup & restore: the two sections side by side */
 #listsBackup .tools-body { max-width: none; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; gap: 14px; }
 #listsBackup .tools-sec { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
 #listsBackup .tools-progress, #listsBackup .form-error { grid-column: 1 / -1; }
 #view-lists .tools-body { max-width: none; }
 
-/* Install .ipk: one card */
 .ipk-card { max-width: 820px; width: 100%; }
 .ipk-bar { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
 .ipk-drop { padding: 26px 16px; }
@@ -1070,7 +1006,6 @@ body { background: var(--bg); }
 #view-lists #listsEdit { gap: 8px; }
 .ipk-card { max-width: 920px; }
 
-/* ───────── Phones: the picture on top, the remote right under it, both in view ───────── */
 .remote-more { display: none; }
 @media (max-width: 760px) {
   .screen-body { gap: 8px; }
@@ -1096,9 +1031,6 @@ body { background: var(--bg); }
   .screen-tools .spacer { display: none; }
 }
 
-
-/* ───────── Connection state: one coloured dot, never a sentence ─────────
-   green = connected / live, red = not connected or failed, amber = busy. The words are the tooltip. */
 .status-pill, .sig-live { display: inline-block; flex: none; width: 12px; height: 12px; padding: 0; border-radius: 50%; overflow: hidden; font-size: 0; background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
 .status-pill[data-state="connected"], .sig-live[data-state="live"] { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
 .status-pill[data-state="connecting"], .sig-live[data-state="wait"], .sig-live[data-state="paused"] { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
@@ -1110,19 +1042,16 @@ body { background: var(--bg); }
 .connbar .status-pill { margin: 0 4px 0 2px; }
 .tools-actions .status-pill, .tools-top .sig-live { margin: 0 4px; }
 
-/* ───────── Less repeating, more room ───────── */
-/* Terminal: the tabs and the connection controls share one row (they wrap on a phone) */
 .term-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-width: 0; }
 .term-top .termtabs { flex: 1 1 280px; min-width: 0; }
 .term-top .connbar { flex: 0 1 auto; padding: 4px 8px; }
 @media (max-width: 900px) { .term-top .connbar { flex: 1 1 100%; } }
-/* The folder is already in the "Settings folder" box above; the status line says the rest */
+
 #bqSub { display: none; }
-/* Screen: Remote and Channels panels start with their icons, not a title */
+
 .remote-head { justify-content: space-between; }
 .remote-head .spacer { display: none; }
 
-/* Phones: connect buttons are icon-only so the bar stays on one row; terminal tools fit one row; bouquet list is short */
 @media (max-width: 600px) {
   .connbar #fileConnect .lbl, .connbar #fileDisconnect .lbl, .connbar #terminalConnect .lbl, .connbar #terminalDisconnect .lbl { display: none; }
   .connbar { gap: 6px; }
@@ -1134,10 +1063,8 @@ body { background: var(--bg); }
   .bq-entries { height: 44vh; }
 }
 
-/* Drag and drop: the folder under the pointer lights up */
 .files tr.row.drop-target > td { background: var(--accent-soft); box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent); }
 
-/* Remote access dialog */
 #raDialog { max-width: min(600px, calc(100vw - 24px)); }
 .ra-card { gap: 10px; max-height: calc(100vh - 24px); overflow-y: auto; }
 .ra-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -1157,7 +1084,6 @@ body { background: var(--bg); }
 .ra-pass .input-row { flex-wrap: wrap; }
 .ra-pass .input-row input { flex: 1 1 200px; min-width: 0; font-family: ui-monospace, monospace; }
 
-/* File actions as one tidy function-key bar: equal cells, F-key first, same order as the keyboard */
 .actionbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 6px; }
 .actionbar .btn { width: 100%; justify-content: center; white-space: nowrap; }
 .actionbar .btn[data-fkey] .ic { display: none; }

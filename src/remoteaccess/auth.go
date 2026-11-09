@@ -13,16 +13,8 @@ import (
 )
 
 const (
-	// CookieName uses the __Host- prefix: the browser only accepts it over HTTPS,
-	// with Path=/ and no Domain, so it cannot be set by a sibling host.
-	CookieName = "__Host-dcc_session"
-	// PlainCookieName is used when the listener serves plain HTTP (opt-in, not
-	// encrypted): browsers refuse __Host- and Secure cookies over HTTP.
-	PlainCookieName = "dcc_session"
-
-	// A sign-in stays valid while the page keeps talking to the server (the page
-	// sends a heartbeat and the terminal WebSocket refreshes it), so an open
-	// terminal or file transfer is not cut off by the session timing out.
+	CookieName         = "__Host-dcc_session"
+	PlainCookieName    = "dcc_session"
 	sessionIdleTimeout = 12 * time.Hour
 	sessionMaxAge      = 7 * 24 * time.Hour
 	maxSessions        = 32
@@ -32,12 +24,10 @@ const (
 	failureDelay       = 400 * time.Millisecond
 )
 
-// ErrThrottled is returned when an address has too many recent failed logins.
 type ErrThrottled struct{ RetryAfter time.Duration }
 
 func (e ErrThrottled) Error() string { return "too many failed sign-in attempts; try again later" }
 
-// ErrBadPassword is returned for a wrong password.
 var ErrBadPassword = errors.New("incorrect password")
 
 type session struct {
@@ -51,10 +41,9 @@ type attempts struct {
 	last     time.Time
 }
 
-// Auth owns login sessions. Tokens are random, only their SHA-256 is kept in memory.
 type Auth struct {
 	creds *Credentials
-	plain bool // plain HTTP listener: no Secure cookie, no __Host- prefix
+	plain bool
 	now   func() time.Time
 	sleep func(time.Duration)
 
@@ -63,22 +52,16 @@ type Auth struct {
 	tries    map[string]*attempts
 }
 
-// NewAuth builds an authenticator over a stored password.
 func NewAuth(creds *Credentials) *Auth {
 	return &Auth{creds: creds, now: time.Now, sleep: time.Sleep, sessions: make(map[[32]byte]*session), tries: make(map[string]*attempts)}
 }
 
-// NewPlainAuth is NewAuth for a listener that serves plain HTTP. The session
-// cookie then cannot be Secure, so everything (password included) travels
-// unencrypted; it exists for people who reach the program through a public IP or
-// a dynamic DNS name without a certificate.
 func NewPlainAuth(creds *Credentials) *Auth {
 	a := NewAuth(creds)
 	a.plain = true
 	return a
 }
 
-// Plain reports whether the authenticator belongs to a plain HTTP listener.
 func (a *Auth) Plain() bool { return a.plain }
 
 func (a *Auth) cookieName() string {
@@ -88,7 +71,6 @@ func (a *Auth) cookieName() string {
 	return CookieName
 }
 
-// clientKey identifies the remote peer by IP address (port stripped).
 func clientKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -97,7 +79,6 @@ func clientKey(r *http.Request) string {
 	return host
 }
 
-// Login verifies the password and, on success, sets the session cookie.
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request, password string) error {
 	key := clientKey(r)
 	now := a.now()
@@ -151,8 +132,6 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, password string) er
 	return nil
 }
 
-// Authenticated reports whether the request carries a live session, and
-// extends its idle timeout.
 func (a *Auth) Authenticated(r *http.Request) bool {
 	cookie, err := r.Cookie(a.cookieName())
 	if err != nil {
@@ -178,7 +157,6 @@ func (a *Auth) Authenticated(r *http.Request) bool {
 	return true
 }
 
-// Logout ends the session of the request and clears the cookie.
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(a.cookieName()); err == nil {
 		if token, err := base64.RawURLEncoding.DecodeString(cookie.Value); err == nil && len(token) == 32 {
@@ -190,7 +168,6 @@ func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: a.cookieName(), Value: "", Path: "/", HttpOnly: true, Secure: !a.plain, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 }
 
-// RevokeAll drops every session (used when the password changes).
 func (a *Auth) RevokeAll() {
 	a.mu.Lock()
 	a.sessions = make(map[[32]byte]*session)
@@ -224,11 +201,8 @@ func (a *Auth) evictOldestLocked() {
 	}
 }
 
-// SameOrigin reports whether an Origin header names the same host the request
-// was sent to. A missing Origin is not a match.
 func SameOrigin(r *http.Request) bool { return SameOriginFor(r, true) }
 
-// SameOriginFor is SameOrigin for an https:// (secure) or http:// page.
 func SameOriginFor(r *http.Request, secure bool) bool {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" || r.Host == "" {
@@ -248,10 +222,7 @@ func SameOriginFor(r *http.Request, secure bool) bool {
 	if strings.EqualFold(rest, r.Host) {
 		return true
 	}
-	// Behind a reverse proxy or port forward the Host header may be rewritten to
-	// the internal address. A page on another site cannot set X-Forwarded-Host
-	// (a custom header needs a preflight this server never approves), so the
-	// forwarded name is as trustworthy as Host itself.
+
 	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0]); forwarded != "" {
 		return strings.EqualFold(rest, forwarded)
 	}

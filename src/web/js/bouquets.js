@@ -1,5 +1,4 @@
 "use strict";
-/* Bouquet editor (Enigma2 channel lists) */
 const bq = { profileID: "", dir: "/etc/enigma2", kind: "tv", lists: { tv: [], radio: [] }, file: "", entries: [], original: "", hash: "", sel: new Set(), anchor: -1, busy: false, dragging: [] };
 const bqURL = (tail) => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/enigma2/${tail}`;
 const bqSnapshot = () => JSON.stringify([$("#bqName").value, bq.entries.map((e) => [e.ref, e.description])]);
@@ -54,7 +53,6 @@ function bqRenderEntries() {
   });
   bqButtons();
 }
-// Updates which rows look selected without rebuilding them (a rebuild would cancel a drag in progress).
 function bqSyncSelection() {
   $$("#bqEntries li[data-index]").forEach((li) => li.setAttribute("aria-selected", String(bq.sel.has(Number(li.dataset.index)))));
   bqButtons();
@@ -94,7 +92,6 @@ async function bqOpenBouquet(file) {
   } catch (error) { bqError(error); }
 }
 function bqMoveBlock(indices, target) {
-  // Move the entries at `indices` so that they sit before position `target` of the original list, keeping their order.
   const picked = [...indices].sort((a, b) => a - b);
   const moving = picked.map((i) => bq.entries[i]);
   const before = picked.filter((i) => i < target).length;
@@ -122,7 +119,7 @@ function bqDeleteSelected() {
 async function bqAddMarker() {
   const title = await ask({ title: "New marker", label: "Marker text", ok: "Add", validate: (v) => (v.trim() ? "" : "Enter some text.") });
   if (!title) return;
-  let next = 1; // field 3 of a reference is hexadecimal in Enigma2
+  let next = 1;
   for (const entry of bq.entries) { const m = /^1:64:([0-9A-Fa-f]+):/.exec(entry.ref); if (m) next = Math.max(next, parseInt(m[1], 16) + 1); }
   const at = bq.sel.size ? Math.max(...bq.sel) + 1 : bq.entries.length;
   const text = title.trim().slice(0, 100);
@@ -185,7 +182,6 @@ async function bqReloadReceiver() {
 }
 function bqSortAZ() {
   if (!bq.entries.length) return;
-  // Markers are section titles: sort only the channels between two of them.
   const label = (e) => (e.name || e.description || "").toLocaleLowerCase();
   const out = []; let run = [];
   const flush = () => { run.sort((a, b) => label(a).localeCompare(label(b), undefined, { numeric: true })); out.push(...run); run = []; };
@@ -195,7 +191,6 @@ function bqSortAZ() {
   bqRenderEntries();
 }
 
-/* Add channels from the receiver's lamedb */
 const bqAdd = { items: [], sel: new Set(), timer: 0, seq: 0 };
 function bqAddRender() {
   const list = $("#bqAddList");
@@ -260,7 +255,7 @@ function bqAddConfirm() {
     if (!li) return;
     const index = Number(li.dataset.index);
     if (event.shiftKey && bqAdd.anchor !== undefined && bqAdd.anchor >= 0) { const [a, b] = [Math.min(bqAdd.anchor, index), Math.max(bqAdd.anchor, index)]; for (let i = a; i <= b; i++) bqAdd.sel.add(i); }
-    else { if (!bqAdd.sel.delete(index)) bqAdd.sel.add(index); bqAdd.anchor = index; }   // a click toggles: picking many channels is the normal case
+    else { if (!bqAdd.sel.delete(index)) bqAdd.sel.add(index); bqAdd.anchor = index; }
     $$("#bqAddList li[data-index]").forEach((node) => node.setAttribute("aria-selected", String(bqAdd.sel.has(Number(node.dataset.index)))));
     $("#bqAddCount").textContent = bqAdd.sel.size ? `${bqAdd.sel.size} selected` : "";
     $("#bqAddConfirm").disabled = !bqAdd.sel.size;
@@ -274,7 +269,6 @@ function bqAddConfirm() {
   $("#bqSort").addEventListener("click", bqSortAZ);
   $("#bqListDelete").addEventListener("click", () => bqListAction("delete"));
 }
-/* ───────────── The "Channel lists" page ───────────── */
 function bqReset() {
   bq.file = ""; bq.entries = []; bq.sel.clear(); bq.anchor = -1; bq.original = ""; bq.hash = ""; bq.lists = { tv: [], radio: [] };
   $("#bqName").value = ""; $("#bqFilter").value = ""; $("#bqSub").textContent = "";
@@ -296,10 +290,9 @@ async function listsEnterNow() {
   const device = currentDevice();
   $("#listsDevice").textContent = device?.name || "";
   if (!device) { bqReset(); bqStatus("Add or choose a device first (Devices tab)."); return; }
-  syncFilePort(); // the connection uses the port of the Files tab
+  syncFilePort();
   if (!files.sessionID && !files.connecting && !files.manualOff) await fileConnect();
   if (!files.sessionID) { bqStatus(files.connecting ? "Connecting…" : "Not connected. Press Connect to read the channel lists."); return; }
-  // Another device: start clean. The same device after a reconnect keeps what is being edited.
   if (bq.profileID !== files.profileID) {
     if (bqDirty()) toast("Unsaved changes of the previous device were discarded", "error");
     bqReset();
@@ -353,7 +346,6 @@ async function listsEnterNow() {
     else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") { event.preventDefault(); bq.sel = new Set(bq.entries.keys()); bqRenderEntries(); }
   });
   page.addEventListener("keydown", (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!$("#bqSave").disabled) bqSave(); } });
-  // Drag and drop to reorder.
   const clearDrop = () => $$("#bqEntries .drop-before, #bqEntries .drop-after").forEach((li) => li.classList.remove("drop-before", "drop-after"));
   entries.addEventListener("dragstart", (event) => {
     const li = event.target.closest("li[data-index]");
@@ -389,7 +381,6 @@ async function listsEnterNow() {
 async function cmdCopyPath() {
   const pane = panes[files.active], sel = selectedEntries(pane);
   const text = sel.length ? sel.map((e) => e.path).join("\n") : pane.path;
-  // clipboardWrite also works on plain HTTP, where navigator.clipboard does not exist.
   if (await clipboardWrite(text)) toast(sel.length > 1 ? "Paths copied" : "Path copied");
   else toast("Copy was blocked by the browser", "error");
 }

@@ -1,8 +1,6 @@
 "use strict";
-/* Device tools: backup / restore of the channel list, .ipk install */
-const toolsState = { scope: "channels", busy: false, ui: "tools", ipkFile: null }; // ui: which panel shows progress and errors ("tools" = Backup & restore page, "ipk" = Install .ipk page)
+const toolsState = { scope: "channels", busy: false, ui: "tools", ipkFile: null };
 const toolsSessionURL = (tail) => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/${tail}`;
-// The settings folder shown on the Channel lists page, when it is not the default /etc/enigma2.
 const toolsDirValue = () => $("#bqDir").value.trim() || "/etc/enigma2";
 const toolsDirQuery = (lead) => (toolsDirValue() !== "/etc/enigma2" ? `${lead}dir=${encodeURIComponent(toolsDirValue())}` : "");
 function toolsError(message) { const box = $(`#${toolsState.ui}Error`); box.textContent = message || ""; box.hidden = !message; }
@@ -18,7 +16,6 @@ function toolsProgress(fraction, text) {
   $(`#${toolsState.ui}Progress .tools-bar span`).style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
   $(`#${toolsState.ui}ProgressText`).textContent = text;
 }
-/* ───────────── Install .ipk page ───────────── */
 const IPK_MAX = 256 * 1048576;
 const ipkSafeName = (name) => {
   let safe = name.replace(/\s+/g, "_").replace(/[^A-Za-z0-9._+~-]/g, "_").replace(/^[^A-Za-z0-9]+/, "").replace(/\.ipk$/i, "");
@@ -26,7 +23,6 @@ const ipkSafeName = (name) => {
   return `${safe}.ipk`;
 };
 const ipkSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-/** Opening the page (or the Files button "Install .ipk…"): connect like the Channel editor does. */
 function cmdIpk() { showTool("ipk"); }
 function ipkEnter() {
   files.ready.then(async () => {
@@ -39,7 +35,6 @@ function ipkEnter() {
     ipkRefresh();
   });
 }
-/** Enable the install button only when it can work, and say what is missing. */
 function ipkRefresh() {
   const button = $("#toolsIpk"); if (!button) return;
   const file = toolsState.ipkFile;
@@ -64,7 +59,6 @@ function ipkSetFile(file) {
   if (!file) $("#toolsIpkFile").value = "";
   ipkRefresh();
 }
-/** Upload one file as multipart with progress; resolves to the JSON answer. */
 function uploadFile(url, file, label, fileName = file.name) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -121,7 +115,7 @@ async function toolsRestore() {
     ch.cache.clear(); ch.epg.clear();
     if (!$("#channelPane").hidden) loadChannels();
     $("#toolsRestoreFile").value = "";
-    bqReset(); bqLoadLists(); // the bouquets on the page are the restored ones now
+    bqReset(); bqLoadLists();
   } catch (error) { toolsError(error.message); }
   toolsBusy(false);
 }

@@ -7,24 +7,18 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// replayLimit is how much recent output a session keeps for a browser that
-// reconnects after a dropped WebSocket (sleep, Wi-Fi change, proxy timeout).
 const replayLimit = 512 << 10
 
-// ErrDetached is returned by a read on an attachment that was closed.
 var ErrDetached = errors.New("terminal attachment closed")
 
-// outputPump is the only reader of a terminal backend. It keeps the latest
-// output so the shell outlives a dropped browser connection: a new WebSocket
-// attaches and continues from the byte offset where the old one stopped.
 type outputPump struct {
 	backend core.TerminalSession
 
 	mu   sync.Mutex
 	cond *sync.Cond
 	buf  []byte
-	base int64 // absolute offset of buf[0]
-	err  error // set once the backend stops producing output
+	base int64
+	err  error
 }
 
 func newOutputPump(backend core.TerminalSession) *outputPump {
@@ -41,8 +35,7 @@ func (p *outputPump) run() {
 		p.mu.Lock()
 		if n > 0 {
 			p.buf = append(p.buf, chunk[:n]...)
-			// Trim in batches: copying ~512 KiB after every 4 KiB read made fast output
-			// (logs, tail -f) cost far more CPU than the output itself.
+
 			if len(p.buf) > replayLimit+replayLimit/2 {
 				over := len(p.buf) - replayLimit
 				p.buf = append([]byte(nil), p.buf[over:]...)
@@ -60,13 +53,11 @@ func (p *outputPump) run() {
 	}
 }
 
-// Attachment is one browser's view of a session. Closing it detaches the
-// browser; the session itself keeps running.
 type Attachment struct {
 	pump    *outputPump
 	pos     int64
 	lost    int64
-	closed  bool // guarded by pump.mu
+	closed  bool
 	onClose func(*Attachment)
 	once    sync.Once
 }
@@ -78,8 +69,7 @@ func newAttachment(p *outputPump, offset int64, onClose func(*Attachment)) *Atta
 	a := &Attachment{pump: p, onClose: onClose}
 	switch {
 	case offset < 0 || offset > end:
-		// The browser is ahead of the server (it can only happen after a restart
-		// of the session); start from what the server still has.
+
 		a.pos = p.base
 	case offset < p.base:
 		a.pos = p.base
@@ -90,8 +80,6 @@ func newAttachment(p *outputPump, offset int64, onClose func(*Attachment)) *Atta
 	return a
 }
 
-// Read blocks until output is available. It returns ErrDetached after Close and
-// the backend's error (normally io.EOF) once all buffered output was delivered.
 func (a *Attachment) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -104,7 +92,7 @@ func (a *Attachment) Read(p []byte) (int, error) {
 			return 0, ErrDetached
 		}
 		end := pump.base + int64(len(pump.buf))
-		if a.pos < pump.base { // output was trimmed while this reader was slow
+		if a.pos < pump.base {
 			a.lost += pump.base - a.pos
 			a.pos = pump.base
 		}
@@ -120,15 +108,12 @@ func (a *Attachment) Read(p []byte) (int, error) {
 	}
 }
 
-// Position is the absolute offset just after the output returned so far.
 func (a *Attachment) Position() int64 {
 	a.pump.mu.Lock()
 	defer a.pump.mu.Unlock()
 	return a.pos
 }
 
-// Lost is the number of output bytes the browser asked for that the server no
-// longer had.
 func (a *Attachment) Lost() int64 {
 	a.pump.mu.Lock()
 	defer a.pump.mu.Unlock()
@@ -140,7 +125,6 @@ func (a *Attachment) Resize(columns, rows int) error {
 	return a.pump.backend.Resize(columns, rows)
 }
 
-// Close detaches this browser without ending the session.
 func (a *Attachment) Close() error {
 	a.once.Do(func() {
 		a.pump.mu.Lock()

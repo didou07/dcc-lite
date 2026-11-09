@@ -8,26 +8,12 @@ import (
 	"time"
 )
 
-// Staging carries files between the user's browser and the receiver. A remote
-// user works from another computer, so "my files" are the ones on that
-// computer, not the ones on the machine running DCC Lite. An upload is first
-// received into a private staging folder and then sent to the receiver as an
-// ordinary queued transfer (progress, cancel, resume); a download is first
-// fetched from the receiver into the staging folder and then handed to the
-// browser. Each file lives in its own sub-folder: <staging>/<random id>/<name>.
-
 const (
-	// stagedKeepFailed is how long the staged bytes of a failed or cancelled
-	// transfer stay around so that it can still be resumed.
-	stagedKeepFailed = 6 * time.Hour
-	// stagedKeepDownload is how long a finished download waits for the browser.
+	stagedKeepFailed   = 6 * time.Hour
 	stagedKeepDownload = 45 * time.Minute
-	// stagedKeepIdle is how long an unreferenced staging folder survives after
-	// its newest write (a browser upload that is still arriving keeps writing).
-	stagedKeepIdle = 15 * time.Minute
+	stagedKeepIdle     = 15 * time.Minute
 )
 
-// ErrStagedNotReady is returned when a staged download was not finished yet.
 var ErrStagedNotReady = errors.New("the file is not ready yet")
 
 func stagedID(localPath string) string {
@@ -35,7 +21,6 @@ func stagedID(localPath string) string {
 	return id
 }
 
-// StagedDownload returns the absolute path of a finished staged download.
 func (m *Manager) StagedDownload(taskID string) (string, TaskInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -49,20 +34,18 @@ func (m *Manager) StagedDownload(taskID string) (string, TaskInfo, error) {
 	return entry.localAbsolute, entry.info, nil
 }
 
-// removeStagedFiles deletes the sub-folder that holds a staged transfer.
 func removeStagedFiles(entry *taskEntry) {
 	if entry == nil || !entry.info.Staged || entry.local == nil || entry.localAbsolute == "" {
 		return
 	}
 	dir := filepath.Dir(entry.localAbsolute)
-	// Only ever remove a direct child of the staging root.
+
 	if filepath.Dir(dir) != entry.local.Root() || filepath.Base(dir) == "." || filepath.Base(dir) == string(filepath.Separator) {
 		return
 	}
 	_ = os.RemoveAll(dir)
 }
 
-// ReleaseStaged forgets the staged copy of a download once the browser took it.
 func (m *Manager) ReleaseStaged(taskID string) {
 	m.mu.Lock()
 	entry := m.tasks[taskID]
@@ -72,8 +55,6 @@ func (m *Manager) ReleaseStaged(taskID string) {
 	}
 }
 
-// SweepStaged deletes staging folders nothing needs any more: finished or
-// abandoned uploads and downloads, and leftovers of a previous run.
 func (m *Manager) SweepStaged(staging *LocalFS, now time.Time) {
 	if staging == nil {
 		return

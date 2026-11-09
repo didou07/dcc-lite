@@ -1,6 +1,3 @@
-// Package netscan finds likely receivers on a local network: it probes the
-// FTP, Telnet and web ports of every address in a range, like the
-// "Search IP address" tool of the original Dreambox Control Center.
 package netscan
 
 import (
@@ -18,45 +15,35 @@ import (
 )
 
 const (
-	// MaxAddresses bounds one scan (a /22).
 	MaxAddresses = 1024
 	probeTimeout = 700 * time.Millisecond
 	bannerWait   = 400 * time.Millisecond
 	workers      = 96
 )
 
-// Ports probed on every address.
 var (
 	PortFTP    = 21
 	PortTelnet = 23
 	PortHTTP   = 80
 )
 
-// Host is one address that answered on at least one management port.
 type Host struct {
 	IP     string `json:"ip"`
 	FTP    bool   `json:"ftp"`
 	Telnet bool   `json:"telnet"`
 	HTTP   bool   `json:"http"`
-	// Banner is the first line sent by the FTP service, when there was one.
+
 	Banner string `json:"banner,omitempty"`
 }
 
-// Options customise a scan; the zero value probes the standard ports.
 type Options struct {
-	// Dial replaces net.Dialer for tests.
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
-	// Ports overrides the probed ports (FTP, Telnet, HTTP). Zero entries keep the defaults.
+
 	FTP, Telnet, HTTP int
 }
 
-// ErrRange is returned for ranges that are malformed, too big or not local.
 var ErrRange = errors.New("invalid address range")
 
-// ParseRange accepts "192.168.1.0/24", "192.168.1.10-50" or
-// "192.168.1.10-192.168.1.50" and returns the addresses to scan. Only
-// private, loopback, link-local and carrier-grade-NAT IPv4 ranges are allowed:
-// this tool is for finding devices on your own network, not for scanning the internet.
 func ParseRange(text string) ([]netip.Addr, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -75,7 +62,7 @@ func ParseRange(text string) ([]netip.Addr, error) {
 		}
 		first = prefix.Addr()
 		last = lastOf(prefix)
-		// Skip the network and broadcast addresses of ordinary subnets.
+
 		if prefix.Bits() <= 30 {
 			first, last = first.Next(), last.Prev()
 		}
@@ -137,8 +124,6 @@ func local(addr netip.Addr) bool {
 		netip.MustParsePrefix("100.64.0.0/10").Contains(addr)
 }
 
-// Scan probes every address and returns those with at least one open FTP
-// or Telnet port, sorted by address.
 func Scan(ctx context.Context, addrs []netip.Addr, opts Options) []Host {
 	dial := opts.Dial
 	if dial == nil {
@@ -231,7 +216,6 @@ func cleanBanner(line string) string {
 	return string(out)
 }
 
-// SuggestRanges lists /24 networks of this computer's private IPv4 interfaces.
 func SuggestRanges() []string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {

@@ -1,5 +1,4 @@
 "use strict";
-/* ───────────── Terminal ───────────── */
 const term = {
   tabs: new Map(), active: "",
   protocol: "telnet",
@@ -25,9 +24,6 @@ const DEFAULT_SNIPPETS = [
   { id: "reboot", name: "Reboot receiver", command: "reboot" },
 ];
 
-/* Clear colours: every theme has a full ANSI palette chosen for contrast (the default blue on a dark
-   background is unreadable), and xterm additionally lifts any text below a 4.5:1 contrast ratio.
-   No violet or pink anywhere: ANSI "magenta" is a sand/orange. */
 function terminalTheme(name) {
   const dark = {
     black: "#3a434b", red: "#ff6b6b", green: "#5fd38d", yellow: "#f4c95d", blue: "#5db7ff", magenta: "#e3a46c", cyan: "#4fd8d8", white: "#dfe6eb",
@@ -67,7 +63,7 @@ function tabDimensions(tab) {
   try {
     const proposed = tab.fit.proposeDimensions?.();
     if (proposed?.cols && proposed?.rows) return { cols: Math.max(20, Math.min(240, proposed.cols)), rows: Math.max(5, Math.min(100, proposed.rows)) };
-  } catch { /* not measurable yet */ }
+  } catch { }
   return { cols: Math.max(20, Math.min(240, tab.terminal.cols || 100)), rows: Math.max(5, Math.min(100, tab.terminal.rows || 30)) };
 }
 function fitTab(tab) {
@@ -79,7 +75,7 @@ function fitTab(tab) {
       tab.lastSize = size;
       tab.socket.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
     }
-  } catch { /* hidden or detached */ }
+  } catch { }
 }
 
 function tabTitle(tab) {
@@ -119,10 +115,6 @@ function updateTerminalBar() {
   if (tab) tab.terminal.options.disableStdin = !connected;
 }
 
-/* xterm receives the keyboard through a hidden text box. Microsoft Edge decorates any
-   text box with its own helpers (writing suggestions, Copilot/Editor, autofill, the
-   text-cursor indicator); on the terminal they show up as a stray blue dot. The box is
-   marked so that none of them attach to it. */
 function hardenTerminalInput(terminal) {
   const box = terminal.textarea;
   if (!box) return;
@@ -171,16 +163,13 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
     }
     if (event.ctrlKey && event.shiftKey && key === "c") { event.preventDefault(); copyTerminal(); return false; }
     if (event.ctrlKey && event.shiftKey && key === "h") { event.preventDefault(); openHistory(); return false; }
-    // Copy with Ctrl+C or Ctrl+Insert when text is selected; otherwise Ctrl+C stays "interrupt".
     if (event.ctrlKey && !event.shiftKey && !event.altKey && (key === "c" || key === "insert") && terminal.hasSelection()) { event.preventDefault(); copyTerminal(); return false; }
-    // Let the browser's own paste event reach xterm (it also works on plain HTTP); xterm would otherwise send ^V.
     if ((event.ctrlKey && key === "v") || (event.shiftKey && key === "insert")) return false;
     if (event.altKey && !event.ctrlKey && !event.shiftKey && /^[1-9]$/.test(event.key)) { event.preventDefault(); switchTabByNumber(Number(event.key)); return false; }
     return true;
   });
   if (typeof ResizeObserver !== "undefined") { tab.observer = new ResizeObserver(() => fitTab(tab)); tab.observer.observe(screen); }
   screen.addEventListener("click", () => focusTab(tab));
-  // Capture phase: xterm handles right-click itself (it moves its input box under the pointer) and the page menu must win.
   screen.addEventListener("contextmenu", (event) => { event.preventDefault(); event.stopPropagation(); openTerminalMenu(tab, event.clientX, event.clientY); }, true);
   tab.subs.push(terminal.onSelectionChange(() => {
     if (!store.get("termCopyOnSelect", false)) return;
@@ -242,7 +231,7 @@ async function dropSession(tab) {
   const socket = tab.socket, sessionID = tab.sessionID;
   tab.socket = null; tab.sessionID = ""; tab.reconnecting = false;
   window.clearInterval(tab.watchdog); tab.wake?.();
-  if (socket && socket.readyState === WebSocket.OPEN) { try { socket.send(JSON.stringify({ type: "close" })); } catch { /* closing */ } socket.close(); }
+  if (socket && socket.readyState === WebSocket.OPEN) { try { socket.send(JSON.stringify({ type: "close" })); } catch { } socket.close(); }
   else if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
   if (sessionID) await api(`/api/v1/terminal/sessions/${encodeURIComponent(sessionID)}`, { method: "DELETE" }).catch(() => {});
 }
@@ -254,13 +243,8 @@ function setTabState(tab, state, message = "") {
   if (state === "error" && message) toast(message, "error");
 }
 
-/* Terminal connection that survives a dropped WebSocket.
-   The shell keeps running on the server for a while after the browser connection
-   is lost (sleep, Wi-Fi change, proxy timeout). The page therefore reconnects to the
-   same session and asks for the output after the last byte it received, so nothing
-   is lost and nothing appears twice. */
 const RECONNECT_DELAYS = [400, 1000, 2000, 3000, 5000];
-const RECONNECT_WINDOW_MS = 170 * 60 * 1000; // a little under the server's grace period (3 hours)
+const RECONNECT_WINDOW_MS = 170 * 60 * 1000;
 const PING_EVERY_MS = 15000;
 
 function openTerminalSocket(tab) {
@@ -270,7 +254,7 @@ function openTerminalSocket(tab) {
   const socket = new WebSocket(url);
   tab.socket = socket;
   return new Promise((resolve, reject) => {
-    const fail = (message) => { window.clearTimeout(timeout); if (tab.socket === socket) tab.socket = null; try { socket.close(); } catch { /* already closed */ } reject(new Error(message)); };
+    const fail = (message) => { window.clearTimeout(timeout); if (tab.socket === socket) tab.socket = null; try { socket.close(); } catch { } reject(new Error(message)); };
     const timeout = window.setTimeout(() => fail("The terminal connection timed out."), 8000);
     socket.addEventListener("open", () => { window.clearTimeout(timeout); resolve(socket); }, { once: true });
     socket.addEventListener("error", () => fail("Could not open the terminal connection."), { once: true });
@@ -301,17 +285,11 @@ function wireTerminalSocket(tab, socket) {
     if (tab.state === "connected" && !tab.sessionEnded && !tab.manualOff) reconnectTab(tab);
     else { tab.sessionID = ""; if (tab.state === "connected") setTabState(tab, "disconnected", "Disconnected"); }
   });
-  // Browsers cannot see WebSocket pings, so the page pings too. A connection that
-  // stays silent after a ping (cable pulled, laptop slept) is replaced at once
-  // instead of waiting for the operating system to notice.
   window.clearInterval(tab.watchdog);
   tab.watchdog = window.setInterval(() => probeTab(tab, socket), PING_EVERY_MS);
 }
 function probeTab(tab, socket) {
   if (tab.socket !== socket) { window.clearInterval(tab.watchdog); return; }
-  // A hidden tab has its timers and network events delayed by the browser; judging the connection by
-  // them dropped healthy shells. The server pings too, so a hidden tab stays connected. When the tab
-  // is shown again it is probed at once (see the visibilitychange handler).
   if (document.hidden) return;
   const now = performance.now();
   if (tab.pingSentAt && tab.lastRx < tab.pingSentAt && now - tab.pingSentAt > 15000) { abandonSocket(tab); return; }
@@ -323,7 +301,7 @@ function abandonSocket(tab) {
   const socket = tab.socket;
   tab.socket = null;
   window.clearInterval(tab.watchdog);
-  try { socket?.close(); } catch { /* already closed */ }
+  try { socket?.close(); } catch { }
   if (tab.state === "connected" && !tab.sessionEnded && !tab.manualOff) reconnectTab(tab);
 }
 function reconnectWait(tab, ms) {
@@ -365,7 +343,7 @@ async function reconnectTab(tab) {
       fitTab(tab);
       requestAnimationFrame(() => focusTab(tab));
       return;
-    } catch { /* the network is still down: try again */ }
+    } catch { }
   }
 }
 function wakeReconnects() { for (const tab of term.tabs.values()) tab.wake?.(); }
@@ -373,7 +351,6 @@ window.addEventListener("online", wakeReconnects);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   wakeReconnects();
-  // Back from sleep or another tab: check the live connections right away.
   for (const tab of term.tabs.values()) if (tab.socket?.readyState === WebSocket.OPEN) { tab.pingSentAt = 0; probeTab(tab, tab.socket); }
 });
 
@@ -417,7 +394,6 @@ async function disconnectTab(tab) {
   await dropSession(tab);
   setTabState(tab, "disconnected", "Disconnected");
 }
-/** Called whenever the Terminal view is shown or the device changes. */
 function terminalEnter() {
   const device = currentDevice();
   if (!window.DCCXterm) { window.setTimeout(terminalEnter, 80); return; }
@@ -433,7 +409,6 @@ function terminalEnter() {
   requestAnimationFrame(() => { fitTab(activeTab()); focusTab(); });
 }
 
-/* Terminal toolbar */
 $("#terminalNewTab").addEventListener("click", newTabFromActive);
 $("#terminalConnect").addEventListener("click", () => connectTab(activeTab()));
 $("#terminalDisconnect").addEventListener("click", () => disconnectTab(activeTab()));
@@ -446,12 +421,9 @@ $$("#quickKeys button").forEach((button) => button.addEventListener("click", () 
   focusTab(tab);
 }));
 
-/* Clipboard. navigator.clipboard only exists on HTTPS or localhost, so when the site is opened over
-   plain HTTP (public IP / No-IP) copying falls back to a hidden text box + execCommand("copy"),
-   and pasting to Ctrl+V in the terminal or to a small paste box. */
 async function clipboardWrite(text) {
   if (window.isSecureContext && navigator.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(text); return true; } catch { /* fall back */ }
+    try { await navigator.clipboard.writeText(text); return true; } catch { }
   }
   const active = document.activeElement;
   const box = h("textarea", { "aria-hidden": "true", tabindex: "-1", readonly: true, style: "position:fixed;left:-9999px;top:0;opacity:0" });
@@ -517,7 +489,6 @@ function openTerminalMenu(tab, x, y) {
   ], x, y);
 }
 
-/* Tabs: rename, switch by name or number */
 async function renameTab(tab) {
   const value = await ask({ title: "Rename terminal tab", label: "Name (leave empty for the automatic name)", value: tab.name, ok: "Rename", validate: (v) => (v.length > 40 ? "Use at most 40 characters." : "") });
   if (value === null || value === undefined) return;
@@ -549,7 +520,6 @@ $("#terminalTabList").addEventListener("click", (event) => {
   }))], rect.left, rect.bottom + 4);
 });
 
-/* Previous commands, remembered per device in this browser. */
 const HISTORY_MAX = 300;
 const historyKey = (profileID) => `cmdhist.${profileID || "none"}`;
 function loadHistory(profileID) {
@@ -562,8 +532,6 @@ function rememberCommand(profileID, command) {
   list.unshift(command);
   store.set(historyKey(profileID), list.slice(0, HISTORY_MAX));
 }
-/** Follows what is typed so that Enter can store the finished line. Cursor keys, Tab and history
-    recall make the line unknown, so those lines are not stored (the shell has them already). */
 function trackTypedInput(tab, data) {
   if (data.startsWith("\u001b")) { tab.dirty = true; return; }
   tab.histIndex = -1;
@@ -574,7 +542,7 @@ function trackTypedInput(tab, data) {
       const wasDirty = tab.dirty || tab.line !== tab.line.trimStart();
       tab.line = ""; tab.dirty = false;
       if (!command || wasDirty || command.length < 2) continue;
-      if (single && !echoedOnScreen(tab, command)) continue; // nothing echoed: a password or hidden input
+      if (single && !echoedOnScreen(tab, command)) continue;
       if (/^(passw(or)?d|login)\s*:?$/i.test(command)) continue;
       rememberCommand(tab.profileID, command);
     } else if (ch === "\u007f" || ch === "\b") tab.line = tab.line.slice(0, -1);
@@ -591,7 +559,6 @@ function echoedOnScreen(tab, command) {
     return text.endsWith(command.slice(-Math.min(command.length, 4)));
   } catch { return false; }
 }
-/** Up / Down walk through the commands of this device like in a real terminal; the line being typed is kept as a draft. */
 function canRecallHistory(tab) {
   return Boolean(tab) && tab.state === "connected" && view.current === "terminal" && tab.terminal.buffer.active.type !== "alternate";
 }
@@ -601,7 +568,7 @@ function historyStep(tab, direction) {
   const next = tab.histIndex + direction;
   if (next < -1 || next >= list.length) return;
   const text = next === -1 ? tab.histDraft : list[next];
-  const erase = tab.dirty ? "\u0005\u0015" : "\u007f".repeat([...tab.line].length); // end + kill line, or one Backspace per typed character
+  const erase = tab.dirty ? "\u0005\u0015" : "\u007f".repeat([...tab.line].length);
   termSend(tab, erase + text);
   tab.line = text; tab.dirty = false; tab.histIndex = next;
 }
@@ -700,7 +667,6 @@ $("#termFind").addEventListener("keydown", (event) => {
 });
 $("#termFind").addEventListener("input", () => { const tab = activeTab(); if (tab) tab.findRow = -1; });
 
-/* Network scan ("Search IP address") */
 const scan = { busy: false };
 async function openScanDialog() {
   $("#scanError").hidden = true;
@@ -711,7 +677,7 @@ async function openScanDialog() {
     const { ranges } = await api("/api/v1/network/ranges");
     $("#scanRanges").replaceChildren(...ranges.map((range) => Object.assign(document.createElement("option"), { value: range })));
     if (!$("#scanRange").value && ranges.length) $("#scanRange").value = ranges[0];
-  } catch { /* the field still works when typed by hand */ }
+  } catch { }
   $("#scanRange").focus();
 }
 function renderScanResults(hosts) {
@@ -777,7 +743,6 @@ $("#scanForm").addEventListener("submit", async (event) => {
   }
 });
 
-/* Saved commands */
 function loadCustomSnippets() {
   const list = store.get("snippets", []);
   return Array.isArray(list) ? list.filter((s) => s && typeof s.name === "string" && typeof s.command === "string" && s.id) : [];
@@ -828,13 +793,10 @@ $("#dccScriptFile").addEventListener("change", async (event) => {
   toast(`${take.length} command${take.length === 1 ? "" : "s"} imported`);
 });
 
-/* Global shortcuts */
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "t" && view.current === "terminal") { event.preventDefault(); newTabFromActive(); }
 });
 window.addEventListener("resize", () => fitTab(activeTab()));
-// Leaving the page ends its shells at once; they would otherwise wait on the server
-// for a reconnect that cannot come. (Not on bfcache: the page may come back.)
 window.addEventListener("pagehide", (event) => {
   if (event.persisted) return;
   for (const tab of term.tabs.values()) {

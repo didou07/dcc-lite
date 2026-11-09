@@ -1,10 +1,9 @@
 "use strict";
-/* DCC Lite — remote access sign-in page. */
 (() => {
   try {
     const theme = JSON.parse((localStorage.getItem("dcclite.theme") ?? localStorage.getItem("boxdeck.theme") ?? localStorage.getItem("dccnext.theme")) || "\"auto\"");
     if (["auto", "light", "dark"].includes(theme)) document.documentElement.dataset.theme = theme;
-  } catch { /* storage unavailable: keep automatic theme */ }
+  } catch { }
 
   const form = document.getElementById("loginForm");
   const password = document.getElementById("loginPassword");

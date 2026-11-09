@@ -20,7 +20,6 @@ import (
 
 const defaultEnigma2Dir = "/etc/enigma2"
 
-// nameCache keeps channel names between requests: lamedb can be several MB.
 type nameCache struct {
 	mu      sync.Mutex
 	entries map[string]nameCacheEntry
@@ -59,7 +58,6 @@ func (c *nameCache) put(key string, names map[enigma2.ServiceKey]string) {
 	c.entries[key] = nameCacheEntry{names: names, at: time.Now()}
 }
 
-// bouquetDir validates the directory holding the channel list.
 func bouquetDir(raw string) (string, error) {
 	dir := strings.TrimSpace(raw)
 	if dir == "" {
@@ -88,7 +86,6 @@ func badInput(format string, args ...any) error {
 	return bouquetInputError{fmt.Sprintf(format, args...)}
 }
 
-// readChannelNames loads names from lamedb5 or lamedb, cached per session and folder.
 func (s *Server) readChannelNames(ctx context.Context, sessionID, dir string, refresh bool) (map[enigma2.ServiceKey]string, bool) {
 	key := sessionID + "|" + dir
 	if !refresh {
@@ -97,7 +94,7 @@ func (s *Server) readChannelNames(ctx context.Context, sessionID, dir string, re
 		}
 	}
 	merged := map[enigma2.ServiceKey]string{}
-	for _, file := range []string{"lamedb", "lamedb5"} { // the newer lamedb5 wins on conflicts
+	for _, file := range []string{"lamedb", "lamedb5"} {
 		data, found, err := s.app.Files.ReadBytes(ctx, sessionID, dir+"/"+file)
 		if err != nil || !found {
 			continue
@@ -116,7 +113,6 @@ type bouquetSummary struct {
 	Kind string `json:"kind"`
 }
 
-// listBouquets returns the TV and radio bouquets of the receiver.
 func (s *Server) listBouquets(w http.ResponseWriter, r *http.Request) {
 	dir, err := bouquetDir(r.URL.Query().Get("dir"))
 	if err != nil {
@@ -166,7 +162,6 @@ type bouquetEntryView struct {
 	Marker      bool   `json:"marker"`
 }
 
-// getBouquet reads one userbouquet with channel names resolved.
 func (s *Server) getBouquet(w http.ResponseWriter, r *http.Request) {
 	dir, err := bouquetDir(r.URL.Query().Get("dir"))
 	file := r.URL.Query().Get("file")
@@ -196,7 +191,6 @@ func (s *Server) getBouquet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// saveBouquet writes an edited userbouquet back.
 func (s *Server) saveBouquet(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Dir     string `json:"dir"`
@@ -230,7 +224,7 @@ func (s *Server) saveBouquet(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	remote := dir + "/" + input.File
-	// Keep header lines the browser never saw (for example #SORT) by re-reading the file.
+
 	current, err := s.app.Files.ReadText(r.Context(), id, remote)
 	if err != nil {
 		writeEditError(w, err)
@@ -273,7 +267,6 @@ func randomSuffix() (string, error) {
 	return hex.EncodeToString(raw), nil
 }
 
-// newBouquet creates an empty userbouquet and lists it in bouquets.tv / .radio.
 func (s *Server) newBouquet(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Dir  string `json:"dir"`
@@ -314,7 +307,7 @@ func (s *Server) newBouquet(w http.ResponseWriter, r *http.Request) {
 		Content: index.text.Format(), LineEnding: filetransfer.LineEndingLF,
 		ExpectedSize: index.file.Size, ExpectedModifiedAt: index.file.ModifiedAt, ExpectedHash: index.file.Hash,
 	}); err != nil {
-		// Do not leave an orphan file behind.
+
 		_ = s.app.Files.Remove(context.WithoutCancel(r.Context()), id, dir+"/"+file, false)
 		writeEditError(w, err)
 		return
@@ -339,13 +332,11 @@ func (s *Server) readIndex(ctx context.Context, id, indexPath string) (loadedInd
 	return loadedIndex{text: parsed, file: file}, nil
 }
 
-// changeIndex removes a bouquet from the list, or moves it up or down. The
-// userbouquet file itself is left on the receiver.
 func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Dir    string `json:"dir"`
 		File   string `json:"file"`
-		Action string `json:"action"` // remove | delete (remove and erase the file) | up | down
+		Action string `json:"action"`
 	}
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -384,8 +375,7 @@ func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.Action == "delete" {
-		// The list no longer points at the file; erase it too. A failure here is
-		// reported but is harmless: the file is just an unused leftover.
+
 		if err := s.app.Files.Remove(r.Context(), id, dir+"/"+input.File, false); err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"changed": true, "file_removed": false, "note": "The bouquet was removed from the list, but its file could not be deleted: " + err.Error()})
 			return
@@ -396,8 +386,6 @@ func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"changed": true})
 }
 
-// reloadBouquets asks the receiver's web interface (OpenWebif) to re-read the
-// channel lists. It only contacts the host of the device the session belongs to.
 func (s *Server) reloadBouquets(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var profileID string
@@ -432,8 +420,6 @@ func (s *Server) reloadBouquets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answer": answer})
 }
 
-// serviceIndex keeps the parsed channel list of lamedb between requests (it can
-// hold tens of thousands of services), per session and settings folder.
 var serviceIndex = &serviceCache{}
 
 type serviceCache struct {
@@ -480,9 +466,6 @@ func (c *serviceCache) forget() {
 
 const maxServiceResults = 300
 
-// listServices searches the channels of the receiver's lamedb, so the editor can
-// add channels to a bouquet. Query: kind = tv | radio, q = text to look for
-// (name or provider), dir = settings folder, refresh = 1 to re-read lamedb.
 func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	dir, err := bouquetDir(r.URL.Query().Get("dir"))
 	if err != nil {
@@ -499,7 +482,7 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	all, ok := serviceIndex.get(key)
 	if !ok || r.URL.Query().Get("refresh") == "1" {
 		all = nil
-		for _, file := range []string{"lamedb", "lamedb5"} { // lamedb5 wins on conflicts
+		for _, file := range []string{"lamedb", "lamedb5"} {
 			data, found, readErr := s.app.Files.ReadBytes(r.Context(), id, dir+"/"+file)
 			if readErr != nil {
 				writeBouquetError(w, readErr)
@@ -543,8 +526,6 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"services": matches, "total": total, "truncated": truncated})
 }
 
-// mergeServices adds the services of `next` to `base`; a service of `next` replaces
-// the same service already in `base`.
 func mergeServices(base, next []enigma2.Service) []enigma2.Service {
 	index := make(map[string]int, len(base))
 	for i, svc := range base {

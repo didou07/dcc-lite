@@ -86,8 +86,6 @@ func (s *Server) closeTerminal(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// terminalStatus tells a page whether a terminal session is still alive, which
-// decides between reconnecting to it and giving up.
 func (s *Server) terminalStatus(w http.ResponseWriter, r *http.Request) {
 	info, ok := s.app.Terminals.Info(r.PathValue("id"))
 	if !ok {
@@ -107,8 +105,7 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	// A reconnecting page says how much output it already has, so the shell
-	// continues exactly where the dropped connection stopped.
+
 	var offset int64
 	if raw := r.URL.Query().Get("offset"); raw != "" {
 		value, parseErr := strconv.ParseInt(raw, 10, 64)
@@ -131,12 +128,10 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	ws, err := upgradeWebSocket(w, r)
 	if err != nil {
-		_ = backend.Close() // detach only: the page may try again
+		_ = backend.Close()
 		return
 	}
-	// endSession is set when the shell itself is over (the page asked to close it
-	// or the receiver ended it). Any other end only detaches, so the page can
-	// reconnect to the same shell.
+
 	endSession := false
 	defer func() {
 		_ = ws.Close()
@@ -159,7 +154,7 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 					cancel()
 					return
 				}
-				// An open terminal is activity: keep the remote sign-in alive too.
+
 				if s.remote != nil {
 					s.remote.auth.Authenticated(r)
 				}
@@ -204,7 +199,7 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 					_ = ws.WriteJSON(map[string]any{"type": "notice", "message": err.Error()})
 				}
 			case "ping":
-				// Browsers cannot send WebSocket pings; this keeps proxies awake.
+
 				_ = ws.WriteJSON(map[string]any{"type": "pong"})
 			case "close":
 				done <- result{final: true}
@@ -230,7 +225,7 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 					done <- result{err: readErr}
 					return
 				}
-				// The receiver ended the shell: tell the page, then drop the session.
+
 				_ = ws.WriteJSON(map[string]any{"type": "closed"})
 				done <- result{err: readErr, final: true}
 				return

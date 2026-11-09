@@ -30,9 +30,6 @@ const (
 
 var tlsHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
 
-// remoteManager owns the optional HTTPS listener so it can be switched on and
-// off, and reconfigured, while the program runs. Its settings live in
-// remote-access.json (the password hash lives in remote.json).
 type remoteManager struct {
 	application *app.App
 	dataDir     string
@@ -40,7 +37,7 @@ type remoteManager struct {
 
 	mu       sync.Mutex
 	settings app.RemoteSettings
-	cli      bool // --remote-listen on the command line controls the listener
+	cli      bool
 	certFile string
 	keyFile  string
 
@@ -60,8 +57,6 @@ func newRemoteManager(application *app.App, dataDir, loopback string) *remoteMan
 	}
 }
 
-// Init starts the listener from the command line (fatal on failure, as before)
-// or from the saved settings (a failure is only reported in the interface).
 func (m *remoteManager) Init(flags remoteSettings) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -129,7 +124,6 @@ func (m *remoteManager) save() error {
 	return os.Rename(tmp, path)
 }
 
-// normalize validates user input and returns the cleaned settings.
 func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, error) {
 	out := app.RemoteSettings{Enabled: in.Enabled, Listen: strings.TrimSpace(in.Listen), PlainHTTP: in.PlainHTTP}
 	if out.Listen == "" {
@@ -156,7 +150,6 @@ func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, er
 	return out, nil
 }
 
-// start opens the listener for m.settings. The caller holds m.mu.
 func (m *remoteManager) start() (remotePlan, error) {
 	plan, err := prepareRemote(m.dataDir, remoteSettings{
 		Listen: m.settings.Listen, CertFile: m.certFile, KeyFile: m.keyFile, ExtraHost: m.settings.TLSHosts, Plain: m.settings.PlainHTTP,
@@ -177,8 +170,7 @@ func (m *remoteManager) start() (remotePlan, error) {
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
-	// Remember every connection (including upgraded terminal WebSockets, which
-	// http.Server forgets) so turning remote access off really disconnects them.
+
 	conns := map[net.Conn]struct{}{}
 	var connsMu sync.Mutex
 	server.ConnState = func(c net.Conn, state http.ConnState) {
@@ -225,11 +217,6 @@ func (m *remoteManager) start() (remotePlan, error) {
 	return plan, nil
 }
 
-// linkHosts lists the addresses worth showing in the links: only the public IP
-// or dynamic DNS name typed by the user, because this computer's own LAN
-// addresses are not what someone opens from outside. A run started from the
-// command line has no such field, so it keeps listing the certificate's hosts
-// (HTTPS) or this computer's addresses (plain HTTP).
 func (m *remoteManager) linkHosts(plan remotePlan) []string {
 	var hosts []string
 	for _, extra := range strings.Split(m.settings.TLSHosts, ",") {
@@ -266,7 +253,6 @@ func (m *remoteManager) links() []string {
 	return urls
 }
 
-// stop closes the listener and every connection it accepted. The caller holds m.mu.
 func (m *remoteManager) stop() {
 	if m.server == nil {
 		return
@@ -285,7 +271,6 @@ func (m *remoteManager) stop() {
 	slog.Info("Remote access (HTTPS) stopped")
 }
 
-// Stop shuts the listener down when the program exits.
 func (m *remoteManager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -311,14 +296,12 @@ func (m *remoteManager) status() app.RemoteStatus {
 	return st
 }
 
-// Status implements app.RemoteController.
 func (m *remoteManager) Status() app.RemoteStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.status()
 }
 
-// Apply implements app.RemoteController.
 func (m *remoteManager) Apply(in app.RemoteSettings) (app.RemoteStatus, string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -336,7 +319,7 @@ func (m *remoteManager) Apply(in app.RemoteSettings) (app.RemoteStatus, string, 
 	if next.Enabled {
 		plan, err := m.start()
 		if err != nil {
-			// Put the old settings back and try to bring the old listener up again.
+
 			m.settings = previous
 			if previous.Enabled {
 				_, _ = m.start()
@@ -361,7 +344,6 @@ func (m *remoteManager) credentials() (*remoteaccess.Credentials, error) {
 	return remoteaccess.OpenCredentials(m.dataDir)
 }
 
-// SetPassword implements app.RemoteController. Every signed-in session ends.
 func (m *remoteManager) SetPassword(password string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -378,7 +360,6 @@ func (m *remoteManager) SetPassword(password string) error {
 	return nil
 }
 
-// GeneratePassword implements app.RemoteController.
 func (m *remoteManager) GeneratePassword() (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

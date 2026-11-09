@@ -18,26 +18,18 @@ import (
 	"github.com/didou07/dcc-lite/src/filetransfer"
 )
 
-// Backup and restore of the receiver's channel list (/etc/enigma2).
-//
-// A "channels" backup holds only what makes up the channel list. A restore
-// only ever writes those same files: files such as "settings" are rewritten by
-// Enigma2 when it shuts down, so putting them back on a running receiver
-// would be undone, or leave it in a mixed state.
-
 const (
-	backupMaxFile  = 24 << 20  // one file
-	backupMaxTotal = 128 << 20 // everything read for one backup
-	restoreMaxZip  = 64 << 20  // an uploaded backup
-	restoreMaxData = 128 << 20 // unpacked size, a guard against zip bombs
+	backupMaxFile  = 24 << 20
+	backupMaxTotal = 128 << 20
+	restoreMaxZip  = 64 << 20
+	restoreMaxData = 128 << 20
 	restoreMaxFile = 24 << 20
-	restoreMaxList = 3000 // entries in an uploaded backup
+	restoreMaxList = 3000
 	backupManifest = "dcclite-backup.json"
 )
 
 var backupFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
 
-// isChannelFile reports whether a file in /etc/enigma2 belongs to the channel list.
 func isChannelFile(name string) bool {
 	if !backupFileName.MatchString(name) {
 		return false
@@ -54,8 +46,6 @@ func isChannelFile(name string) bool {
 	return false
 }
 
-// restoreRank orders a restore so the bouquet index files, which refer to the
-// others, are written last and never point at a file that is not there yet.
 func restoreRank(name string) int {
 	switch {
 	case name == "lamedb" || name == "lamedb5":
@@ -92,8 +82,6 @@ func backupHostLabel(host string) string {
 	return b.String()
 }
 
-// backupEnigma2 streams a zip of the channel list (scope=channels) or of every
-// plain file of the settings folder (scope=all).
 func (s *Server) backupEnigma2(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
@@ -171,7 +159,6 @@ type restoreSkip struct {
 	Reason string `json:"reason"`
 }
 
-// restoreEnigma2 puts the channel list files of an uploaded backup back on the receiver.
 func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
@@ -232,14 +219,13 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	}
 	reloaded, note := reloadChannelLists(ctx, profile)
 	s.names.mu.Lock()
-	s.names.entries = nil // channel names come from the restored lamedb now
+	s.names.entries = nil
 	s.names.mu.Unlock()
 	piconCache.forget()
 	serviceIndex.forget()
 	writeJSON(w, http.StatusOK, map[string]any{"restored": restored, "skipped": skipped, "reloaded": reloaded, "reload_note": note})
 }
 
-// readRestoreZip validates an uploaded backup and returns the channel list files in it.
 func readRestoreZip(upload []byte) ([]filetransfer.RemoteFile, []restoreSkip, error) {
 	if len(upload) == 0 {
 		return nil, nil, errors.New("choose a backup .zip file")
@@ -296,8 +282,6 @@ func readRestoreZip(upload []byte) ([]filetransfer.RemoteFile, []restoreSkip, er
 	return files, skipped, nil
 }
 
-// reloadChannelLists asks the receiver's web interface to re-read lamedb and
-// the bouquets (mode 0 = both). A failure is not fatal: the files are in place.
 func reloadChannelLists(ctx context.Context, profile config.Profile) (bool, string) {
 	web := newDeviceWeb(profile, 10*time.Second)
 	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)

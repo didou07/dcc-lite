@@ -11,18 +11,13 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// RemoteFile is one small file read from a receiver folder.
 type RemoteFile struct {
 	Name string
 	Data []byte
 }
 
-// ErrTooMuchData is returned when a folder holds more than the caller allows.
 var ErrTooMuchData = errors.New("the folder holds more data than a backup can contain")
 
-// ReadDirFiles reads the regular files of one remote folder (not sub folders,
-// links or hidden files) that keep() accepts. Files above maxFile bytes are
-// reported in skipped instead of being read; maxTotal bounds the memory used.
 func (m *Manager) ReadDirFiles(ctx context.Context, sessionID, dir string, keep func(name string) bool, maxFile, maxTotal int64) (files []RemoteFile, skipped []string, err error) {
 	err = m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
 		entries, listErr := adapter.List(ctx, dir)
@@ -53,9 +48,6 @@ func (m *Manager) ReadDirFiles(ctx context.Context, sessionID, dir string, keep 
 	return files, skipped, err
 }
 
-// PutFile writes data to a remote path without ever leaving a half written
-// file: it uploads next to the target, then swaps it in (keeping the old
-// permissions), the same way file transfers commit.
 func (m *Manager) PutFile(ctx context.Context, sessionID, remotePath string, data []byte) error {
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
 		id, err := newFileID()

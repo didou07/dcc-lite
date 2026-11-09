@@ -15,9 +15,6 @@ const ipkMaxBytes = 256 << 20
 
 var ipkFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+~-]{0,150}\.ipk$`)
 
-// uploadIPK puts an .ipk package from the browser into /tmp on the receiver and
-// returns the command that installs it. The page then runs that command in a
-// terminal tab, so the whole opkg output is visible.
 func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, ok := s.sessionProfile(id); !ok {
@@ -86,9 +83,7 @@ func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 		writeEditError(w, err)
 		return
 	}
-	// Keep the package after a failed install so it can be retried; remove it after a good one.
-	// Options chosen on the page: reinstall over an installed version, and restart the
-	// Enigma2 GUI afterwards (most plugins only show up after that).
+
 	install := "opkg install "
 	if r.URL.Query().Get("force") == "1" {
 		install += "--force-reinstall --force-overwrite "

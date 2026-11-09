@@ -12,11 +12,6 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 )
 
-// Programme guide, timers and recordings. Like the channel list they are relayed
-// to the web interface (OpenWebif) of the saved device. The browser only sends
-// service references, numbers and short texts, which are validated here before
-// they are put in a request; it never supplies an address.
-
 const (
 	maxGuideBytes   = 12 << 20
 	maxGuideEvents  = 400
@@ -25,7 +20,6 @@ const (
 	maxMovieEntries = 2000
 )
 
-// rawNum reads a number that OpenWebif may send as a JSON number or as a string.
 func rawNum(m json.RawMessage) int64 {
 	text := strings.Trim(string(m), `" `)
 	if n, err := strconv.ParseInt(text, 10, 64); err == nil {
@@ -37,7 +31,6 @@ func rawNum(m json.RawMessage) int64 {
 	return 0
 }
 
-// cleanText drops control characters and cuts a text to a number of runes.
 func cleanText(text string, limit int) string {
 	var b strings.Builder
 	count := 0
@@ -56,7 +49,6 @@ func cleanText(text string, limit int) string {
 	return b.String()
 }
 
-// moviePathOK accepts an absolute path on the receiver without parent steps.
 func moviePathOK(path string) bool {
 	if path == "" || len(path) > 900 || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "\x00\r\n") {
 		return false
@@ -92,8 +84,6 @@ type rawGuideEvent struct {
 	Now      json.RawMessage `json:"now_timestamp"`
 }
 
-// guideEvents turns the receiver's events into the shape the page uses and drops
-// empty ones. It also returns the receiver's own clock when it reported one.
 func guideEvents(raw []rawGuideEvent, limit int, fallbackRef string) ([]guideEvent, int64) {
 	out := make([]guideEvent, 0, len(raw))
 	var now int64
@@ -124,7 +114,6 @@ func guideEvents(raw []rawGuideEvent, limit int, fallbackRef string) ([]guideEve
 	return out, now
 }
 
-// deviceEPG lists the coming programmes of one channel (OpenWebif "epgservice").
 func (s *Server) deviceEPG(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -157,8 +146,6 @@ func (s *Server) deviceEPG(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"now": now, "events": events})
 }
 
-// deviceEPGSearch looks for a word in the programme titles and descriptions of
-// every channel (OpenWebif "epgsearch").
 func (s *Server) deviceEPGSearch(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -207,7 +194,6 @@ type timerEntry struct {
 	File        string `json:"file,omitempty"`
 }
 
-// deviceTimers lists the receiver's timers (OpenWebif "timerlist").
 func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -271,9 +257,6 @@ type timerAddRequest struct {
 	AfterEvent  int    `json:"afterevent"`
 }
 
-// deviceTimerAdd adds a recording (or a "switch to this channel" reminder) timer.
-// When the programme's event number is known the receiver builds the timer from
-// its own guide, with its usual margins; otherwise the times are used as sent.
 func (s *Server) deviceTimerAdd(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -290,7 +273,7 @@ func (s *Server) deviceTimerAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.AfterEvent < 0 || input.AfterEvent > 3 {
-		input.AfterEvent = 3 // "auto", the receiver decides
+		input.AfterEvent = 3
 	}
 	justplay := "0"
 	if input.JustPlay {
@@ -360,17 +343,14 @@ func (s *Server) timerKeyAction(w http.ResponseWriter, r *http.Request, endpoint
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// deviceTimerToggle switches a timer on or off (OpenWebif "timertogglestatus").
 func (s *Server) deviceTimerToggle(w http.ResponseWriter, r *http.Request) {
 	s.timerKeyAction(w, r, "/api/timertogglestatus")
 }
 
-// deviceTimerDelete removes one timer (OpenWebif "timerdelete").
 func (s *Server) deviceTimerDelete(w http.ResponseWriter, r *http.Request) {
 	s.timerKeyAction(w, r, "/api/timerdelete")
 }
 
-// deviceTimerCleanup removes the finished timers (OpenWebif "timercleanup").
 func (s *Server) deviceTimerCleanup(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -398,7 +378,6 @@ type movieEntry struct {
 	Size    int64  `json:"size,omitempty"`
 }
 
-// deviceMovies lists the recordings in one folder (OpenWebif "movielist").
 func (s *Server) deviceMovies(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -473,13 +452,10 @@ func (s *Server) deviceMovies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"directory": directory, "folders": folders, "movies": movies})
 }
 
-// movieDeleteRequest names a recording by the service reference the list gave.
 type movieDeleteRequest struct {
 	Ref string `json:"ref"`
 }
 
-// deviceMovieDelete deletes one recording (OpenWebif "moviedelete"). The receiver
-// may move it to its trash folder instead, as its own screens do.
 func (s *Server) deviceMovieDelete(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -506,8 +482,6 @@ func (s *Server) deviceMovieDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// movieM3U builds the playlist for a recording when the receiver does not give
-// one: the web interface serves the file itself at /file?file=<path>.
 func movieM3U(profile config.Profile, file, name string) string {
 	web := newDeviceWeb(profile, time.Second)
 	var b strings.Builder
@@ -519,7 +493,6 @@ func movieM3U(profile config.Profile, file, name string) string {
 	return b.String()
 }
 
-// deviceMovieStream sends an .m3u file for one recording, to watch it on the computer.
 func (s *Server) deviceMovieStream(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {

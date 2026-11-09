@@ -7,14 +7,10 @@ import (
 	"strings"
 )
 
-// ServiceKey identifies a channel independent of how its reference is padded.
 type ServiceKey struct {
 	SID, TSID, ONID, Namespace uint32
 }
 
-// KeyOfRef extracts the identifying fields of a DVB service reference such as
-// "1:0:19:2B66:3F3:1:C00000:0:0:0:". It returns false for markers, streams and
-// anything else that is not an ordinary broadcast service.
 func KeyOfRef(ref string) (ServiceKey, bool) {
 	fields := strings.Split(ref, ":")
 	if len(fields) < 7 || fields[0] != "1" {
@@ -35,14 +31,10 @@ func KeyOfRef(ref string) (ServiceKey, bool) {
 }
 
 var (
-	// lamedb version 4: a line "sid:namespace:tsid:onid:type:number" followed by the name.
-	lamedb4Header = regexp.MustCompile(`^([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):\d+:\d+`)
-	// lamedb version 5: "s:sid,namespace,tsid,onid,type,number,"name",..." (separators vary between images).
+	lamedb4Header  = regexp.MustCompile(`^([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):\d+:\d+`)
 	lamedb5Service = regexp.MustCompile(`^s:([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]\d+[:,]\d+[^"]*"([^"]*)"`)
 )
 
-// ParseLamedb returns channel names by service key from a lamedb (v4) or
-// lamedb5 file. Unknown layouts simply yield fewer names.
 func ParseLamedb(text string) map[ServiceKey]string {
 	names := make(map[ServiceKey]string)
 	lines := splitLines(text)
@@ -75,16 +67,12 @@ func ParseLamedb(text string) map[ServiceKey]string {
 			if name != "" {
 				names[ServiceKey{SID: hex(m[1]), Namespace: hex(m[2]), TSID: hex(m[3]), ONID: hex(m[4])}] = name
 			}
-			i += 2 // skip the name and the provider/flags line
+			i += 2
 		}
 	}
 	return names
 }
 
-// CleanName removes the control characters DVB broadcasters put into names
-// (U+0086/U+0087 "emphasis" marks, U+008A line break, 0x1A) and surrounding
-// blanks. Enigma2 shows names without them; OpenWebif strips the same bytes
-// (controllers/models/services.py, removeBadChars).
 func CleanName(name string) string {
 	name = strings.Map(func(r rune) rune {
 		switch r {
@@ -96,10 +84,6 @@ func CleanName(name string) string {
 	return strings.TrimSpace(name)
 }
 
-// SplitDescription splits a #DESCRIPTION text into the name and the provider.
-// When Enigma2 saves a bouquet it appends "•<provider>" to the name
-// (eBouquet::flushChanges) and splits it again on load
-// (eServiceReference::parseNameAndProviderFromName).
 func SplitDescription(description string) (name, provider string) {
 	name, provider, _ = strings.Cut(description, "•")
 	if i := strings.Index(provider, "•"); i >= 0 {
@@ -108,9 +92,6 @@ func SplitDescription(description string) (name, provider string) {
 	return CleanName(name), CleanName(provider)
 }
 
-// DisplayName picks the name Enigma2 itself shows for an entry: the name given
-// in the bouquet (#DESCRIPTION, without the "•provider" part) when there is one,
-// otherwise the channel name from lamedb.
 func DisplayName(e Entry, names map[ServiceKey]string) string {
 	if name, _ := SplitDescription(e.Description); name != "" {
 		return name
@@ -126,7 +107,6 @@ func DisplayName(e Entry, names map[ServiceKey]string) string {
 	return ""
 }
 
-// Service is one channel of lamedb, with what is needed to put it in a bouquet.
 type Service struct {
 	Ref      string `json:"ref"`
 	Name     string `json:"name"`
@@ -135,14 +115,8 @@ type Service struct {
 	Radio    bool   `json:"radio"`
 }
 
-// radioType reports whether a DVB service type is a radio service. These are
-// Enigma2's own radio types (service_types_radio in Screens/ChannelSelection.py).
 func radioType(t int) bool { return t == 2 || t == 10 }
 
-// IsTVType reports whether a DVB service type is listed in the TV bouquets of
-// Enigma2: service_types_tv is 1 (SD), 17 (MPEG-2 HD), 22 (SD H.264), 25 (HD
-// H.264), 31 (UHD), 32, 134 and 195. Data, teletext and other service types are
-// not offered when editing a TV bouquet.
 func IsTVType(t int) bool {
 	switch t {
 	case 1, 17, 22, 25, 31, 32, 134, 195:
@@ -151,15 +125,10 @@ func IsTVType(t int) bool {
 	return false
 }
 
-// MakeRef builds the service reference Enigma2 writes into a bouquet for a
-// broadcast service, e.g. "1:0:19:2B66:3F3:1:C00000:0:0:0:".
 func MakeRef(key ServiceKey, serviceType int) string {
 	return fmt.Sprintf("1:0:%X:%X:%X:%X:%X:0:0:0:", serviceType, key.SID, key.TSID, key.ONID, key.Namespace)
 }
 
-// ParseServices lists the channels of a lamedb (v4) or lamedb5 file.
-// Duplicates (the same service twice) are dropped; unknown layouts yield fewer
-// services, never an error.
 func ParseServices(text string) []Service {
 	var out []Service
 	seen := map[string]bool{}

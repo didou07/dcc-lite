@@ -192,6 +192,8 @@ type timerEntry struct {
 	Repeated    int64  `json:"repeated,omitempty"`
 	AfterEvent  int64  `json:"afterevent"`
 	File        string `json:"file,omitempty"`
+	Dir         string `json:"dir,omitempty"`
+	Tags        string `json:"tags,omitempty"`
 }
 
 func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
@@ -221,6 +223,8 @@ func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
 			Repeated    json.RawMessage `json:"repeated"`
 			AfterEvent  json.RawMessage `json:"afterevent"`
 			File        string          `json:"filename"`
+			Dir         json.RawMessage `json:"dirname"`
+			Tags        json.RawMessage `json:"tags"`
 		} `json:"timers"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -237,6 +241,7 @@ func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
 			Ref: t.Ref, Channel: cleanText(t.Channel, 120), Title: cleanText(t.Name, 300), Description: cleanText(t.Description, 600),
 			Begin: begin, End: end, EIT: rawNum(t.EIT), Disabled: rawNum(t.Disabled) == 1, JustPlay: rawNum(t.JustPlay) == 1,
 			State: rawNum(t.State), Repeated: rawNum(t.Repeated), AfterEvent: rawNum(t.AfterEvent), File: cleanText(t.File, 400),
+			Dir: timerDir(rawString(t.Dir)), Tags: cleanText(rawString(t.Tags), 200),
 		})
 		if len(out) >= 1000 {
 			break

@@ -136,6 +136,7 @@ function gdEventNode(e, withChannel) {
   const stop = (fn) => (event) => { event.stopPropagation(); fn(); };
   const acts = h("div", { class: "gd-acts" },
     iconButton("play", "Switch the receiver to this channel", stop(() => gdZap(e.ref, e.channel))),
+    e.id ? iconButton("search", "Find similar programmes", stop(() => gdLoadSimilar(e))) : h("span", { class: "gd-gap", "aria-hidden": "true" }),
     e.begin > now ? iconButton("bell", "Remind me: switch to this channel when it starts", stop(() => gdAddTimer(e, true))) : h("span", { class: "gd-gap", "aria-hidden": "true" }),
     iconButton("rec", timer ? "This programme already has a timer (open Timers)" : "Record this programme", stop(() => (timer ? guideSetTab("timers") : gdAddTimer(e, false))), timer ? "on" : ""));
   const bar = h("div", { class: "ch-prog" }, h("span"));
@@ -155,20 +156,24 @@ function gdEventNode(e, withChannel) {
   return row;
 }
 function gdPaintEPG(list) {
-  const searching = guide.loaded.startsWith("q:") || Boolean(guide.search.trim());
+  const similar = guide.loaded.startsWith("s:");
+  const searching = similar || guide.loaded.startsWith("q:") || Boolean(guide.search.trim());
   const now = gdNow();
   const events = guide.events.filter((e) => e.begin + e.duration > now);
+  const back = similar ? h("button", { class: "gd-item gd-folder", type: "button", onClick: () => { guide.loaded = ""; gdLoadEPG(); } },
+    h("div", { class: "gd-time" }, h("span", { class: "gd-kind folder" }, icon("left"))),
+    h("div", { class: "gd-main" }, h("div", { class: "gd-title ellipsis", text: `Similar to “${guide.similarTitle}”: back to the programme list` }))) : null;
   if (!events.length) {
     const query = guide.search.trim();
-    list.replaceChildren(gdEmpty(searching
+    list.replaceChildren(...(back ? [back] : []), gdEmpty(similar ? "The receiver found no similar programmes." : searching
       ? (query.length < 2 ? "Search the programme guide of every channel: type a title or a word." : `Nothing found for “${query}”.`)
       : guide.ref ? "The receiver has no programme information for this channel." : "Choose a channel to see its programmes, or search the guide."));
     if (guide.loaded) gdStatus("");
     return;
   }
   const rows = events.map((e) => ({ e, node: gdEventNode(e, searching) }));
-  list.replaceChildren(...gdGrouped(rows, (r) => gdDay(r.e.begin), (r) => gdDayHeader(r.e.begin)));
-  gdStatus(`${events.length} programme${events.length === 1 ? "" : "s"}`);
+  list.replaceChildren(...(back ? [back] : []), ...gdGrouped(rows, (r) => gdDay(r.e.begin), (r) => gdDayHeader(r.e.begin)));
+  gdStatus(`${events.length} ${similar ? "similar " : ""}programme${events.length === 1 ? "" : "s"}`);
 }
 
 const GD_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -205,6 +210,7 @@ function gdTimerNode(t) {
   const when = `${gdDay(t.begin, false)} ${gdClock(t.begin)}–${gdClock(t.end)}`;
   const repeat = gdRepeat(t.repeated);
   const acts = h("div", { class: "gd-acts" },
+    t.state === 3 ? null : iconButton("edit", "Edit this timer", () => openTimerEditor(t)),
     t.state === 3 ? null : iconButton(t.disabled ? "play" : "pause", t.disabled ? "Turn this timer on" : "Turn this timer off", async () => { if (await gdTimerCall("toggle", t)) toast(t.disabled ? "Timer turned on" : "Timer turned off"); }),
     iconButton("trash", "Delete this timer", () => gdDeleteTimer(t)));
   return h("div", { class: `gd-item gd-timer${t.state === 2 ? " running" : ""}${t.state === 3 || t.disabled ? " dim" : ""}` },
@@ -277,6 +283,8 @@ function gdMovieNode(m) {
         gdDownload(guideURL(`movie.m3u?file=${encodeURIComponent(m.file)}&name=${encodeURIComponent(m.title)}`));
         toast("Playlist saved: open it with VLC or your media player");
       }),
+      iconButton("edit", "Rename this recording", () => gdRenameMovie(m)),
+      iconButton("folder", "Move this recording to another folder", () => gdMoveMovie(m)),
       iconButton("trash", "Delete this recording", () => gdDeleteMovie(m))));
 }
 function gdPaintMovies(list) {

@@ -16,6 +16,7 @@ const (
 	grabMinInterval = 400 * time.Millisecond
 	grabFailPause   = 5 * time.Second
 	grabFailPauseMx = 30 * time.Second
+	grabGap         = 350 * time.Millisecond
 )
 
 type grabState struct {
@@ -27,6 +28,7 @@ type grabState struct {
 	failAt  time.Time
 	streak  int
 	failMsg string
+	doneAt  time.Time
 }
 
 var grabStates sync.Map
@@ -96,14 +98,28 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 	case <-ctx.Done():
 		return nil, &grabError{"web_error", "cancelled"}
 	}
-	defer func() { <-st.gate }()
+	defer func() {
+		st.mu.Lock()
+		st.doneAt = time.Now()
+		st.mu.Unlock()
+		<-st.gate
+	}()
+	st.mu.Lock()
+	wait := grabGap - time.Since(st.doneAt)
+	st.mu.Unlock()
+	if wait > 0 {
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return nil, &grabError{"web_error", "cancelled"}
+		}
+	}
 	if body := st.cached(key); body != nil {
 		return body, nil
 	}
 	if msg, left := st.coolingDown(); left > 0 {
 		return nil, &grabError{"web_error", fmt.Sprintf("%s Pausing screen requests for %d s so the receiver can recover.", msg, int(left.Seconds())+1)}
 	}
-
 	upstream, cancel := context.WithTimeout(context.WithoutCancel(ctx), grabTimeout)
 	defer cancel()
 	resp, err := web.get(upstream, fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width))

@@ -42,7 +42,6 @@ function renderDeviceGrid() {
   grid.replaceChildren();
   $("#deviceEmpty").hidden = devices.list.length > 0;
   $("#devicesRefresh").disabled = !devices.list.length;
-  $("#devicesExport").disabled = !devices.list.length;
   for (const profile of devices.list) {
     const status = devices.status.get(profile.id);
     const card = h("article", { class: `device-card${profile.id === devices.currentID ? " current" : ""}`, dataset: { id: profile.id } },
@@ -229,28 +228,6 @@ $("#devPassToggle").addEventListener("click", () => { const f = $("#devPass"); f
 $("#deviceAdd").addEventListener("click", () => openDeviceDialog());
 $("#deviceAddEmpty").addEventListener("click", () => openDeviceDialog());
 $("#devicesRefresh").addEventListener("click", testAllDevices);
-$("#devicesExport").addEventListener("click", async () => {
-  try {
-    const response = await fetch("/api/v1/profiles/export");
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = h("a", { href: url, download: "dcc-lite-devices.json" });
-    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-    toast("Devices exported (passwords are not included)");
-  } catch (error) { toastError(error); }
-});
-$("#devicesImport").addEventListener("click", () => $("#devicesImportFile").click());
-$("#devicesImportFile").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    const result = await post("/api/v1/profiles/import", { schema_version: data.schema_version, profiles: data.profiles });
-    await loadDevices();
-    toast(`${result.imported} device(s) imported with the default password — edit them to set the real one`);
-  } catch (error) { toastError(error); }
-});
 
 function openDevice(id, view) {
   setCurrentDevice(id);

@@ -6,55 +6,48 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
 	MinPasswordLength = 10
 	maxPasswordLength = 256
 	pbkdf2Iterations  = 310_000
-	credentialsFile   = "remote.json"
 )
 
 var ErrPasswordNotSet = errors.New("remote access password is not set")
 
+type PasswordStore interface {
+	PasswordRecord() (salt, hash string, iterations int)
+	SavePasswordRecord(salt, hash string, iterations int) error
+}
+
 type credentialRecord struct {
-	Version    int       `json:"version"`
-	Salt       string    `json:"salt"`
-	Hash       string    `json:"hash"`
-	Iterations int       `json:"iterations"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Salt       string
+	Hash       string
+	Iterations int
 }
 
 type Credentials struct {
 	mu     sync.Mutex
-	path   string
+	store  PasswordStore
 	record credentialRecord
 	set    bool
 }
 
-func OpenCredentials(dir string) (*Credentials, error) {
-	c := &Credentials{path: filepath.Join(dir, credentialsFile)}
-	data, err := os.ReadFile(c.path)
-	if errors.Is(err, os.ErrNotExist) {
+func OpenCredentials(store PasswordStore) (*Credentials, error) {
+	c := &Credentials{store: store}
+	salt, hash, iterations := store.PasswordRecord()
+	if salt == "" && hash == "" {
 		return c, nil
 	}
-	if err != nil {
-		return nil, err
+	if salt == "" || hash == "" || iterations < 100_000 {
+		return nil, errors.New("the remote password in the settings file is incomplete or weak; delete the PasswordSalt, PasswordHash and PasswordIterations lines to reset it")
 	}
-	if err := json.Unmarshal(data, &c.record); err != nil {
-		return nil, fmt.Errorf("read %s: %w", credentialsFile, err)
-	}
-	if c.record.Salt == "" || c.record.Hash == "" || c.record.Iterations < 100_000 {
-		return nil, fmt.Errorf("%s is incomplete or uses weak settings; reset the remote password", credentialsFile)
-	}
+	c.record = credentialRecord{Salt: salt, Hash: hash, Iterations: iterations}
 	c.set = true
 	return c, nil
 }
@@ -69,7 +62,7 @@ func (c *Credentials) Set(password string) error {
 	if err := ValidatePassword(password); err != nil {
 		return err
 	}
-	return c.store(password)
+	return c.save(password)
 }
 
 func (c *Credentials) Generate() (string, error) {
@@ -98,7 +91,7 @@ func (c *Credentials) Generate() (string, error) {
 		}
 	}
 	password := b.String()
-	if err := c.store(password); err != nil {
+	if err := c.save(password); err != nil {
 		return "", err
 	}
 	return password, nil
@@ -114,7 +107,7 @@ func ValidatePassword(password string) error {
 	return nil
 }
 
-func (c *Credentials) store(password string) error {
+func (c *Credentials) save(password string) error {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return err
@@ -124,35 +117,10 @@ func (c *Credentials) store(password string) error {
 		return err
 	}
 	record := credentialRecord{
-		Version: 1, Salt: base64.StdEncoding.EncodeToString(salt), Hash: base64.StdEncoding.EncodeToString(hash),
-		Iterations: pbkdf2Iterations, UpdatedAt: time.Now().UTC(),
+		Salt: base64.StdEncoding.EncodeToString(salt), Hash: base64.StdEncoding.EncodeToString(hash),
+		Iterations: pbkdf2Iterations,
 	}
-	data, err := json.MarshalIndent(record, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(c.path), ".remote-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if err := tmp.Chmod(0o600); err != nil && !errors.Is(err, os.ErrPermission) {
-
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpPath, c.path); err != nil {
+	if err := c.store.SavePasswordRecord(record.Salt, record.Hash, record.Iterations); err != nil {
 		return err
 	}
 	c.mu.Lock()

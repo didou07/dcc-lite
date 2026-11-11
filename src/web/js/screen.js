@@ -1,7 +1,11 @@
 "use strict";
-const screenView = { profileID: "", running: false, gen: 0, paused: false, controller: null, wake: null, objectURL: "", blob: null, stamps: [], failures: 0 };
+const screenView = { profileID: "", running: false, gen: 0, paused: false, controller: null, wake: null, objectURL: "", blob: null, stamps: [], failures: 0, lastStart: -1e9, once: false };
 const screenSleep = (ms) => new Promise((resolve) => { const timer = window.setTimeout(resolve, ms); screenView.wake = () => { window.clearTimeout(timer); resolve(); }; });
 
+const screenIntervalMs = () => {
+  const seconds = Number($("#screenSpeed").value);
+  return Math.min(3600, Math.max(1, Number.isFinite(seconds) && seconds > 0 ? seconds : 30)) * 1000;
+};
 function screenQuery() {
   const params = new URLSearchParams({ mode: $("#screenMode").value, width: $("#screenWidth").value });
   return `/api/v1/profiles/${encodeURIComponent(screenView.profileID)}/screen?${params}`;
@@ -17,7 +21,7 @@ function screenShowStats(extra = "") {
   const rate = screenView.stamps.length > 1 ? (screenView.stamps.length - 1) / ((screenView.stamps[screenView.stamps.length - 1] - screenView.stamps[0]) / 1000) : 0;
   const img = $("#screenImg");
   const parts = [];
-  if (!img.hidden && img.naturalWidth) parts.push(`${rate ? rate.toFixed(1) : "0.0"} pictures/s`, `${img.naturalWidth}×${img.naturalHeight}`, formatBytes(screenView.blob?.size || 0));
+  if (!img.hidden && img.naturalWidth) parts.push(`updated ${new Date(screenView.shownAt || Date.now()).toLocaleTimeString()}`, `${img.naturalWidth}×${img.naturalHeight}`, formatBytes(screenView.blob?.size || 0));
   if (extra) parts.push(extra);
   $("#screenStats").textContent = parts.join(" · ");
 }
@@ -38,16 +42,28 @@ async function screenSetPicture(blob, gen) {
   $("#screenWait").hidden = true;
   if (previous) window.setTimeout(() => URL.revokeObjectURL(previous), 1000);
   screenView.stamps.push(performance.now());
+  screenView.shownAt = Date.now();
   return true;
 }
 
 async function screenLoop(gen) {
   while (gen === screenView.gen) {
-    if (screenView.paused || document.hidden) { await screenSleep(500); continue; }
+    const auto = $("#screenAuto").checked;
+    if ((screenView.paused && !screenView.once) || document.hidden) { await screenSleep(500); continue; }
+    if (!auto && !screenView.once) { await screenSleep(60000); continue; }
+    const floor = auto ? screenIntervalMs() : 1000;
+    const since = performance.now() - screenView.lastStart;
+    if (since < floor) {
+      await new Promise((resolve) => window.setTimeout(resolve, floor - since));
+      if (gen !== screenView.gen) return;
+      if (screenView.paused || document.hidden) continue;
+    }
     const began = performance.now();
+    screenView.lastStart = began;
     const controller = new AbortController();
     screenView.controller = controller;
-    let delay = Number($("#screenSpeed").value) || 1000;
+    let delay = screenIntervalMs();
+    screenView.once = false;
     try {
       const response = await fetch(screenQuery(), { signal: controller.signal, cache: "no-store" });
       if (!response.ok) {
@@ -72,6 +88,7 @@ async function screenLoop(gen) {
       if (error.fatal) { screenView.running = false; return; }
       delay = Math.min(20000, 2000 * screenView.failures);
     }
+    if (!$("#screenAuto").checked) continue;
     await screenSleep(Math.max(250, delay - (performance.now() - began)));
   }
 }
@@ -93,6 +110,12 @@ function screenStop() {
   img.hidden = true;
 }
 function screenRestart() {
+  screenView.once = true;
+  screenView.wake?.();
+}
+function screenRestartNow() {
+  screenView.once = true;
+  screenView.lastStart = -1e9;
   screenView.controller?.abort();
   screenView.wake?.();
 }
@@ -110,16 +133,18 @@ function screenEnter() {
   }
   if (device.id === screenView.profileID && screenView.running) return;
   screenStop();
-  Object.assign(screenView, { profileID: device.id, paused: false, stamps: [], failures: 0, running: true });
+  Object.assign(screenView, { profileID: device.id, paused: false, stamps: [], failures: 0, lastStart: -1e9, running: true, once: true });
   $("#screenSub").textContent = `${device.name} · ${device.host}`;
-  for (const [key, select, fallback] of [["screen.mode", "#screenMode", "all"], ["screen.width", "#screenWidth", "720"], ["screen.speed", "#screenSpeed", "2000"]]) {
+  for (const [key, select, fallback] of [["screen.mode", "#screenMode", "all"], ["screen.width", "#screenWidth", "720"]]) {
     const saved = String(store.get(key, fallback));
     $(select).value = [...$(select).options].some((o) => o.value === saved) ? saved : fallback;
   }
+  $("#screenAuto").checked = store.get("screen.auto", false) === true;
+  $("#screenSpeed").value = String(Math.min(3600, Math.max(1, Number(store.get("screen.seconds", 30)) || 30)));
+  $("#screenSpeed").disabled = !$("#screenAuto").checked;
   setPauseLabel(false);
   setRemoteOpen(store.get("remote.open", true) !== false);
   setChannelsOpen(store.get("channels.open", true) !== false);
-  $("#remoteRefresh").checked = store.get("remote.refresh", true) !== false;
   remoteError("");
   $("#screenSave").disabled = true;
   $("#screenWait").hidden = false;
@@ -130,13 +155,26 @@ function screenEnter() {
   channelsEnter();
 }
 
-for (const [select, key] of [["#screenMode", "screen.mode"], ["#screenWidth", "screen.width"], ["#screenSpeed", "screen.speed"]]) {
-  $(select).addEventListener("change", () => { store.set(key, $(select).value); screenRestart(); });
+for (const [select, key] of [["#screenMode", "screen.mode"], ["#screenWidth", "screen.width"]]) {
+  $(select).addEventListener("change", () => { store.set(key, $(select).value); screenRestartNow(); });
 }
+$("#screenSpeed").addEventListener("change", () => {
+  const seconds = Math.min(3600, Math.max(1, Math.round(Number($("#screenSpeed").value)) || 30));
+  $("#screenSpeed").value = String(seconds);
+  store.set("screen.seconds", seconds);
+  screenRestartNow();
+});
+$("#screenAuto").addEventListener("change", () => {
+  const on = $("#screenAuto").checked;
+  store.set("screen.auto", on);
+  $("#screenSpeed").disabled = !on;
+  if (on) screenRestartNow(); else screenShowStats();
+});
+$("#screenRefresh").addEventListener("click", () => screenRestartNow());
 $("#screenPause").addEventListener("click", () => {
   screenView.paused = !screenView.paused;
   setPauseLabel(screenView.paused);
-  if (screenView.paused) screenShowStats("paused"); else screenRestart();
+  if (screenView.paused) screenShowStats("paused"); else screenRestartNow();
 });
 $("#screenSave").addEventListener("click", () => {
   if (!screenView.blob) return;

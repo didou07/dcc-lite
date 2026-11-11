@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"errors"
-	"io/fs"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -97,7 +96,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	page, err := fs.ReadFile(webui.FS(), "login.html")
+	page, err := webui.Page("login.html")
 	if err != nil {
 		http.Error(w, "login page unavailable", http.StatusInternalServerError)
 		return

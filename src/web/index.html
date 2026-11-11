@@ -23,6 +23,7 @@
   <script src="/js/power.js" defer></script>
   <script src="/js/channels.js" defer></script>
   <script src="/js/guide.js" defer></script>
+  <script src="/js/guide-extras.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
   <script src="/js/main.js" defer></script>
 </head>
@@ -116,10 +117,7 @@
         <button class="btn" id="devicesRefresh" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Check all</button>
         <button class="btn" id="remoteAccessBtn" type="button" title="Open DCC Lite from another computer or phone" hidden><svg class="ic"><use href="#i-lock"/></svg>Remote access</button>
         <button class="btn" id="devicesScan" type="button" title="Search the local network for receivers"><svg class="ic"><use href="#i-search"/></svg>Find devices</button>
-        <button class="btn" id="devicesImport" type="button"><svg class="ic"><use href="#i-upload"/></svg>Import</button>
-        <button class="btn" id="devicesExport" type="button"><svg class="ic"><use href="#i-download"/></svg>Export</button>
         <button class="btn primary" id="deviceAdd" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add device</button>
-        <input type="file" id="devicesImportFile" accept="application/json,.json" hidden>
       </div>
     </div>
     <div id="deviceGrid" class="device-grid" aria-live="polite"></div>
@@ -250,8 +248,7 @@
       <div class="tools-actions">
         <label class="field-inline">Settings folder <input id="bqDir" value="/etc/enigma2" spellcheck="false" autocomplete="off"></label>
         <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again">Load</button>
-        <span class="status-pill" id="listsStatus" data-state="idle" role="img" aria-label="Not connected" title="Not connected"></span>
-        <button class="btn primary" id="listsConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
+        <button class="btn sm primary" id="listsConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
       </div>
     </div>
     <h1 id="listsTitle" class="sr-only">Channel editor <span id="listsDevice"></span></h1>
@@ -264,32 +261,46 @@
             <button type="button" role="radio" data-kind="tv" aria-checked="true">TV</button>
             <button type="button" role="radio" data-kind="radio" aria-checked="false">Radio</button>
           </div>
+          <input id="bqListFilter" type="search" aria-label="Find a bouquet" placeholder="Find a bouquet" autocomplete="off">
           <ul class="bq-list" id="bqBouquets" role="listbox" aria-label="Bouquets"></ul>
           <div class="bq-actions">
-            <button class="btn sm" id="bqNew" type="button">New…</button>
-            <button class="btn sm" id="bqListUp" type="button" title="Move bouquet up in the list" aria-label="Move bouquet up">▲</button>
-            <button class="btn sm" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down">▼</button>
-            <button class="btn sm danger" id="bqListRemove" type="button" title="Remove from the list (the file stays on the receiver)">Remove</button>
-            <button class="btn sm danger" id="bqListDelete" type="button" title="Remove from the list and delete the bouquet file from the receiver">Delete file</button>
+            <button class="btn sm" id="bqNew" type="button" title="Create an empty bouquet"><svg class="ic"><use href="#i-plus"/></svg>New</button>
+            <button class="btn sm sq" id="bqListUp" type="button" title="Move bouquet up in the list" aria-label="Move bouquet up">▲</button>
+            <button class="btn sm sq" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down">▼</button>
+            <button class="btn sm sq" id="bqListMore" type="button" title="Duplicate, remove or delete this bouquet" aria-haspopup="menu"><svg class="ic"><use href="#i-more"/></svg></button>
           </div>
+          <p class="bq-hint">Drag channels onto a bouquet to copy them there. Hold <kbd>Shift</kbd> to move.</p>
         </aside>
         <section class="bq-main">
-          <div class="bq-toolbar">
-            <h2 id="bqTitle">Bouquet</h2><code id="bqSub" class="ellipsis"></code>
-            <span class="spacer"></span>
+          <div class="bq-head">
             <input id="bqName" aria-label="Bouquet name" placeholder="Bouquet name" maxlength="120" disabled>
             <input id="bqFilter" type="search" aria-label="Filter channels" placeholder="Filter channels" disabled>
+            <h2 id="bqTitle">Bouquet</h2><code id="bqSub" class="ellipsis"></code>
+          </div>
+          <div class="bq-tools" role="toolbar" aria-label="Edit channels">
+            <div class="bq-group">
+              <button class="btn sm" id="bqUndo" type="button" title="Undo (Ctrl+Z)"><svg class="ic"><use href="#i-history"/></svg>Undo</button>
+              <button class="btn sm" id="bqRedo" type="button" title="Redo (Ctrl+Y)">Redo</button>
+            </div>
+            <div class="bq-group">
+              <button class="btn sm" id="bqAdd" type="button" title="Search the receiver's channel list (lamedb) and add channels"><svg class="ic"><use href="#i-plus"/></svg>Channels…</button>
+              <button class="btn sm" id="bqStream" type="button" title="Add an IPTV stream address or import an M3U playlist"><svg class="ic"><use href="#i-link"/></svg>Stream / M3U…</button>
+              <button class="btn sm" id="bqMarker" type="button" title="A heading line between channels"><svg class="ic"><use href="#i-minus"/></svg>Marker</button>
+            </div>
+            <div class="bq-group">
+              <button class="btn sm" id="bqRename" type="button" title="Rename in this bouquet (F2)"><svg class="ic"><use href="#i-edit"/></svg>Rename</button>
+              <button class="btn sm" id="bqCopy" type="button" title="Copy (Ctrl+C), then paste into any bouquet (Ctrl+V)"><svg class="ic"><use href="#i-copy"/></svg>Copy</button>
+              <button class="btn sm" id="bqPaste" type="button" title="Paste after the selection (Ctrl+V)"><svg class="ic"><use href="#i-paste"/></svg>Paste</button>
+              <button class="btn sm danger" id="bqDelete" type="button" title="Remove from this bouquet (Delete)"><svg class="ic"><use href="#i-trash"/></svg>Delete</button>
+            </div>
+            <div class="bq-group">
+              <button class="btn sm sq" id="bqUp" type="button" title="Move up (Alt+↑)" aria-label="Move up">▲</button>
+              <button class="btn sm sq" id="bqDown" type="button" title="Move down (Alt+↓)" aria-label="Move down">▼</button>
+              <button class="btn sm" id="bqMore" type="button" title="Sort, clean up, export…" aria-haspopup="menu"><svg class="ic"><use href="#i-more"/></svg>More</button>
+            </div>
           </div>
           <ul class="bq-entries" id="bqEntries" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Channels"></ul>
-          <div class="bq-toolbar">
-            <button class="btn sm" id="bqUp" type="button" title="Move up (Alt+↑)">▲ Up</button>
-            <button class="btn sm" id="bqDown" type="button" title="Move down (Alt+↓)">▼ Down</button>
-            <button class="btn sm danger" id="bqDelete" type="button" title="Remove from this bouquet (Delete)">Delete</button>
-            <button class="btn sm" id="bqAdd" type="button" title="Search the receiver's channel list (lamedb) and add channels">+ Add channels…</button>
-            <button class="btn sm" id="bqMarker" type="button" title="A heading line between channels">+ Marker</button>
-            <button class="btn sm" id="bqSort" type="button" title="Sort A–Z (each part between markers separately)">Sort A–Z</button>
-            <span class="spacer"></span><span class="muted" id="bqCount"></span>
-          </div>
+          <div class="bq-foot"><span class="muted" id="bqCount"></span><span class="spacer"></span><span class="muted small" id="bqClipInfo"></span></div>
         </section>
       </div>
       <div class="dialog-actions">
@@ -450,9 +461,8 @@
       <label class="field-inline">Size
         <select id="screenWidth"><option value="480">Small</option><option value="720">Medium</option><option value="1280">Large</option><option value="1920">Full HD</option></select>
       </label>
-      <label class="field-inline">Refresh every
-        <select id="screenSpeed"><option value="500">0.5 s</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="3000">3 s</option><option value="5000">5 s</option><option value="10000">10 s</option><option value="30000">30 s</option></select>
-      </label>
+      <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Automatically refresh every</label>
+        <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
       <span class="spacer"></span>
       <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic"><use href="#i-remote"/></svg>Remote</button>
       <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic"><use href="#i-list"/></svg>Channels</button>
@@ -473,8 +483,6 @@
         </header>
         <div class="remote-keys" id="remoteKeys"></div>
         <button class="btn sm remote-more" id="remoteMore" type="button" aria-expanded="false"><svg class="ic"><use href="#i-chev-down"/></svg><span>More keys</span></button>
-        <p class="remote-hint">Shift + click, or hold a key, for a long press</p>
-        <label class="remote-refresh"><input type="checkbox" id="remoteRefresh" checked> Refresh the picture after each key</label>
         <p class="form-error" id="remoteError" role="alert" hidden></p>
       </aside>
       <div class="screen-main">
@@ -494,7 +502,10 @@
           <p class="muted" id="screenWait">Waiting for the first picture…</p>
         </div>
         <p class="form-error" id="screenError" role="alert" hidden></p>
-        <p class="muted small" id="screenStats" role="status" aria-live="off"></p>
+        <div class="screen-foot">
+          <button class="btn sm" id="screenRefresh" type="button" title="Take a new picture now"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
+          <p class="muted small" id="screenStats" role="status" aria-live="off"></p>
+        </div>
       </div>
       <aside class="channels" id="channelPane" aria-label="Channels">
         <header class="remote-head">
@@ -525,8 +536,7 @@
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
       <div class="tools-actions">
-        <span class="status-pill" id="ipkStatus" data-state="idle" role="img" aria-label="Not connected" title="Not connected"></span>
-        <button class="btn primary" id="ipkConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
+        <button class="btn sm primary" id="ipkConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
       </div>
     </div>
     <span id="ipkDevice" class="sr-only"></span>
@@ -681,16 +691,53 @@
     <header class="editor-head"><div class="editor-title"><h2 id="bqAddTitle">Add channels</h2><code id="bqAddSub" class="ellipsis"></code></div></header>
     <div class="bq-toolbar">
       <input id="bqAddSearch" type="search" aria-label="Search channels" placeholder="Search by channel name or provider" autocomplete="off">
+      <select id="bqAddProvider" aria-label="Provider"><option value="">All providers</option></select>
     </div>
     <ul class="bq-entries bq-add-list" id="bqAddList" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Channels found"></ul>
     <p id="bqAddStatus" class="editor-status" role="status" aria-live="polite"></p>
     <div class="dialog-actions">
       <span class="muted" id="bqAddCount"></span>
+      <button class="btn sm" id="bqAddAll" type="button" title="Select every channel in the list (Ctrl+A)">Select all</button>
       <span class="spacer"></span>
       <button class="btn" id="bqAddClose" type="button">Close</button>
       <button class="btn primary" id="bqAddConfirm" type="button" disabled>Add selected</button>
     </div>
   </div>
+</dialog>
+
+<dialog id="bqStreamDialog" aria-labelledby="bqStreamTitle">
+  <form method="dialog" id="bqStreamForm" class="dialog-card bq-stream-card">
+    <header class="editor-head"><div class="editor-title"><h2 id="bqStreamTitle">Add IPTV streams</h2><code id="bqStreamSub" class="ellipsis"></code></div></header>
+    <div class="seg" id="bqStreamMode" role="radiogroup" aria-label="What to add">
+      <button type="button" role="radio" data-mode="one" aria-checked="true">One stream</button>
+      <button type="button" role="radio" data-mode="m3u" aria-checked="false">M3U playlist</button>
+    </div>
+    <div id="bqStreamOne" class="bq-stream-pane">
+      <label class="field"><span>Name</span><input id="bqStreamName" maxlength="100" autocomplete="off" placeholder="Channel name"></label>
+      <label class="field"><span>Stream address</span><input id="bqStreamUrl" spellcheck="false" autocomplete="off" placeholder="http://server:port/live/stream.ts"></label>
+    </div>
+    <div id="bqStreamM3u" class="bq-stream-pane" hidden>
+      <div class="bq-stream-row">
+        <label class="btn sm" for="bqM3uFile"><svg class="ic"><use href="#i-upload"/></svg>Choose .m3u file…</label>
+        <input id="bqM3uFile" type="file" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>
+        <span class="muted small" id="bqM3uInfo">or paste the playlist below</span>
+      </div>
+      <textarea id="bqM3uText" class="bq-m3u-text" spellcheck="false" autocomplete="off" aria-label="M3U playlist" placeholder="#EXTM3U&#10;#EXTINF:-1,Channel name&#10;http://server/stream"></textarea>
+      <label class="check"><input type="checkbox" id="bqM3uGroups" checked> Add each <b>group-title</b> as a marker</label>
+    </div>
+    <label class="field"><span>Player</span>
+      <select id="bqStreamType">
+        <option value="4097">4097 — GStreamer / default IPTV player</option>
+        <option value="5002">5002 — ExtEplayer3</option>
+        <option value="5001">5001 — GstPlayer</option>
+      </select>
+    </label>
+    <p class="form-error" id="bqStreamError" role="alert" hidden></p>
+    <div class="dialog-actions"><span class="muted small" id="bqStreamCount"></span><span class="spacer"></span>
+      <button class="btn" id="bqStreamCancel" type="button">Cancel</button>
+      <button class="btn primary" id="bqStreamOk" type="submit">Add</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="editorDialog" aria-labelledby="editorTitle">
@@ -734,6 +781,25 @@
         <h3 id="powerBootTitle">MultiBoot slots</h3>
         <div class="power-slots" id="powerSlots"></div>
         <p class="power-note" id="powerSlotsNote"></p>
+      </div>
+    </div>
+    <div class="power-extra" role="group" aria-labelledby="powerExtraTitle">
+      <h3 id="powerExtraTitle">Sleep timer and recording</h3>
+      <div class="pe-row">
+        <label class="field-inline" for="sleepMinutes"><span>Switch off in</span>
+          <select id="sleepMinutes">
+            <option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option>
+            <option value="60" selected>1 h</option><option value="90">1 h 30</option><option value="120">2 h</option><option value="180">3 h</option>
+          </select></label>
+          <label class="field-inline" for="sleepAction"><span>then</span>
+          <select id="sleepAction"><option value="standby">Standby</option><option value="shutdown">Deep standby</option></select></label>
+        <button class="btn sm" id="sleepSet" type="button">Start</button>
+        <button class="btn sm" id="sleepOff" type="button">Cancel</button>
+      </div>
+      <p class="power-note" id="sleepState"></p>
+      <div class="pe-row">
+        <button class="btn sm" id="recNow" type="button" title="Record the programme that is on now, until it ends"><svg class="ic"><use href="#i-rec"/></svg>Record this programme</button>
+        <button class="btn sm" id="recInfinite" type="button" title="Record the current channel until you stop it from the Timers list"><svg class="ic"><use href="#i-rec"/></svg>Record until I stop it</button>
       </div>
     </div>
     <p class="form-error" id="powerError" hidden></p>
@@ -785,6 +851,33 @@
     <p class="form-error" id="guideError" role="alert" hidden></p>
     <p class="muted small gd-status" id="guideStatus" role="status" aria-live="polite"></p>
   </div>
+</dialog>
+
+<dialog id="timerDialog" aria-labelledby="timerDialogTitle">
+  <form method="dialog" id="timerForm" class="dialog-card" autocomplete="off">
+    <h2 id="timerDialogTitle">Edit timer</h2>
+    <p class="muted small ellipsis" id="timerChannel"></p>
+    <label class="field"><span>Name</span><input id="tmName" required maxlength="200"></label>
+    <label class="field"><span>Description</span><input id="tmDesc" maxlength="300"></label>
+    <div class="grid2">
+      <label class="field"><span>Starts</span><input id="tmBegin" type="datetime-local" required></label>
+      <label class="field"><span>Ends</span><input id="tmEnd" type="datetime-local" required></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Action</span>
+        <select id="tmKind"><option value="record">Record</option><option value="play">Remind: switch to the channel</option></select></label>
+      <label class="field"><span>When it is over</span>
+        <select id="tmAfter"><option value="3">Automatic</option><option value="0">Do nothing</option><option value="1">Standby</option><option value="2">Deep standby</option></select></label>
+    </div>
+    <fieldset class="tm-days" id="tmDays"><legend>Repeat on</legend></fieldset>
+    <label class="check"><input id="tmOn" type="checkbox"> Timer is on</label>
+    <p class="form-error" id="timerError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" id="timerCancel" type="button">Cancel</button>
+      <button class="btn primary" id="timerSave" type="submit">Save</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="askDialog" aria-labelledby="askTitle">

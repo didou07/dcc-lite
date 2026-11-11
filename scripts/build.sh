@@ -17,7 +17,7 @@ for target in "${TARGETS[@]}"; do
   if [[ "$os" == windows7 ]]; then
     [[ -n "${GO_WIN7:-}" ]] || { echo "windows7 targets need GO_WIN7=/path/to/go-win7/bin/go (see scripts/setup-go-win7.sh)" >&2; exit 1; }
     gobin="$GO_WIN7" os=windows suffix="-win7"
-    extra+=(GOTOOLCHAIN=local) # never let Go swap in the official toolchain: its output needs Windows 10
+    extra+=(GOTOOLCHAIN=local)
   fi
   [[ "$arch" == arm ]] && extra+=(GOARM="${GOARM:-7}")
   ext=""; [[ "$os" == windows ]] && ext=".exe"

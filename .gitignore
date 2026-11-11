@@ -8,9 +8,6 @@
 
 # Local data (device profiles contain passwords)
 /data/
-profiles.json
-remote.json
-remote-access.json
 known_hosts*
 /tls/
 
@@ -23,3 +20,5 @@ go.work.sum
 .idea/
 .DS_Store
 Thumbs.db
+dcc-lite.ini
+.dcc-lite-*.tmp

@@ -47,11 +47,11 @@ func validateRemoteListen(address, loopback string) error {
 	return nil
 }
 
-func prepareRemote(dataDir string, settings remoteSettings) (remotePlan, error) {
+func prepareRemote(dataDir string, store remoteaccess.PasswordStore, settings remoteSettings) (remotePlan, error) {
 	if (settings.CertFile == "") != (settings.KeyFile == "") {
 		return remotePlan{}, errors.New("--tls-cert and --tls-key must be given together")
 	}
-	creds, err := remoteaccess.OpenCredentials(dataDir)
+	creds, err := remoteaccess.OpenCredentials(store)
 	if err != nil {
 		return remotePlan{}, err
 	}
@@ -91,14 +91,14 @@ func prepareRemote(dataDir string, settings remoteSettings) (remotePlan, error) 
 	return plan, nil
 }
 
-func manageRemotePassword(dataDir string, set, reset bool, in io.Reader, out io.Writer) (bool, error) {
+func manageRemotePassword(store remoteaccess.PasswordStore, set, reset bool, in io.Reader, out io.Writer) (bool, error) {
 	if !set && !reset {
 		return false, nil
 	}
 	if set && reset {
 		return true, errors.New("use either --set-remote-password or --reset-remote-password, not both")
 	}
-	creds, err := remoteaccess.OpenCredentials(dataDir)
+	creds, err := remoteaccess.OpenCredentials(store)
 	if err != nil {
 		return true, err
 	}

@@ -53,7 +53,7 @@ func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
 		client.Transport = &http.Transport{
 			TLSHandshakeTimeout: timeout,
 			DisableKeepAlives:   true,
-			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10, CipherSuites: suites}, //nolint:gosec
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10, CipherSuites: suites},
 		}
 	}
 	return deviceWeb{

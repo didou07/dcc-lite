@@ -159,6 +159,7 @@ type bouquetEntryView struct {
 	Ref         string `json:"ref"`
 	Description string `json:"description"`
 	Name        string `json:"name"`
+	Base        string `json:"base,omitempty"`
 	Marker      bool   `json:"marker"`
 }
 
@@ -183,7 +184,11 @@ func (s *Server) getBouquet(w http.ResponseWriter, r *http.Request) {
 	names, haveNames := s.readChannelNames(r.Context(), id, dir, r.URL.Query().Get("refresh") == "1")
 	entries := make([]bouquetEntryView, 0, len(bouquet.Entries))
 	for _, e := range bouquet.Entries {
-		entries = append(entries, bouquetEntryView{Ref: e.Ref, Description: e.Description, Name: enigma2.DisplayName(e, names), Marker: e.IsMarker()})
+		base := ""
+		if !e.IsMarker() {
+			base = enigma2.DisplayName(enigma2.Entry{Ref: e.Ref}, names)
+		}
+		entries = append(entries, bouquetEntryView{Ref: e.Ref, Description: e.Description, Name: enigma2.DisplayName(e, names), Base: base, Marker: e.IsMarker()})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"file": file, "kind": enigma2.KindOf(file), "name": bouquet.Name, "entries": entries,
@@ -464,7 +469,7 @@ func (c *serviceCache) forget() {
 	c.mu.Unlock()
 }
 
-const maxServiceResults = 300
+const maxServiceResults = 1500
 
 func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	dir, err := bouquetDir(r.URL.Query().Get("dir"))
@@ -500,7 +505,9 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	needle := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	provider := strings.TrimSpace(r.URL.Query().Get("provider"))
 	matches := make([]enigma2.Service, 0, 64)
+	providerCount := map[string]int{}
 	total := 0
 	for _, svc := range all {
 		if kind == "radio" {
@@ -513,8 +520,26 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 		if needle != "" && !strings.Contains(strings.ToLower(svc.Name), needle) && !strings.Contains(strings.ToLower(svc.Provider), needle) {
 			continue
 		}
+		if svc.Provider != "" {
+			providerCount[svc.Provider]++
+		}
+		if provider != "" && svc.Provider != provider {
+			continue
+		}
 		total++
 		matches = append(matches, svc)
+	}
+	type providerInfo struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}
+	providers := make([]providerInfo, 0, len(providerCount))
+	for name, count := range providerCount {
+		providers = append(providers, providerInfo{name, count})
+	}
+	sort.Slice(providers, func(i, j int) bool { return strings.ToLower(providers[i].Name) < strings.ToLower(providers[j].Name) })
+	if len(providers) > 400 {
+		providers = providers[:400]
 	}
 	sort.SliceStable(matches, func(i, j int) bool {
 		return strings.ToLower(matches[i].Name) < strings.ToLower(matches[j].Name)
@@ -523,7 +548,7 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 	if len(matches) > maxServiceResults {
 		matches, truncated = matches[:maxServiceResults], true
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"services": matches, "total": total, "truncated": truncated})
+	writeJSON(w, http.StatusOK, map[string]any{"services": matches, "total": total, "truncated": truncated, "providers": providers})
 }
 
 func mergeServices(base, next []enigma2.Service) []enigma2.Service {

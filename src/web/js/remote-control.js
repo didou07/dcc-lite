@@ -41,7 +41,7 @@ function sendRemoteKey(key, long = false, button = null) {
     try {
       await post(`/api/v1/profiles/${encodeURIComponent(profileID)}/remote-key`, long ? { key, long: true } : { key });
       remoteError("");
-      if ($("#remoteRefresh").checked && profileID === screenView.profileID) window.setTimeout(() => { if (profileID === screenView.profileID && !screenView.paused) screenRestart(); }, 350);
+      if (profileID === screenView.profileID) window.setTimeout(() => { if (profileID === screenView.profileID && !screenView.paused) screenRestart(); }, 350);
     } catch (error) { remoteError(error.message); }
     finally { remote.pending -= 1; button?.classList.remove("sending"); }
   });
@@ -51,7 +51,7 @@ function buildRemote() {
   const holder = $("#remoteKeys");
   holder.replaceChildren();
   REMOTE_ROWS.forEach((row, rowIndex) => {
-    holder.append(h("div", { class: rowIndex >= 8 ? "remote-row extra" : "remote-row" }, row.map(([key, label, extra = ""]) => {
+    holder.append(h("div", { class: row[0][2] === "red" ? "remote-row colors" : rowIndex >= 12 ? "remote-row extra extra2" : rowIndex >= 8 ? "remote-row extra" : "remote-row" }, row.map(([key, label, extra = ""]) => {
       const button = h("button", { class: `rk ${extra}`.trim(), type: "button", title: KEY_TITLES[key] || label || key, dataset: { key }, "aria-label": KEY_TITLES[key] || label || key });
       if (label.startsWith("@")) {
         button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GLYPHS[label.slice(1)]}</svg>`;
@@ -103,7 +103,6 @@ function remoteBind() {
   });
   $("#remoteHide").addEventListener("click", () => setRemoteOpen(false));
   $("#remoteShow").addEventListener("click", () => setRemoteOpen(true));
-  $("#remoteRefresh").addEventListener("change", () => store.set("remote.refresh", $("#remoteRefresh").checked));
 }
 function setRemoteOpen(open) {
   $("#remotePad").hidden = !open;

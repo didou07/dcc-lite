@@ -21,43 +21,6 @@ func (s *Server) listProfiles(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"profiles": views})
 }
 
-func (s *Server) exportProfiles(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Disposition", `attachment; filename="dcc-lite-profiles.json"`)
-	writeJSON(w, http.StatusOK, map[string]any{"schema_version": config.SchemaVersion, "profiles": s.app.Profiles.List()})
-}
-
-type importedProfile struct {
-	config.Profile
-	LegacySSHPort int `json:"ssh_port,omitempty"`
-}
-
-type profileImportRequest struct {
-	SchemaVersion int               `json:"schema_version"`
-	Profiles      []importedProfile `json:"profiles"`
-}
-
-func (s *Server) importProfiles(w http.ResponseWriter, r *http.Request) {
-	var input profileImportRequest
-	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if input.SchemaVersion != 1 && input.SchemaVersion != config.SchemaVersion {
-		writeError(w, http.StatusUnprocessableEntity, "unsupported profile export version")
-		return
-	}
-	profiles := make([]config.Profile, len(input.Profiles))
-	for i, p := range input.Profiles {
-		profiles[i] = p.Profile
-	}
-	imported, err := s.app.Profiles.Import(profiles)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{"imported": len(imported), "profiles": imported})
-}
-
 func (s *Server) revealCredential(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
 	if !ok {

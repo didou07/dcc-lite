@@ -39,7 +39,7 @@ jobs:
         if: steps.v.outputs.exists != 'true'
         run: |
           VERSION="${{ steps.v.outputs.version }}" bash scripts/build.sh
-          ls dist/*-win7.zip   # the Windows 7 packages must exist
+          ls dist/*-win7.zip
       - name: Publish GitHub release
         if: steps.v.outputs.exists != 'true'
         env:

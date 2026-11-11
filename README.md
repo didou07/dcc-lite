@@ -1,10 +1,6 @@
 # DCC Lite
 
-A light, local web tool for Enigma2 receivers: devices, FTP files, Telnet terminal, live screen with
-remote keys, signal meter for aiming a dish, channel list with logos, programme guide with search, timers and recordings, bouquet editor, backup/restore, power actions.
-
-Run `DCCLite`; it opens in your browser. Data is kept in the user config folder `DCCLite`
-(or in `data/` beside the program with `--portable`).
+local web tool for Enigma2 receivers: devices, FTP files, Telnet terminal, live screen 
 
 ## Download
 

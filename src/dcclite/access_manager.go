@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,20 +10,19 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/didou07/dcc-lite/src/app"
+	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/httpapi"
 	"github.com/didou07/dcc-lite/src/remoteaccess"
 )
 
 const (
-	remoteSettingsFile  = "remote-access.json"
-	defaultRemoteListen = "0.0.0.0:8788"
+	defaultRemoteListen = config.DefaultRemoteListen
 	maxTLSHosts         = 10
 )
 
@@ -32,6 +30,7 @@ var tlsHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
 
 type remoteManager struct {
 	application *app.App
+	store       *config.ProfileStore
 	dataDir     string
 	loopback    string
 
@@ -50,9 +49,9 @@ type remoteManager struct {
 	lastErr  string
 }
 
-func newRemoteManager(application *app.App, dataDir, loopback string) *remoteManager {
+func newRemoteManager(application *app.App, store *config.ProfileStore, dataDir, loopback string) *remoteManager {
 	return &remoteManager{
-		application: application, dataDir: dataDir, loopback: loopback,
+		application: application, store: store, dataDir: dataDir, loopback: loopback,
 		settings: app.RemoteSettings{Listen: defaultRemoteListen},
 	}
 }
@@ -94,34 +93,14 @@ func (m *remoteManager) Init(flags remoteSettings) error {
 }
 
 func (m *remoteManager) load() (app.RemoteSettings, error) {
-	settings := app.RemoteSettings{Listen: defaultRemoteListen}
-	data, err := os.ReadFile(filepath.Join(m.dataDir, remoteSettingsFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return settings, nil
-	}
-	if err != nil {
-		return settings, err
-	}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return app.RemoteSettings{Listen: defaultRemoteListen}, err
-	}
-	if settings.Listen == "" {
-		settings.Listen = defaultRemoteListen
-	}
-	return settings, nil
+	r := m.store.Remote()
+	return app.RemoteSettings{Enabled: r.Enabled, Listen: r.EffectiveListen(), TLSHosts: r.TLSHosts, PlainHTTP: r.PlainHTTP}, nil
 }
 
 func (m *remoteManager) save() error {
-	data, err := json.MarshalIndent(m.settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(m.dataDir, remoteSettingsFile)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	r := m.store.Remote()
+	r.Enabled, r.Listen, r.TLSHosts, r.PlainHTTP = m.settings.Enabled, m.settings.Listen, m.settings.TLSHosts, m.settings.PlainHTTP
+	return m.store.SaveRemote(r)
 }
 
 func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, error) {
@@ -151,7 +130,7 @@ func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, er
 }
 
 func (m *remoteManager) start() (remotePlan, error) {
-	plan, err := prepareRemote(m.dataDir, remoteSettings{
+	plan, err := prepareRemote(m.dataDir, m.store, remoteSettings{
 		Listen: m.settings.Listen, CertFile: m.certFile, KeyFile: m.keyFile, ExtraHost: m.settings.TLSHosts, Plain: m.settings.PlainHTTP,
 	})
 	if err != nil {
@@ -281,7 +260,7 @@ func (m *remoteManager) passwordSet() bool {
 	if m.plan.Creds != nil {
 		return m.plan.Creds.Configured()
 	}
-	creds, err := remoteaccess.OpenCredentials(m.dataDir)
+	creds, err := remoteaccess.OpenCredentials(m.store)
 	return err == nil && creds.Configured()
 }
 
@@ -341,7 +320,7 @@ func (m *remoteManager) credentials() (*remoteaccess.Credentials, error) {
 	if m.plan.Creds != nil {
 		return m.plan.Creds, nil
 	}
-	return remoteaccess.OpenCredentials(m.dataDir)
+	return remoteaccess.OpenCredentials(m.store)
 }
 
 func (m *remoteManager) SetPassword(password string) error {

@@ -61,6 +61,7 @@ function openPowerDialog() {
   $("#powerClose").onclick = () => $("#powerDialog").close();
 
   powerLoadSlots(id);
+  powerLoadSleep(id);
   openDialog($("#powerDialog"));
   $("#powerActions").querySelector("button")?.focus({ preventScroll: true });
 }
@@ -106,3 +107,63 @@ function setStandby(value) {
   $("#nowStandby").hidden = ch.standby !== true;
   if (ch.standby === true) $("#screenWait").textContent = "The receiver is in standby. Use the power button to wake it up.";
 }
+
+const sleepURL = (id) => `/api/v1/profiles/${encodeURIComponent(id)}/sleeptimer`;
+function sleepShow(state) {
+  const note = $("#sleepState"), select = $("#sleepMinutes");
+  if (!state) { note.textContent = ""; return; }
+  const minutes = Number(state.minutes) || 0;
+  if (minutes && ![...select.options].some((o) => Number(o.value) === minutes)) {
+    const option = h("option", { value: String(minutes), text: `${minutes} min` });
+    select.append(option);
+    [...select.options].sort((a, b) => Number(a.value) - Number(b.value)).forEach((o) => select.append(o));
+  }
+  if (minutes) select.value = String(minutes);
+  $("#sleepAction").value = state.action === "shutdown" ? "shutdown" : "standby";
+  note.textContent = state.enabled
+    ? `The sleep timer is on: ${minutes} min, then ${state.action === "shutdown" ? "deep standby" : "standby"}.`
+    : "The sleep timer is off.";
+}
+async function powerLoadSleep(id) {
+  const gen = powerView.gen;
+  $("#sleepState").textContent = "";
+  try {
+    const state = await api(sleepURL(id));
+    if (gen === powerView.gen && id === screenView.profileID) sleepShow(state);
+  } catch {
+    if (gen === powerView.gen) $("#sleepState").textContent = "This receiver does not report a sleep timer.";
+  }
+}
+async function powerSleep(enabled) {
+  const id = screenView.profileID;
+  if (!id) return;
+  powerDialogError("");
+  for (const button of [$("#sleepSet"), $("#sleepOff")]) button.disabled = true;
+  try {
+    const state = await post(sleepURL(id), enabled
+      ? { enabled: true, minutes: Number($("#sleepMinutes").value), action: $("#sleepAction").value }
+      : { enabled: false });
+    sleepShow(state);
+    toast(enabled ? "Sleep timer started" : "Sleep timer cancelled");
+  } catch (error) { powerDialogError(error.message); } finally {
+    for (const button of [$("#sleepSet"), $("#sleepOff")]) button.disabled = false;
+  }
+}
+async function powerRecordNow(infinite) {
+  const id = screenView.profileID;
+  if (!id) return;
+  powerDialogError("");
+  for (const button of [$("#recNow"), $("#recInfinite")]) button.disabled = true;
+  try {
+    await post(`/api/v1/profiles/${encodeURIComponent(id)}/record-now`, { infinite });
+    toast(infinite ? "Recording started: stop it from the Timers list" : "Recording started");
+    guide.timersAt = 0;
+    $("#powerDialog").close();
+  } catch (error) { powerDialogError(error.message); } finally {
+    for (const button of [$("#recNow"), $("#recInfinite")]) button.disabled = false;
+  }
+}
+$("#sleepSet").addEventListener("click", () => powerSleep(true));
+$("#sleepOff").addEventListener("click", () => powerSleep(false));
+$("#recNow").addEventListener("click", () => powerRecordNow(false));
+$("#recInfinite").addEventListener("click", () => powerRecordNow(true));

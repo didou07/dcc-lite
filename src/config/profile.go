@@ -6,10 +6,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
-	"time"
 )
-
-const SchemaVersion = 2
 
 const (
 	DefaultUsername = "root"
@@ -25,19 +22,17 @@ const (
 )
 
 type Profile struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Host        string    `json:"host"`
-	Port        int       `json:"port,omitempty"`
-	Scheme      string    `json:"scheme,omitempty"`
-	FTPPort     int       `json:"ftp_port,omitempty"`
-	TelnetPort  int       `json:"telnet_port,omitempty"`
-	Username    string    `json:"username,omitempty"`
-	Password    string    `json:"-"`
-	Enabled     bool      `json:"enabled"`
-	InsecureTLS bool      `json:"tls_insecure_skip_verify,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Host        string `json:"host"`
+	Port        int    `json:"port,omitempty"`
+	Scheme      string `json:"scheme,omitempty"`
+	FTPPort     int    `json:"ftp_port,omitempty"`
+	TelnetPort  int    `json:"telnet_port,omitempty"`
+	Username    string `json:"username,omitempty"`
+	Password    string `json:"-"`
+	Enabled     bool   `json:"enabled"`
+	InsecureTLS bool   `json:"tls_insecure_skip_verify,omitempty"`
 }
 
 func portOr(value, fallback int) int {

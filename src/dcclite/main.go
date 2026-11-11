@@ -29,6 +29,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:8787", "Local HTTP listen address (loopback only)")
 	dataDir := flag.String("data-dir", "", "Override the application data directory")
 	portable := flag.Bool("portable", false, "Store data in a data folder beside the executable")
+	configPath := flag.String("config", "", "Settings file (default: dcc-lite.ini beside the program)")
 	noBrowser := flag.Bool("no-browser", false, "Do not open the web interface automatically")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	remote := remoteSettings{}
@@ -56,13 +57,25 @@ func main() {
 			os.Exit(2)
 		}
 	}
+	root, err := resolveDataDir(*dataDir, *portable)
+	if err != nil {
+		slog.Error("resolve data directory", "error", err)
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		slog.Error("create data directory", "error", err)
+		os.Exit(1)
+	}
+
+	iniPath := resolveConfigPath(*configPath, root)
+	store, err := config.NewProfileStore(root, iniPath)
+	if err != nil {
+		slog.Error("initialize profile store", "error", err)
+		os.Exit(1)
+	}
+
 	if *setPassword || *resetPassword {
-		root, err := resolveDataDir(*dataDir, *portable)
-		if err != nil {
-			slog.Error("resolve data directory", "error", err)
-			os.Exit(1)
-		}
-		if _, err := manageRemotePassword(root, *setPassword, *resetPassword, os.Stdin, os.Stdout); err != nil {
+		if _, err := manageRemotePassword(store, *setPassword, *resetPassword, os.Stdin, os.Stdout); err != nil {
 			slog.Error("remote password", "error", err)
 			os.Exit(2)
 		}
@@ -84,26 +97,6 @@ func main() {
 	}
 	defer listener.Close()
 
-	root, err := resolveDataDir(*dataDir, *portable)
-	if err != nil {
-		slog.Error("resolve data directory", "error", err)
-		os.Exit(1)
-	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		slog.Error("create data directory", "error", err)
-		os.Exit(1)
-	}
-
-	store, err := config.NewProfileStore(root)
-	if err != nil {
-		slog.Error("initialize profile store", "error", err)
-		os.Exit(1)
-	}
-
-	if err := removeLegacyVault(root); err != nil {
-		slog.Warn("could not remove obsolete credential vault file", "error", err)
-	}
-
 	application := app.New(version, store, root)
 	defer application.Terminals.CloseAll()
 	defer application.Files.CloseAll()
@@ -118,9 +111,9 @@ func main() {
 	}
 
 	url := "http://" + listener.Addr().String()
-	slog.Info("DCC Lite is ready", "url", url, "data_dir", root, "version", version)
+	slog.Info("DCC Lite is ready", "url", url, "settings", store.Path(), "data_dir", root, "version", version)
 
-	manager := newRemoteManager(application, root, *listen)
+	manager := newRemoteManager(application, store, root, *listen)
 	application.RemoteAccess = manager
 	if err := manager.Init(remote); err != nil {
 		slog.Error("remote access setup", "error", err)
@@ -220,20 +213,34 @@ func resolveDataDir(override string, portable bool) (string, error) {
 		return "", err
 	}
 	dir := filepath.Join(base, "DCCLite")
+	return dir, nil
+}
 
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		for _, old := range []string{"BoxDeck", "DCCNext"} {
-			legacy := filepath.Join(base, old)
-			if _, err := os.Stat(legacy); err != nil {
-				continue
-			}
-			if err := os.Rename(legacy, dir); err != nil {
-				return legacy, nil
-			}
-			break
+func resolveConfigPath(override, dataDir string) string {
+	if override != "" {
+		return override
+	}
+	if exe, err := os.Executable(); err == nil {
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = real
+		}
+		dir := filepath.Dir(exe)
+		if !strings.HasPrefix(dir, os.TempDir()) && dirWritable(dir) {
+			return filepath.Join(dir, config.IniFileName)
 		}
 	}
-	return dir, nil
+	return filepath.Join(dataDir, config.IniFileName)
+}
+
+func dirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".dcclite-write-test-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	f.Close()
+	os.Remove(name)
+	return true
 }
 
 func openBrowser(url string) {
@@ -251,12 +258,4 @@ func openBrowser(url string) {
 	if err := startDetached(cmd, args...); err != nil {
 		slog.Warn("could not open browser automatically", "error", err, "url", url)
 	}
-}
-
-func removeLegacyVault(dataDir string) error {
-	err := os.Remove(filepath.Join(dataDir, "vault.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
 }

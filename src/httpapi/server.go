@@ -39,8 +39,6 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/health", s.health)
 	mux.HandleFunc("GET /api/v1/system", s.system)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
-	mux.HandleFunc("GET /api/v1/profiles/export", s.exportProfiles)
-	mux.HandleFunc("POST /api/v1/profiles/import", s.importProfiles)
 	mux.HandleFunc("GET /api/v1/network/ranges", s.networkRanges)
 	mux.HandleFunc("POST /api/v1/network/scan", s.networkScan)
 	mux.HandleFunc("GET /api/v1/connections", s.listConnections)
@@ -61,6 +59,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/profiles/{id}/timers/toggle", s.deviceTimerToggle)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/timers/delete", s.deviceTimerDelete)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/timers/cleanup", s.deviceTimerCleanup)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/timers/change", s.deviceTimerChange)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/record-now", s.deviceRecordNow)
+	mux.HandleFunc("GET /api/v1/profiles/{id}/sleeptimer", s.deviceSleepTimerGet)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/sleeptimer", s.deviceSleepTimerSet)
+	mux.HandleFunc("GET /api/v1/profiles/{id}/epgsimilar", s.deviceEPGSimilar)
+	mux.HandleFunc("GET /api/v1/profiles/{id}/movie-locations", s.deviceMovieLocations)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/movies/rename", s.deviceMovieRename)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/movies/move", s.deviceMovieMove)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/movies", s.deviceMovies)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/movies/delete", s.deviceMovieDelete)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/movie.m3u", s.deviceMovieStream)
@@ -153,8 +159,21 @@ func (s *Server) staticFiles() http.Handler {
 	}
 	files := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		w.Header().Set("Cache-Control", "no-cache")
+		if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
+			page, err := webui.Page("index.html")
+			if err == nil {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Header().Set("Cache-Control", "no-store")
+				w.Header().Set("X-DCC-Build", webui.Build())
+				_, _ = w.Write(page)
+				return
+			}
+		}
+		if r.URL.Query().Get("v") == webui.Build() {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		files.ServeHTTP(w, r)
 	})
 }

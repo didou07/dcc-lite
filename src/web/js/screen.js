@@ -112,7 +112,7 @@ function screenEnter() {
   screenStop();
   Object.assign(screenView, { profileID: device.id, paused: false, stamps: [], failures: 0, running: true });
   $("#screenSub").textContent = `${device.name} · ${device.host}`;
-  for (const [key, select, fallback] of [["screen.mode", "#screenMode", "all"], ["screen.width", "#screenWidth", "720"], ["screen.speed", "#screenSpeed", "1000"]]) {
+  for (const [key, select, fallback] of [["screen.mode", "#screenMode", "all"], ["screen.width", "#screenWidth", "720"], ["screen.speed", "#screenSpeed", "2000"]]) {
     const saved = String(store.get(key, fallback));
     $(select).value = [...$(select).options].some((o) => o.value === saved) ? saved : fallback;
   }

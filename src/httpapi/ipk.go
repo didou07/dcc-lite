@@ -16,6 +16,7 @@ const ipkMaxBytes = 256 << 20
 var ipkFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+~-]{0,150}\.ipk$`)
 
 func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "plugin install (.ipk) requested")
 	id := r.PathValue("id")
 	if _, ok := s.sessionProfile(id); !ok {
 		writeError(w, http.StatusNotFound, "file session not found")

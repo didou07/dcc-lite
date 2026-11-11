@@ -197,6 +197,7 @@ func (s *Server) getBouquet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) saveBouquet(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "bouquet save requested")
 	var input struct {
 		Dir     string `json:"dir"`
 		File    string `json:"file"`
@@ -273,6 +274,7 @@ func randomSuffix() (string, error) {
 }
 
 func (s *Server) newBouquet(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "new bouquet requested")
 	var input struct {
 		Dir  string `json:"dir"`
 		Kind string `json:"kind"`

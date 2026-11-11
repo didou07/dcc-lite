@@ -1,6 +1,8 @@
 package connection
 
 import (
+	"log/slog"
+	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"net"
 	"strconv"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/didou07/dcc-lite/src/config"
 )
+
+var clog = logx.For("device")
 
 type Service struct {
 	Name      string `json:"name"`
@@ -62,6 +66,14 @@ func (m *Manager) Test(ctx context.Context, profile config.Profile) Status {
 
 	status := m.checker.Check(checkCtx, profile)
 	cancel()
+	level := slog.LevelDebug
+	switch status.State {
+	case "error":
+		level = slog.LevelWarn
+	case "offline", "partial":
+		level = slog.LevelInfo
+	}
+	clog.Log(ctx, level, "device check", "device", profile.Name, "host", profile.Host, "state", status.State, "message", status.Message)
 	m.mu.Lock()
 	if m.sequence[profile.ID] == sequence {
 		delete(m.active, profile.ID)

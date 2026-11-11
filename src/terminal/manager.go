@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -15,6 +16,8 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/core"
 )
+
+var tlog = logx.For("term")
 
 var (
 	ErrSessionLimit    = errors.New("terminal session limit reached")
@@ -132,6 +135,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		}
 	}
 	if err != nil {
+		tlog.Warn("terminal failed to open", "device", profile.Name, "host", profile.Host, "port", port, "error", err)
 		return SessionInfo{}, err
 	}
 	id, err := newSessionID()
@@ -143,6 +147,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	m.mu.Lock()
 	m.sessions[id] = &managedSession{info: info, backend: backend, pump: newOutputPump(backend), expiresAt: time.Now().Add(unattachedSessionTTL)}
 	m.mu.Unlock()
+	tlog.Info("terminal opened", "device", profile.Name, "host", profile.Host, "port", port, "session", id)
 	return info, nil
 }
 

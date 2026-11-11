@@ -24,17 +24,20 @@ func localOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
 		if !isLoopbackHost(host) {
+			rejected(r, "non-local Host header")
 			http.Error(w, "local connections only", http.StatusForbidden)
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
 			u, err := url.Parse(origin)
 			if err != nil || !isLoopbackHost(u.Host) || !strings.EqualFold(u.Host, host) {
+				rejected(r, "cross-origin request")
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 				return
 			}
 		}
 		if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+			rejected(r, "cross-site request")
 			http.Error(w, "cross-site request rejected", http.StatusForbidden)
 			return
 		}

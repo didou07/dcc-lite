@@ -9,6 +9,7 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/connection"
 	"github.com/didou07/dcc-lite/src/filetransfer"
+	"github.com/didou07/dcc-lite/src/logx"
 	"github.com/didou07/dcc-lite/src/terminal"
 )
 
@@ -30,13 +31,13 @@ func New(version string, profiles *config.ProfileStore, dirs ...string) *App {
 	files := filetransfer.NewManager()
 	staging := newStaging(dirs)
 	if staging != nil {
-		go func() {
+		logx.Go(logx.For("app"), "staging sweeper", func() {
 			ticker := time.NewTicker(time.Minute)
 			defer ticker.Stop()
 			for now := range ticker.C {
 				files.SweepStaged(staging, now)
 			}
-		}()
+		})
 	}
 	return &App{
 		Version:     version,

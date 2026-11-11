@@ -100,6 +100,7 @@ type profileRequest struct {
 }
 
 func (s *Server) createProfile(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "device profile create requested")
 	var input profileRequest
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -118,6 +119,7 @@ func (s *Server) createProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "device profile update requested")
 	id := r.PathValue("id")
 	existing, ok := s.app.Profiles.Get(id)
 	if !ok {
@@ -146,6 +148,7 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteProfile(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "device profile delete requested")
 	id := r.PathValue("id")
 	if err := s.app.Profiles.Delete(id); err != nil {
 		writeError(w, http.StatusNotFound, "profile not found")

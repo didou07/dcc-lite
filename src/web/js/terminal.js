@@ -36,6 +36,41 @@ function terminalTheme(name) {
   return { ...dark, background: "#0b0e10", foreground: "#eef3f6", cursor: "#5eead4", cursorAccent: "#0b0e10", selectionBackground: "#2f86b3aa" };
 }
 const activeTab = () => term.tabs.get(term.active) || null;
+const TERM_FONTS = {
+  default: '"Cascadia Code", "Cascadia Mono", Consolas, "Liberation Mono", monospace',
+  consolas: 'Consolas, "Liberation Mono", monospace',
+  courier: '"Courier New", Courier, monospace',
+  lucida: '"Lucida Console", Monaco, monospace',
+  dejavu: '"DejaVu Sans Mono", "Liberation Mono", monospace',
+  fira: '"Fira Code", "Fira Mono", monospace',
+  jetbrains: '"JetBrains Mono", monospace',
+  system: "monospace",
+};
+const TERM_CUSTOM_DEFAULT = { bg: "", fg: "", cursor: "", sel: "", font: "default", lineHeight: 1.25, weight: "500", cursorStyle: "bar", blink: true };
+function loadTermCustom() {
+  const raw = store.get("termCustom", {}), out = { ...TERM_CUSTOM_DEFAULT };
+  if (!raw || typeof raw !== "object") return out;
+  for (const key of ["bg", "fg", "cursor", "sel"]) if (/^#[0-9a-f]{6}$/i.test(raw[key] || "")) out[key] = raw[key];
+  if (typeof raw.font === "string" && raw.font in TERM_FONTS) out.font = raw.font;
+  const lineHeight = Number(raw.lineHeight);
+  if (lineHeight >= 1 && lineHeight <= 2) out.lineHeight = lineHeight;
+  if (["400", "500", "700"].includes(String(raw.weight))) out.weight = String(raw.weight);
+  if (["bar", "block", "underline"].includes(raw.cursorStyle)) out.cursorStyle = raw.cursorStyle;
+  if (typeof raw.blink === "boolean") out.blink = raw.blink;
+  return out;
+}
+term.custom = loadTermCustom();
+function terminalOptions() {
+  const c = term.custom, theme = { ...terminalTheme(term.theme) };
+  if (c.bg) { theme.background = c.bg; theme.cursorAccent = c.bg; }
+  if (c.fg) theme.foreground = c.fg;
+  if (c.cursor) theme.cursor = c.cursor;
+  if (c.sel) theme.selectionBackground = `${c.sel}aa`;
+  return {
+    theme, fontFamily: TERM_FONTS[c.font] || TERM_FONTS.default, fontSize: term.fontSize, lineHeight: c.lineHeight,
+    fontWeight: c.weight, cursorStyle: c.cursorStyle, cursorBlink: c.blink, minimumContrastRatio: c.bg || c.fg ? 1 : 4.5,
+  };
+}
 
 function terminalInputChunks(data, maxBytes = 4096) {
   const encoder = new TextEncoder(), chunks = [];
@@ -52,6 +87,12 @@ function termSend(tab, data) {
   if (!tab || tab.socket?.readyState !== WebSocket.OPEN || typeof data !== "string" || !data) return false;
   try { for (const chunk of terminalInputChunks(data)) tab.socket.send(JSON.stringify({ type: "input", data: chunk })); return true; }
   catch (error) { toastError(error); return false; }
+}
+function clearTerminal(tab) {
+  if (!tab) return;
+  const wipe = () => { tab.terminal.clear(); focusTab(tab); };
+  if (termSend(tab, "\u0015")) window.setTimeout(wipe, 150);
+  else wipe();
 }
 function bufferText(tab) {
   const buffer = tab.terminal.buffer.active, lines = [];
@@ -132,9 +173,9 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
   const screen = h("div", { class: "terminal-screen", id: `screen-${id}`, role: "tabpanel", hidden: true });
   $("#terminalScreens").append(screen);
   const terminal = new window.DCCXterm.Terminal({
-    cols: 100, rows: 30, cursorBlink: true, cursorStyle: "bar", cursorWidth: 2, cursorInactiveStyle: "bar", scrollback: 8000,
-    fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, "Liberation Mono", monospace', fontSize: term.fontSize, lineHeight: 1.25, fontWeight: "500", fontWeightBold: "700", minimumContrastRatio: 4.5,
-    theme: terminalTheme(term.theme), rightClickSelectsWord: true, allowTransparency: false,
+    cols: 100, rows: 30, cursorWidth: 2, cursorInactiveStyle: "bar", scrollback: 8000,
+    fontWeightBold: "700", rightClickSelectsWord: false, allowTransparency: false,
+    ...terminalOptions(),
   });
   const fit = new window.DCCXterm.FitAddon();
   terminal.loadAddon(fit);
@@ -170,7 +211,12 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
   });
   if (typeof ResizeObserver !== "undefined") { tab.observer = new ResizeObserver(() => fitTab(tab)); tab.observer.observe(screen); }
   screen.addEventListener("click", () => focusTab(tab));
-  screen.addEventListener("contextmenu", (event) => { event.preventDefault(); event.stopPropagation(); openTerminalMenu(tab, event.clientX, event.clientY); }, true);
+  screen.addEventListener("contextmenu", (event) => {
+    event.preventDefault(); event.stopPropagation();
+    if (event.shiftKey) { openTerminalMenu(tab, event.clientX, event.clientY); return; }
+    if (terminal.hasSelection()) copyTerminal();
+    else pasteIntoTerminal(tab);
+  }, true);
   tab.subs.push(terminal.onSelectionChange(() => {
     if (!store.get("termCopyOnSelect", false)) return;
     window.clearTimeout(tab.selTimer);
@@ -485,7 +531,7 @@ function openTerminalMenu(tab, x, y) {
     "-",
     { label: "Previous commands…", icon: "history", sub: "Ctrl+Shift+H", run: openHistory },
     { label: "Copy all output", icon: "copy", run: () => { tab.terminal.clearSelection(); copyTerminal(); } },
-    { label: "Clear screen", icon: "eraser", run: () => { tab.terminal.clear(); focusTab(tab); } },
+    { label: "Clear screen", icon: "eraser", run: () => clearTerminal(tab) },
   ], x, y);
 }
 
@@ -623,7 +669,7 @@ $("#histClear").addEventListener("click", async () => {
   if (!tab || !loadHistory(tab.profileID).length) return;
   if (await ask({ title: "Clear the command history of this device?", input: false, ok: "Clear", danger: true })) { store.set(historyKey(tab.profileID), []); renderHistory(); }
 });
-$("#termClear").addEventListener("click", () => { const tab = activeTab(); if (tab) { tab.terminal.clear(); focusTab(tab); } });
+$("#termClear").addEventListener("click", () => clearTerminal(activeTab()));
 $("#termSave").addEventListener("click", () => {
   const tab = activeTab();
   if (!tab) return;
@@ -633,16 +679,53 @@ $("#termSave").addEventListener("click", () => {
   toast("Output saved");
 });
 function applyTerminalLook() {
+  const options = terminalOptions(), frame = $("#terminalFrame");
   $("#termFontLabel").textContent = String(term.fontSize);
   $("#termTheme").value = term.theme;
-  $("#terminalFrame").dataset.theme = term.theme;
-  for (const tab of term.tabs.values()) { tab.terminal.options.fontSize = term.fontSize; tab.terminal.options.theme = terminalTheme(term.theme); }
+  frame.dataset.theme = term.theme;
+  frame.style.background = term.custom.bg || "";
+  for (const tab of term.tabs.values()) for (const [key, value] of Object.entries(options)) tab.terminal.options[key] = value;
   fitTab(activeTab());
-  store.set("termFont", term.fontSize); store.set("termTheme", term.theme);
+  store.set("termFont", term.fontSize); store.set("termTheme", term.theme); store.set("termCustom", term.custom);
 }
 $("#termFontDown").addEventListener("click", () => { term.fontSize = Math.max(9, term.fontSize - 1); applyTerminalLook(); });
 $("#termFontUp").addEventListener("click", () => { term.fontSize = Math.min(28, term.fontSize + 1); applyTerminalLook(); });
-$("#termTheme").addEventListener("change", (event) => { term.theme = event.target.value; applyTerminalLook(); });
+$("#termTheme").addEventListener("change", (event) => {
+  term.theme = event.target.value;
+  Object.assign(term.custom, { bg: "", fg: "", cursor: "", sel: "" });
+  applyTerminalLook();
+});
+
+const TERM_CFG_COLORS = { bg: "#termCfgBg", fg: "#termCfgFg", cursor: "#termCfgCursor", sel: "#termCfgSel" };
+function termCfgPaint() {
+  const o = terminalOptions(), preview = $("#termCfgPreview");
+  Object.assign(preview.style, { background: o.theme.background, color: o.theme.foreground, fontFamily: o.fontFamily, fontSize: `${o.fontSize}px`, lineHeight: String(o.lineHeight), fontWeight: o.fontWeight });
+  $("#termCfgCaret").style.background = o.theme.cursor;
+}
+function termCfgRefresh() {
+  const o = terminalOptions(), c = term.custom;
+  $("#termCfgBg").value = o.theme.background;
+  $("#termCfgFg").value = o.theme.foreground;
+  $("#termCfgCursor").value = o.theme.cursor;
+  $("#termCfgSel").value = o.theme.selectionBackground.slice(0, 7);
+  $("#termCfgFont").value = c.font;
+  $("#termCfgSize").value = String(term.fontSize);
+  $("#termCfgLine").value = String(c.lineHeight);
+  $("#termCfgWeight").value = c.weight;
+  $("#termCfgShape").value = c.cursorStyle;
+  $("#termCfgBlink").checked = c.blink;
+  termCfgPaint();
+}
+function termCfgChanged() { applyTerminalLook(); termCfgPaint(); }
+for (const [key, selector] of Object.entries(TERM_CFG_COLORS)) $(selector).addEventListener("input", (event) => { term.custom[key] = event.target.value; termCfgChanged(); });
+$("#termCfgFont").addEventListener("change", (event) => { term.custom.font = event.target.value; termCfgChanged(); });
+$("#termCfgSize").addEventListener("change", (event) => { term.fontSize = Math.max(9, Math.min(28, Math.round(Number(event.target.value)) || 14)); event.target.value = String(term.fontSize); termCfgChanged(); });
+$("#termCfgLine").addEventListener("change", (event) => { term.custom.lineHeight = Math.max(1, Math.min(2, Number(event.target.value) || 1.25)); event.target.value = String(term.custom.lineHeight); termCfgChanged(); });
+$("#termCfgWeight").addEventListener("change", (event) => { term.custom.weight = event.target.value; termCfgChanged(); });
+$("#termCfgShape").addEventListener("change", (event) => { term.custom.cursorStyle = event.target.value; termCfgChanged(); });
+$("#termCfgBlink").addEventListener("change", (event) => { term.custom.blink = event.target.checked; termCfgChanged(); });
+$("#termCfgReset").addEventListener("click", () => { term.custom = { ...TERM_CUSTOM_DEFAULT }; term.fontSize = 14; applyTerminalLook(); termCfgRefresh(); });
+$("#termCustomize").addEventListener("click", () => { termCfgRefresh(); openDialog($("#termCfgDialog")); });
 $("#termFullscreen").addEventListener("click", async () => {
   const frame = $("#terminalFrame");
   try { if (document.fullscreenElement === frame) await document.exitFullscreen(); else await frame.requestFullscreen(); }

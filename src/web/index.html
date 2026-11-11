@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/app.css">
   <script src="/vendor/xterm.js" defer></script>
+  <script src="/js/errors.js" defer></script>
   <script src="/js/dccimport.js" defer></script>
   <script src="/js/core.js" defer></script>
   <script src="/js/devices.js" defer></script>
@@ -24,6 +25,7 @@
   <script src="/js/channels.js" defer></script>
   <script src="/js/guide.js" defer></script>
   <script src="/js/guide-extras.js" defer></script>
+  <script src="/js/logs.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
   <script src="/js/main.js" defer></script>
 </head>
@@ -88,6 +90,8 @@
     <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4"/></symbol>
     <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-bug" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2z"/><path d="M12 10v4.5M12 17.2h.01"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h6M14 7h6M4 12h10M18 12h2M4 17h2M10 17h10"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
     <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M4 15l4 4 4-4M16 19V5M12 9l4-4 4 4"/></symbol>
   </defs>
 </svg>
@@ -100,6 +104,7 @@
     <button class="tab" role="tab" data-view="terminal" aria-selected="false"><svg class="ic"><use href="#i-terminal"/></svg><span>Terminal</span></button>
     <button class="tab" role="tab" data-view="screen" aria-selected="false"><svg class="ic"><use href="#i-screen"/></svg><span>Screen</span></button>
     <button class="tab" role="tab" data-view="tools" aria-selected="false" title="Channel editor, backup &amp; restore, .ipk install and signal meter"><svg class="ic"><use href="#i-gear"/></svg><span>Tools</span></button>
+    <button class="tab" role="tab" data-view="logs" aria-selected="false" title="Program log and faults"><svg class="ic"><use href="#i-bug"/></svg><span>Logs</span></button>
   </nav>
   <div class="device-picker">
     <span class="dot" id="deviceDot" data-state="unknown" title="Device status"></span>
@@ -348,7 +353,7 @@
     <div class="termtabs">
       <div class="termtabs-list" id="terminalTabs" role="tablist" aria-label="Terminal tabs"></div>
       <button class="icon-btn" id="terminalNewTab" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab"><svg class="ic"><use href="#i-plus"/></svg></button>
-      <button class="icon-btn" id="terminalTabList" type="button" title="All terminal tabs by name (Alt+1…9 switches)" aria-label="List terminal tabs"><svg class="ic"><use href="#i-sort"/></svg></button>
+      <button class="icon-btn" id="terminalTabList" type="button" title="All terminal tabs by name (Alt+1…9 switches)" aria-label="List terminal tabs"><svg class="ic"><use href="#i-list"/></svg></button>
     </div>
     <div class="connbar" id="terminalBar">
       <span class="status-pill" id="terminalStatus" data-state="idle" role="img" aria-label="No session" title="No session"></span>
@@ -380,6 +385,7 @@
         <select id="termTheme" class="mini-select" title="Terminal theme">
           <option value="midnight">Midnight</option><option value="black">Black</option><option value="light">Light</option>
         </select>
+        <button class="icon-btn" id="termCustomize" type="button" title="Terminal appearance: colors, font, size, cursor" aria-label="Terminal appearance"><svg class="ic"><use href="#i-sliders"/></svg></button>
         <span class="spacer"></span>
         <div class="filterbar compact">
           <svg class="ic sm"><use href="#i-search"/></svg>
@@ -396,6 +402,56 @@
         <button type="button" data-key="home">Home</button><button type="button" data-key="end">End</button>
         <button type="button" data-key="pageup">PgUp</button><button type="button" data-key="pagedown">PgDn</button>
       </div>
+    </div>
+  </section>
+  <section class="view" id="view-logs" aria-label="Logs and faults" hidden>
+    <div class="tools-top">
+      <div class="tools-actions"><span class="logs-live" id="logsLive" data-state="on">Live</span></div>
+    </div>
+    <div class="logs-tabs" role="tablist" aria-label="Logs and faults">
+      <button type="button" class="logs-tab" role="tab" data-logtab="log" aria-selected="true">Log</button>
+      <button type="button" class="logs-tab" role="tab" data-logtab="faults" aria-selected="false">Faults <span class="badge warn" id="faultCount"></span></button>
+    </div>
+    <div class="logs-pane" id="logsPaneLog">
+      <div class="screen-tools logs-tools">
+        <label class="field-inline">Show
+          <select id="logsLevel" title="Hide entries below this level">
+            <option value="trace">Trace +</option><option value="debug">Debug +</option><option value="info">Info +</option><option value="warn">Warnings +</option><option value="error">Errors only</option>
+          </select>
+        </label>
+        <label class="field-inline">Component <select id="logsComp"><option value="">All components</option></select></label>
+        <input class="filter-input logs-search" id="logsSearch" type="search" placeholder="Search log" aria-label="Search log" autocomplete="off">
+        <span class="spacer"></span>
+        <label class="check"><input type="checkbox" id="logsFollow" checked> Follow</label>
+        <button class="btn sm" id="logsPause" type="button"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
+        <button class="btn sm" id="logsCopy" type="button" title="Copy the visible lines"><svg class="ic"><use href="#i-copy"/></svg><span>Copy</span></button>
+        <button class="btn sm" id="logsDownload" type="button" title="Download a report with system info, open faults and the visible lines"><svg class="ic"><use href="#i-download"/></svg><span>Report</span></button>
+        <button class="btn sm danger" id="logsClear" type="button" title="Clear this view (the log file is kept)"><svg class="ic"><use href="#i-trash"/></svg><span>Clear</span></button>
+      </div>
+      <div class="lg-chips" id="logsChips" aria-label="Entries per level"></div>
+      <div class="logs-list" id="logsList" role="log" tabindex="0"></div>
+      <p class="muted logs-empty" id="logsEmpty" hidden>Nothing to show at this level. Lower the level or clear the search.</p>
+      <div class="logs-foot">
+        <label class="field-inline">Detail level
+          <select id="logsCapture" title="How much the program records (console, and trace in this view)">
+            <option value="trace">Trace - every device request</option><option value="debug">Debug</option><option value="info">Info (default)</option><option value="warn">Warnings</option><option value="error">Errors</option>
+          </select>
+        </label>
+        <span class="muted small" id="logsShown"></span>
+        <span class="spacer"></span>
+        <span class="muted small ellipsis" id="logsFile" title=""></span>
+      </div>
+    </div>
+    <div class="logs-pane" id="logsPaneFaults" hidden>
+      <div class="screen-tools logs-tools">
+        <span class="muted small" id="faultsSummary"></span>
+        <span class="spacer"></span>
+        <label class="check"><input type="checkbox" id="faultsShowAcked"> Show acknowledged</label>
+        <button class="btn sm" id="faultsAckAll" type="button"><svg class="ic"><use href="#i-check"/></svg><span>Acknowledge all</span></button>
+        <button class="btn sm danger" id="faultsClear" type="button"><svg class="ic"><use href="#i-trash"/></svg><span>Clear</span></button>
+      </div>
+      <div class="faults-list" id="faultsList"></div>
+      <p class="muted logs-empty" id="faultsEmpty" hidden>No faults recorded. Warnings and errors from the program, your devices and this page are grouped here.</p>
     </div>
   </section>
   <section class="view" id="view-signal" aria-label="Signal meter" hidden>
@@ -458,8 +514,8 @@
       <label class="field-inline">Show
         <select id="screenMode"><option value="all">Video + menus</option><option value="video">Video only</option><option value="osd">Menus only</option></select>
       </label>
-      <label class="field-inline">Size
-        <select id="screenWidth"><option value="480">Small</option><option value="720">Medium</option><option value="1280">Large</option><option value="1920">Full HD</option></select>
+      <label class="field-inline">Width (px)
+        <select id="screenWidth" title="Picture width in pixels. Larger pictures are sharper but slower and heavier for the receiver. 3840 is 4K."><option value="480">480</option><option value="720">720</option><option value="1280">1280</option><option value="1920">1920</option><option value="3840">3840</option></select>
       </label>
       <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Automatically refresh every</label>
         <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
@@ -616,6 +672,39 @@
       <button class="btn" id="histClose" type="button">Close</button>
     </div>
   </div>
+</dialog>
+
+<dialog id="termCfgDialog" aria-labelledby="termCfgTitle">
+  <form class="dialog-card" id="termCfgForm" method="dialog">
+    <h2 id="termCfgTitle">Terminal appearance</h2>
+    <div id="termCfgPreview" class="term-preview" aria-hidden="true"><div>root@receiver:~# uptime</div><div>23:10:05 up 3 days, load average: 0.12</div><div>root@receiver:~# <span id="termCfgCaret">&nbsp;</span></div></div>
+    <div class="grid2">
+      <label class="field"><span>Background</span><input type="color" id="termCfgBg"></label>
+      <label class="field"><span>Text color</span><input type="color" id="termCfgFg"></label>
+      <label class="field"><span>Cursor color</span><input type="color" id="termCfgCursor"></label>
+      <label class="field"><span>Selection color</span><input type="color" id="termCfgSel"></label>
+    </div>
+    <label class="field"><span>Font</span>
+      <select id="termCfgFont">
+        <option value="default">Default (Cascadia / Consolas)</option><option value="consolas">Consolas</option><option value="courier">Courier New</option><option value="lucida">Lucida Console</option><option value="dejavu">DejaVu Sans Mono</option><option value="fira">Fira Code</option><option value="jetbrains">JetBrains Mono</option><option value="system">System monospace</option>
+      </select>
+    </label>
+    <div class="grid3">
+      <label class="field"><span>Size</span><input type="number" id="termCfgSize" min="9" max="28" step="1" inputmode="numeric"></label>
+      <label class="field"><span>Line height</span><input type="number" id="termCfgLine" min="1" max="2" step="0.05" inputmode="decimal"></label>
+      <label class="field"><span>Weight</span><select id="termCfgWeight"><option value="400">Normal</option><option value="500">Medium</option><option value="700">Bold</option></select></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Cursor shape</span><select id="termCfgShape"><option value="bar">Bar</option><option value="block">Block</option><option value="underline">Underline</option></select></label>
+      <label class="check"><input type="checkbox" id="termCfgBlink"> Blinking cursor</label>
+    </div>
+    <p class="muted small">A font must be installed on this computer. If it is not, the next available monospace font is used. Choosing a theme resets the colors.</p>
+    <div class="dialog-actions">
+      <button class="btn" id="termCfgReset" type="button">Reset</button>
+      <span class="spacer"></span>
+      <button class="btn primary" type="submit">Done</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="pasteDialog" aria-labelledby="pasteTitle">

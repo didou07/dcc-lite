@@ -278,9 +278,10 @@ function showTool(id) {
 }
 function showView(name) {
   if (name === "tools") name = TOOL_PAGES.find((t) => t.id === tools.current)?.view || "lists";
-  if (!["devices", "files", "terminal", "screen", ...toolViews].includes(name)) name = "devices";
+  if (!["devices", "files", "terminal", "screen", "logs", ...toolViews].includes(name)) name = "devices";
   if (view.current === "screen" && name !== "screen") screenStop();
   if (view.current === "signal" && name !== "signal") signalStop();
+  if (view.current === "logs" && name !== "logs") logsLeave();
   view.current = name;
   if (name === "ipk") tools.current = "ipk";
   else if (name === "signal") tools.current = "signal";
@@ -297,5 +298,6 @@ function showView(name) {
   if (name === "terminal") terminalEnter();
   if (name === "screen") screenEnter();
   if (name === "signal") signalEnter();
+  if (name === "logs") logsEnter();
 }
 for (const tab of $$("#mainTabs .tab")) tab.addEventListener("click", () => showView(tab.dataset.view));

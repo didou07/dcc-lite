@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -21,9 +20,28 @@ import (
 	"github.com/didou07/dcc-lite/src/app"
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/httpapi"
+	"github.com/didou07/dcc-lite/src/logx"
 )
 
 var version = "dev"
+
+var (
+	appLog    = logx.For("app")
+	remoteLog = logx.For("remote")
+)
+
+func fatal(code int, msg string, args ...any) {
+	appLog.Error(msg, args...)
+	logx.Close()
+	os.Exit(code)
+}
+
+func envOr(name, fallback string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return fallback
+}
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:8787", "Local HTTP listen address (loopback only)")
@@ -38,6 +56,11 @@ func main() {
 	flag.StringVar(&remote.KeyFile, "tls-key", "", "PEM private key for --tls-cert")
 	flag.StringVar(&remote.ExtraHost, "tls-host", "", "Extra host names or IPs to put in the self-signed certificate, comma separated")
 	flag.BoolVar(&remote.Plain, "remote-http", false, "Serve --remote-listen as plain HTTP without encryption (password and data are readable on the network; use only on a trusted network)")
+	logLevel := flag.String("log-level", envOr("DCCLITE_LOG_LEVEL", "info"), "Console log level: trace, debug, info, warn or error")
+	logFileLevel := flag.String("log-file-level", envOr("DCCLITE_LOG_FILE_LEVEL", "debug"), "Log file level: trace, debug, info, warn or error")
+	logDir := flag.String("log-dir", "", "Folder for dcclite.log and faults.json (default: logs inside the data directory; \"off\" disables the file)")
+	logFormat := flag.String("log-format", "text", "Log file format: text or json (JSON lines)")
+	debug := flag.Bool("debug", false, "Shortcut for --log-level debug")
 	setPassword := flag.Bool("set-remote-password", false, "Read a new remote access password from standard input, save it and exit")
 	resetPassword := flag.Bool("reset-remote-password", false, "Generate a new random remote access password, print it and exit")
 	flag.Parse()
@@ -47,37 +70,76 @@ func main() {
 		return
 	}
 
-	if err := validateListenAddress(*listen); err != nil {
-		slog.Error("invalid listen address", "error", err)
+	if *debug && *logLevel == "info" {
+		*logLevel = "debug"
+	}
+	consoleLevel, err := logx.ParseLevel(*logLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "--log-level:", err)
 		os.Exit(2)
 	}
-	if remote.Listen != "" {
-		if err := validateRemoteListen(remote.Listen, *listen); err != nil {
-			slog.Error("invalid --remote-listen address", "error", err)
-			os.Exit(2)
-		}
+	fileLevel, err := logx.ParseLevel(*logFileLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "--log-file-level:", err)
+		os.Exit(2)
 	}
+	if *logFormat != "text" && *logFormat != "json" {
+		fmt.Fprintln(os.Stderr, "--log-format: use text or json")
+		os.Exit(2)
+	}
+
 	root, err := resolveDataDir(*dataDir, *portable)
 	if err != nil {
-		slog.Error("resolve data directory", "error", err)
+		fmt.Fprintln(os.Stderr, "resolve data directory:", err)
 		os.Exit(1)
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
-		slog.Error("create data directory", "error", err)
+		fmt.Fprintln(os.Stderr, "create data directory:", err)
 		os.Exit(1)
+	}
+
+	dir := *logDir
+	if dir == "" {
+		dir = filepath.Join(root, "logs")
+	}
+	if strings.EqualFold(dir, "off") {
+		dir = ""
+	}
+	hub, logErr := logx.Init(logx.Options{
+		ConsoleLevel: consoleLevel, FileLevel: fileLevel, Dir: dir,
+		JSON: *logFormat == "json",
+	})
+	defer func() {
+		if r := recover(); r != nil {
+			logx.Panic(appLog, r, "DCC Lite")
+			logx.Close()
+			os.Exit(2)
+		}
+	}()
+	defer hub.Close()
+	if logErr != nil {
+		appLog.Warn("log file disabled", "dir", dir, "error", logErr)
+	}
+	hub.SessionStart(version)
+
+	if err := validateListenAddress(*listen); err != nil {
+		fatal(2, "invalid listen address", "error", err)
+	}
+	if remote.Listen != "" {
+		if err := validateRemoteListen(remote.Listen, *listen); err != nil {
+			fatal(2, "invalid --remote-listen address", "error", err)
+		}
 	}
 
 	iniPath := resolveConfigPath(*configPath, root)
 	store, err := config.NewProfileStore(root, iniPath)
 	if err != nil {
-		slog.Error("initialize profile store", "error", err)
-		os.Exit(1)
+		fatal(1, "initialize profile store", "error", err)
 	}
 
 	if *setPassword || *resetPassword {
 		if _, err := manageRemotePassword(store, *setPassword, *resetPassword, os.Stdin, os.Stdout); err != nil {
-			slog.Error("remote password", "error", err)
-			os.Exit(2)
+			fatal(2, "remote password", "error", err)
 		}
 		return
 	}
@@ -86,14 +148,13 @@ func main() {
 	if err != nil {
 		if errors.Is(err, syscall.EADDRINUSE) && isExistingDCCLite(*listen) {
 			existingURL := "http://" + *listen
-			slog.Info("DCC Lite is already running", "url", existingURL)
+			appLog.Info("DCC Lite is already running", "url", existingURL)
 			if !*noBrowser {
 				openBrowser(existingURL)
 			}
 			return
 		}
-		slog.Error("listen", "address", *listen, "error", err)
-		os.Exit(1)
+		fatal(1, "listen", "address", *listen, "error", err)
 	}
 	defer listener.Close()
 
@@ -111,13 +172,13 @@ func main() {
 	}
 
 	url := "http://" + listener.Addr().String()
-	slog.Info("DCC Lite is ready", "url", url, "settings", store.Path(), "data_dir", root, "version", version)
+	appLog.Info("DCC Lite is ready", "url", url, "version", version)
+	appLog.Debug("paths", "data_dir", root, "settings", store.Path(), "log_dir", hub.Dir())
 
 	manager := newRemoteManager(application, store, root, *listen)
 	application.RemoteAccess = manager
 	if err := manager.Init(remote); err != nil {
-		slog.Error("remote access setup", "error", err)
-		os.Exit(1)
+		fatal(1, "remote access setup", "error", err)
 	}
 	defer manager.Stop()
 	if !*noBrowser {
@@ -126,19 +187,19 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go func() {
+	logx.Go(appLog, "shutdown watcher", func() {
 		<-ctx.Done()
+		appLog.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		manager.Stop()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("graceful shutdown", "error", err)
+			appLog.Error("graceful shutdown", "error", err)
 		}
-	}()
+	})
 
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-		slog.Error("HTTP server", "error", err)
-		os.Exit(1)
+		fatal(1, "HTTP server", "error", err)
 	}
 }
 
@@ -256,6 +317,6 @@ func openBrowser(url string) {
 		cmd, args = "xdg-open", []string{url}
 	}
 	if err := startDetached(cmd, args...); err != nil {
-		slog.Warn("could not open browser automatically", "error", err, "url", url)
+		appLog.Warn("could not open browser automatically", "error", err, "url", url)
 	}
 }

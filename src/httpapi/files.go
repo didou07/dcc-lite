@@ -237,6 +237,7 @@ func (s *Server) renameRemoteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeRemoteFile(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "remote file delete requested")
 	var input struct {
 		Path      string `json:"path"`
 		Directory bool   `json:"directory"`
@@ -288,6 +289,7 @@ func (s *Server) readRemoteText(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) writeRemoteText(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "remote file save requested")
 	var input struct {
 		Path               string    `json:"path"`
 		Content            string    `json:"content"`

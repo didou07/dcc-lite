@@ -155,9 +155,9 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 	return body, nil
 }
 
-const maxScreenBytes = 6 << 20
+const maxScreenBytes = 16 << 20
 
-var screenWidths = map[int]bool{320: true, 480: true, 640: true, 720: true, 960: true, 1280: true, 1920: true}
+var screenWidths = map[int]bool{320: true, 480: true, 640: true, 720: true, 960: true, 1280: true, 1920: true, 3840: true}
 
 func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
@@ -182,7 +182,7 @@ func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("width"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || !screenWidths[n] {
-			writeError(w, http.StatusBadRequest, "width must be 320, 480, 640, 720, 960, 1280 or 1920")
+			writeError(w, http.StatusBadRequest, "width must be 320, 480, 640, 720, 960, 1280, 1920 or 3840")
 			return
 		}
 		width = n

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -12,6 +13,8 @@ import (
 	"github.com/didou07/dcc-lite/src/remoteaccess"
 	"github.com/didou07/dcc-lite/src/terminal"
 )
+
+var termLog = logx.For("term")
 
 type terminalOpenRequest struct {
 	ProfileID        string `json:"profile_id"`
@@ -143,6 +146,12 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				logx.Panic(termLog, p, "terminal keep-alive", "session", id)
+				cancel()
+			}
+		}()
 		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -170,6 +179,12 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	done := make(chan result, 2)
 	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				logx.Panic(termLog, p, "terminal input loop", "session", id)
+				done <- result{err: errors.New("internal terminal error"), final: true}
+			}
+		}()
 		for {
 			var message struct {
 				Type string `json:"type"`
@@ -211,6 +226,12 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				logx.Panic(termLog, p, "terminal output loop", "session", id)
+				done <- result{err: errors.New("internal terminal error"), final: true}
+			}
+		}()
 		buffer := make([]byte, 4096)
 		for {
 			n, readErr := backend.Read(buffer)

@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/didou07/dcc-lite/src/config"
+	"github.com/didou07/dcc-lite/src/logx"
 )
+
+var devLog = logx.For("device")
 
 type deviceWeb struct {
 	base   string
@@ -104,13 +107,16 @@ func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response
 		return nil, ctx.Err()
 	}
 	release := func() { <-slots }
+	began := time.Now()
 	resp, err := d.client.Do(req)
 	if err != nil {
 		release()
 		webNoteFailure(d.base, err)
+		devLog.Log(ctx, logx.LevelTrace, "device request failed", "base", d.base, "path", pathOnly(pathAndQuery), "kind", errKind(err), "error", err)
 		return nil, err
 	}
 	webNoteSuccess(d.base)
+	devLog.Log(ctx, logx.LevelTrace, "device request", "base", d.base, "path", pathOnly(pathAndQuery), "status", resp.StatusCode, "ms", time.Since(began).Milliseconds())
 	resp.Body = &slotBody{ReadCloser: resp.Body, release: release}
 	return resp, nil
 }
@@ -146,6 +152,13 @@ func errKind(err error) string {
 	return "other"
 }
 
+func pathOnly(pathAndQuery string) string {
+	if i := strings.IndexByte(pathAndQuery, '?'); i >= 0 {
+		return pathAndQuery[:i]
+	}
+	return pathAndQuery
+}
+
 func webNoteFailure(base string, err error) {
 	kind := errKind(err)
 	if kind != "refused" && kind != "reset" {
@@ -158,6 +171,11 @@ func webNoteFailure(base string, err error) {
 		streak = v.(*webFailure).streak
 	}
 	streak++
+	if streak == 1 {
+		devLog.Warn("device web interface not answering", "base", base, "kind", kind, "error", err)
+	} else if streak%10 == 0 {
+		devLog.Warn("device web interface still not answering", "base", base, "kind", kind, "failures", streak)
+	}
 	pause := time.Duration(streak) * 3 * time.Second
 	if pause > 15*time.Second {
 		pause = 15 * time.Second
@@ -167,6 +185,9 @@ func webNoteFailure(base string, err error) {
 
 func webNoteSuccess(base string) {
 	webFailuresMu.Lock()
+	if v, ok := webFailures.Load(base); ok {
+		devLog.Info("device web interface is answering again", "base", base, "after_failures", v.(*webFailure).streak)
+	}
 	webFailures.Delete(base)
 	webFailuresMu.Unlock()
 }

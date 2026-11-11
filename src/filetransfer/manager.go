@@ -1,6 +1,7 @@
 package filetransfer
 
 import (
+	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -19,6 +20,8 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/core"
 )
+
+var flog = logx.For("files")
 
 var (
 	ErrSessionNotFound = errors.New("file transfer session not found")
@@ -138,6 +141,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		adapter, err = OpenResilientFTP(ctx, FTPOptions{Host: profile.Host, Port: port, Username: profile.Username, Password: password})
 	}
 	if err != nil {
+		flog.Warn("file session failed to open", "device", profile.Name, "host", profile.Host, "port", port, "error", err)
 		return SessionInfo{}, friendlyConnectError(profile.Host, port, err)
 	}
 	id, err := newFileID()
@@ -160,6 +164,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	reservationHeld = false
 	m.sessions[id] = &managedSession{info: info, adapter: adapter, lastUsed: time.Now()}
 	m.mu.Unlock()
+	flog.Info("file session opened", "device", profile.Name, "host", profile.Host, "port", port, "session", id)
 	return info, nil
 }
 
@@ -327,6 +332,9 @@ func (m *Manager) reapIdleLoop() {
 			}
 		}
 		m.mu.Unlock()
+		if len(stale) > 0 {
+			flog.Debug("closing idle file sessions", "count", len(stale))
+		}
 		closeSessions(stale)
 	}
 }
@@ -566,6 +574,8 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 	}
 	defer func() { <-m.queue }()
 	m.updateTask(task, func(info *TaskInfo) { info.State = "running" })
+	started := time.Now()
+	flog.Info("transfer started", "task", task.info.ID, "direction", task.info.Direction, "remote", task.info.RemotePath, "resume", resume)
 	session := task.session
 	if session == nil {
 		m.finishTask(task, "failed", "file transfer session is unavailable")
@@ -625,6 +635,11 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 			state = "cancelled"
 		}
 		m.finishTask(task, state, err.Error())
+		if state == "cancelled" {
+			flog.Info("transfer cancelled", "task", task.info.ID, "remote", task.info.RemotePath)
+		} else {
+			flog.Error("transfer failed", "task", task.info.ID, "direction", task.info.Direction, "remote", task.info.RemotePath, "error", err, "after", time.Since(started).Round(time.Millisecond))
+		}
 		return
 	}
 	if task.partialPath != "" {
@@ -636,6 +651,11 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 		info.Progress.Fraction = 1
 		info.UpdatedAt = time.Now().UTC()
 	})
+
+	m.mu.Lock()
+	done := task.info.Progress.BytesDone
+	m.mu.Unlock()
+	flog.Info("transfer completed", "task", task.info.ID, "direction", task.info.Direction, "remote", task.info.RemotePath, "bytes", done, "took", time.Since(started).Round(time.Millisecond))
 
 	if task.info.Staged && task.info.Direction == "upload" {
 		removeStagedFiles(task)

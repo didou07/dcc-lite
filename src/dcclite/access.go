@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -128,9 +127,9 @@ type tlsNoiseFilter struct{}
 func (tlsNoiseFilter) Write(p []byte) (int, error) {
 	line := strings.TrimSpace(string(p))
 	if strings.Contains(line, "TLS handshake error") {
-		slog.Debug("remote TLS handshake failed", "detail", line)
+		remoteLog.Debug("remote TLS handshake failed", "detail", line)
 		return len(p), nil
 	}
-	slog.Warn("remote HTTPS server", "detail", line)
+	remoteLog.Warn("remote HTTPS server", "detail", line)
 	return len(p), nil
 }

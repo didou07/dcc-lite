@@ -29,12 +29,12 @@ try {
     Remove-Item $Dir, "dist\$Name.zip", "dist\$Name.zip.sha256" -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force $Dir | Out-Null
     $env:CGO_ENABLED = "0"; $env:GOOS = "windows"; $env:GOARCH = $Arch
-    Invoke-Go build -trimpath -ldflags "-s -w -X main.version=$Version" -o "$Dir\DCCLite.exe" .\src\dcclite
+    Invoke-Go build -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=$Version" -o "$Dir\DCCLite.exe" .\src\dcclite
 }
 finally {
     Remove-Item Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:GOTOOLCHAIN -ErrorAction SilentlyContinue
 }
-Compress-Archive -Path $Dir -DestinationPath "dist\$Name.zip" -Force
+Compress-Archive -Path "$Dir\DCCLite.exe" -DestinationPath "dist\$Name.zip" -Force
 Remove-Item $Dir -Recurse -Force
 $Hash = (Get-FileHash -Algorithm SHA256 "dist\$Name.zip").Hash.ToLower()
 Set-Content -Encoding ASCII "dist\$Name.zip.sha256" "$Hash  $Name.zip"

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -74,7 +73,7 @@ func (m *remoteManager) Init(flags remoteSettings) error {
 	}
 	saved, err := m.load()
 	if err != nil {
-		slog.Warn("could not read saved remote access settings", "error", err)
+		remoteLog.Warn("could not read saved remote access settings", "error", err)
 		return nil
 	}
 	m.settings = saved
@@ -82,7 +81,7 @@ func (m *remoteManager) Init(flags remoteSettings) error {
 		plan, err := m.start()
 		if err != nil {
 			m.lastErr = err.Error()
-			slog.Warn("remote access could not start", "error", err)
+			remoteLog.Warn("remote access could not start", "error", err)
 			return nil
 		}
 		if plan.NewPassword != "" {
@@ -178,19 +177,19 @@ func (m *remoteManager) start() (remotePlan, error) {
 	m.lastErr = ""
 	m.hosts = m.linkHosts(plan)
 	if m.settings.PlainHTTP {
-		slog.Warn("Remote access (plain HTTP) is ready: NOT ENCRYPTED, the password and all data can be read on the network", "port", m.port)
+		remoteLog.Warn("Remote access (plain HTTP) is ready: NOT ENCRYPTED, the password and all data can be read on the network", "port", m.port)
 	} else {
-		slog.Info("Remote access (HTTPS) is ready", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
+		remoteLog.Info("Remote access (HTTPS) is ready", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
 	}
 	for _, url := range m.links() {
-		slog.Info("Open from another device", "url", url)
+		remoteLog.Info("Open from another device", "url", url)
 	}
 	if !m.settings.PlainHTTP && plan.Certificate.Source == "self-signed" {
-		slog.Info("Self-signed certificate: the browser will warn once; compare the SHA-256 fingerprint above before accepting")
+		remoteLog.Info("Self-signed certificate: the browser will warn once; compare the SHA-256 fingerprint above before accepting")
 	}
 	go func() {
 		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("remote HTTPS server", "error", err)
+			remoteLog.Error("remote HTTPS server", "error", err)
 		}
 	}()
 	return plan, nil
@@ -247,7 +246,7 @@ func (m *remoteManager) stop() {
 		m.plan.Auth.RevokeAll()
 	}
 	m.server, m.closeAll, m.running, m.plan, m.hosts = nil, nil, false, remotePlan{}, nil
-	slog.Info("Remote access (HTTPS) stopped")
+	remoteLog.Info("Remote access (HTTPS) stopped")
 }
 
 func (m *remoteManager) Stop() {

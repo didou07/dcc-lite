@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/didou07/dcc-lite/src/app"
+	"github.com/didou07/dcc-lite/src/logx"
 	"github.com/didou07/dcc-lite/src/remoteaccess"
 	webui "github.com/didou07/dcc-lite/src/web"
 )
@@ -33,7 +34,7 @@ func NewRemote(application *app.App, options RemoteOptions) http.Handler {
 	root.HandleFunc("POST /api/v1/auth/logout", s.logout)
 	root.HandleFunc("GET /api/v1/auth/status", s.authStatus)
 	root.Handle("/", protected)
-	return securityHeaders(s.remoteCSP, s.remoteGuard(root))
+	return securityHeaders(s.remoteCSP, s.remoteGuard(observe(root)))
 }
 
 var safeHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
@@ -53,10 +54,12 @@ func (s *Server) remoteCSP(r *http.Request) string {
 func (s *Server) remoteGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host == "" {
+			rejected(r, "missing Host header")
 			http.Error(w, "missing Host header", http.StatusBadRequest)
 			return
 		}
 		if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") && r.Header.Get("Sec-Fetch-Mode") != "navigate" {
+			rejected(r, "cross-site request")
 			http.Error(w, "cross-site request rejected", http.StatusForbidden)
 			return
 		}
@@ -64,6 +67,7 @@ func (s *Server) remoteGuard(next http.Handler) http.Handler {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 		default:
 			if !remoteaccess.SameOriginFor(r, !s.remote.auth.Plain()) {
+				rejected(r, "cross-origin request")
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 				return
 			}
@@ -119,6 +123,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var throttled remoteaccess.ErrThrottled
 	switch {
 	case err == nil:
+		logx.For("auth").Info("remote sign-in", "remote", remoteHost(r))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case errors.Is(err, remoteaccess.ErrBadPassword):
 		writeError(w, http.StatusUnauthorized, "Incorrect password.")
@@ -132,6 +137,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	s.remote.auth.Logout(w, r)
+	logx.For("auth").Info("remote sign-out", "remote", remoteHost(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

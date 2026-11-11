@@ -31,7 +31,7 @@ func New(application *app.App) http.Handler {
 	mux.HandleFunc("POST /api/v1/remote-access/password", s.setRemotePassword)
 
 	mux.HandleFunc("GET /api/v1/profiles/{id}/password", s.revealCredential)
-	return secureHeaders(localOnly(mux))
+	return secureHeaders(localOnly(observe(mux)))
 }
 
 func (s *Server) routes() *http.ServeMux {
@@ -123,6 +123,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/profiles", s.createProfile)
 	mux.HandleFunc("PUT /api/v1/profiles/{id}", s.updateProfile)
 	mux.HandleFunc("DELETE /api/v1/profiles/{id}", s.deleteProfile)
+	s.registerLogRoutes(mux)
 	mux.Handle("/", s.staticFiles())
 	return mux
 }

@@ -23,10 +23,11 @@ for target in "${TARGETS[@]}"; do
   ext=""; [[ "$os" == windows ]] && ext=".exe"
   name="DCC-Lite-${VERSION}-${os}-${arch}${suffix}"
   echo "==> ${os}/${arch}${suffix}"
-  mkdir -p "dist/${name}"
+  stage="$(mktemp -d)"
   env CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" ${extra[@]+"${extra[@]}"} \
-    "$gobin" build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "dist/${name}/DCCLite${ext}" ./src/dcclite
-  (cd dist && zip -qr "${name}.zip" "${name}" && rm -rf "${name}")
+    "$gobin" build -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=${VERSION}" -o "${stage}/DCCLite${ext}" ./src/dcclite
+  zip -qj -9 "dist/${name}.zip" "${stage}/DCCLite${ext}"
+  rm -rf "$stage"
 done
 (cd dist && { sha256sum *.zip 2>/dev/null || shasum -a 256 *.zip; } > SHA256SUMS.txt)
 echo "Done: $(pwd)/dist"

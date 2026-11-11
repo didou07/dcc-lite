@@ -83,6 +83,7 @@ func backupHostLabel(host string) string {
 }
 
 func (s *Server) backupEnigma2(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "Enigma2 backup requested")
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
 	if !ok {
@@ -160,6 +161,7 @@ type restoreSkip struct {
 }
 
 func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "Enigma2 restore requested")
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
 	if !ok {

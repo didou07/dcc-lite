@@ -390,6 +390,7 @@ func (s *Server) devicePower(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 10*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	devLog.Info("power command", "device", profile.Name, "host", profile.Host, "action", action)
 	status, body, err := web.press(ctx, path)
 
 	if err != nil && (action == "deep" || action == "reboot" || action == "restart_gui") {

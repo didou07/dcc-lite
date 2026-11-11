@@ -22,6 +22,7 @@ func (s *Server) getRemoteAccess(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) putRemoteAccess(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "remote access settings change requested")
 	if !s.remoteAdminAvailable(w) {
 		return
 	}
@@ -48,6 +49,7 @@ type remotePasswordRequest struct {
 }
 
 func (s *Server) setRemotePassword(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "remote access password change requested")
 	if !s.remoteAdminAvailable(w) {
 		return
 	}

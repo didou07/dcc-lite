@@ -1,14 +1,17 @@
 <!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="dark" data-radius="sharp">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#e8ecf1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0f13" media="(prefers-color-scheme: dark)">
   <title>DCC Lite</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d9488'/%3E%3Cpath d='M8 11l6 5-6 5M17 21h7' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2335b36a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10a7.31 7.31 0 0 0 10 10Z'/%3E%3Cpath d='m9 15 3-3'/%3E%3Cpath d='M17 13a6 6 0 0 0-6-6'/%3E%3Cpath d='M21 13A10 10 0 0 0 11 3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/app.css">
   <script src="/vendor/xterm.js" defer></script>
+  <script src="/js/appearance.js" defer></script>
   <script src="/js/errors.js" defer></script>
   <script src="/js/dccimport.js" defer></script>
   <script src="/js/core.js" defer></script>
@@ -27,15 +30,17 @@
   <script src="/js/guide-extras.js" defer></script>
   <script src="/js/logs.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
+  <script src="/js/shell.js" defer></script>
   <script src="/js/main.js" defer></script>
 </head>
 <body data-view="devices">
 <svg class="sprite" aria-hidden="true" focusable="false">
   <defs>
     <symbol id="i-devices" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
-    <symbol id="i-files" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-files" viewBox="0 0 24 24"><path d="M6 14l1.5-2.9A2 2 0 0 1 9.2 10H20a2 2 0 0 1 1.9 2.5l-1.5 6a2 2 0 0 1-1.9 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H18a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-dish" viewBox="0 0 24 24"><path d="M4 10a7.31 7.31 0 0 0 10 10Z"/><path d="m9 15 3-3"/><path d="M17 13a6 6 0 0 0-6-6"/><path d="M21 13A10 10 0 0 0 11 3"/></symbol>
     <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></symbol>
-    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></symbol>
     <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
@@ -82,7 +87,7 @@
     <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7zM4 7l8 4 8-4M12 11v10"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/></symbol>
     <symbol id="i-audio" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></symbol>
-    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.2a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.2a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.2a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.2a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-text" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
     <symbol id="i-chev-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
     <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
@@ -93,85 +98,144 @@
     <symbol id="i-bug" viewBox="0 0 24 24"><path d="M12 3.5 22 20H2z"/><path d="M12 10v4.5M12 17.2h.01"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h6M14 7h6M4 12h10M18 12h2M4 17h2M10 17h10"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
     <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M4 15l4 4 4-4M16 19V5M12 9l4-4 4 4"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M16 8l4 4-4 4M20 12H9"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM12 17v-6M9 14l3-3 3 3"/></symbol>
+    <symbol id="i-backup" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM12 10v6M9 13l3 3 3-3"/></symbol>
+    <symbol id="i-split-h" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></symbol>
+    <symbol id="i-split-v" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-rows" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/></symbol>
+    <symbol id="i-ft-text" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 16.5h4"/></symbol>
+    <symbol id="i-ft-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 12.5h3M9 15.5h6M9 18.5h6"/></symbol>
+    <symbol id="i-ft-pdf" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9.5 18.5v-6h2.4a1.8 1.8 0 0 1 0 3.6H9.5"/></symbol>
+    <symbol id="i-ft-sheet" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 12h6v6.5H9zM9 15.3h6M12 12v6.5"/></symbol>
+    <symbol id="i-ft-log" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 12.5h.01M11.5 12.5H15M9 15.5h.01M11.5 15.5H15M9 18.5h.01M11.5 18.5H15"/></symbol>
+    <symbol id="i-ft-config" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/><circle cx="11" cy="13" r="1.3"/><circle cx="13.5" cy="17" r="1.3"/></symbol>
+    <symbol id="i-ft-data" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M10.5 12c-1 0-1.5.4-1.5 1.4v.6c0 .6-.4 1-1 1 .6 0 1 .4 1 1v.6c0 1 .5 1.4 1.5 1.4M13.5 12c1 0 1.5.4 1.5 1.4v.6c0 .6.4 1 1 1-.6 0-1 .4-1 1v.6c0 1-.5 1.4-1.5 1.4"/></symbol>
+    <symbol id="i-ft-code" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M10.5 12.5l-2 2.5 2 2.5M13.5 12.5l2 2.5-2 2.5"/></symbol>
+    <symbol id="i-ft-script" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 12.5l2.5 2.5L9 17.5M13 18h3"/></symbol>
+    <symbol id="i-ft-web" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><circle cx="12" cy="15.5" r="3.6"/><path d="M8.4 15.5h7.2M12 11.9c1.3 1.1 1.9 2.3 1.9 3.6s-.6 2.5-1.9 3.6c-1.3-1.1-1.9-2.3-1.9-3.6s.6-2.5 1.9-3.6"/></symbol>
+    <symbol id="i-ft-image" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><circle cx="9.6" cy="12.6" r="1"/><path d="M8 19l3-3.6 2 2.1 1.4-1.5L16 19"/></symbol>
+    <symbol id="i-ft-video" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M10.5 12.5v5.5l4.5-2.75z"/></symbol>
+    <symbol id="i-ft-audio" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M11 18v-5.5l4.5-1V17"/><circle cx="9.7" cy="18" r="1.3"/><circle cx="14.2" cy="17" r="1.3"/></symbol>
+    <symbol id="i-ft-sub" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8.5 13.5h3M13 13.5h2.5M8.5 17h2M12 17h3.5"/></symbol>
+    <symbol id="i-ft-archive" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 3v1.5M12 6v1.5M12 9v1.5M10.5 12.5h3V16a1.5 1.5 0 0 1-3 0z"/></symbol>
+    <symbol id="i-ft-font" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 18.5l3-7 3 7M10.2 16h3.6"/></symbol>
+    <symbol id="i-ft-epg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8.5 12.5h7v6h-7zM8.5 14.8h7M10.5 11.3v1.4M13.5 11.3v1.4"/></symbol>
+    <symbol id="i-ft-meta" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><circle cx="12" cy="15.5" r="3.6"/><path d="M12 15v2M12 13.6h.01"/></symbol>
+    <symbol id="i-ft-box" viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7zM4 7l8 4 8-4M12 11v10"/></symbol>
+    <symbol id="i-ft-chip" viewBox="0 0 24 24"><path d="M8 8h8v8H8zM10 4v4M14 4v4M10 16v4M14 16v4M4 10h4M4 14h4M16 10h4M16 14h4"/></symbol>
+    <symbol id="i-ft-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M18.5 4.5l2.5 2.5"/></symbol>
+    <symbol id="i-ft-db" viewBox="0 0 24 24"><path d="M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+    <symbol id="i-ft-bouquet" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4M7 12h6M7 15.5h4"/></symbol>
+    <symbol id="i-ft-tuner" viewBox="0 0 24 24"><path d="M5 20v-4M10 20v-8M15 20V8M20 20V4"/></symbol>
+    <symbol id="i-ft-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></symbol>
+    <symbol id="i-ft-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-ft-bak" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 3.5-4 3.5h-2a2 2 0 0 0-1.5 3.3c.5.6.5 1.2.5 1.7 0 1-.9 1.5-3 1.5z"/><circle cx="13.5" cy="6.5" r=".9"/><circle cx="17.5" cy="10.5" r=".9"/><circle cx="6.5" cy="12.5" r=".9"/><circle cx="8.5" cy="7.5" r=".9"/></symbol>
+    <symbol id="i-select" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 3 3 5-6"/></symbol>
   </defs>
 </svg>
 
-<header class="topbar">
-  <div class="brand"><span class="brand-mark"><svg class="ic"><use href="#i-terminal"/></svg></span><span class="brand-name">DCC <b>Lite</b></span></div>
+<aside class="rail" aria-label="Primary">
+  <div class="brand"><span class="brand-mark"><svg class="ic" aria-hidden="true"><use href="#i-dish"/></svg></span><span class="brand-name">DCC <b>Lite</b></span></div>
   <nav class="tabs" id="mainTabs" role="tablist" aria-label="Sections">
-    <button class="tab" role="tab" data-view="devices" aria-selected="true"><svg class="ic"><use href="#i-devices"/></svg><span>Devices</span></button>
-    <button class="tab" role="tab" data-view="files" aria-selected="false"><svg class="ic"><use href="#i-files"/></svg><span>Files</span></button>
-    <button class="tab" role="tab" data-view="terminal" aria-selected="false"><svg class="ic"><use href="#i-terminal"/></svg><span>Terminal</span></button>
-    <button class="tab" role="tab" data-view="screen" aria-selected="false"><svg class="ic"><use href="#i-screen"/></svg><span>Screen</span></button>
-    <button class="tab" role="tab" data-view="tools" aria-selected="false" title="Channel editor, backup &amp; restore, .ipk install and signal meter"><svg class="ic"><use href="#i-gear"/></svg><span>Tools</span></button>
-    <button class="tab" role="tab" data-view="logs" aria-selected="false" title="Program log and faults"><svg class="ic"><use href="#i-bug"/></svg><span>Logs</span></button>
+    <button type="button" class="tab" role="tab" data-view="devices" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-devices"/></svg><span>Devices</span></button>
+    <button type="button" class="tab" role="tab" data-view="files" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-files"/></svg><span>Files</span></button>
+    <button type="button" class="tab" role="tab" data-view="terminal" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span>Terminal</span></button>
+    <button type="button" class="tab" role="tab" data-view="screen" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-screen"/></svg><span>Screen</span></button>
+    <button type="button" class="tab" role="tab" data-view="tools" aria-selected="false" title="Channel editor, backup &amp; restore, .ipk install and signal meter"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg><span>Tools</span></button>
+    <button type="button" class="tab" role="tab" data-view="logs" aria-selected="false" title="Program log and faults"><svg class="ic" aria-hidden="true"><use href="#i-bug"/></svg><span>Logs</span></button>
   </nav>
+  <div class="rail-foot">
+    <button class="icon-btn" id="themeOpen" type="button" title="Appearance" aria-label="Appearance"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg></button>
+    <button class="icon-btn" id="themeToggle" type="button" title="Switch light / dark theme" aria-label="Switch light or dark theme"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg></button>
+  </div>
+</aside>
+
+<header class="topbar">
   <div class="device-picker">
     <span class="dot" id="deviceDot" data-state="unknown" title="Device status"></span>
     <label class="sr-only" for="deviceSelect">Device</label>
     <select id="deviceSelect"><option value="">No devices yet</option></select>
   </div>
-  <button class="icon-btn" id="themeToggle" type="button" title="Switch light / dark theme" aria-label="Switch light or dark theme"><svg class="ic"><use href="#i-sun"/></svg></button>
-  <button class="btn sm" id="logoutButton" type="button" title="Sign out of remote access" hidden>Sign out</button>
+  <button class="btn sm" id="logoutButton" type="button" title="Sign out of remote access" hidden><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>Sign out</button>
 </header>
 
 <main>
   <section class="view" id="view-devices" aria-label="Devices">
-    <div class="view-head">
+    <div class="view-head sites-head">
+      <div class="sites-find">
+        <svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="sitesSearch" class="filter-input" type="search" placeholder="Search saved devices" aria-label="Search saved devices" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="seg" id="sitesView" role="radiogroup" aria-label="Layout">
+        <button type="button" role="radio" data-mode="grid" aria-checked="true" title="Cards" aria-label="Cards"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg></button>
+        <button type="button" role="radio" data-mode="list" aria-checked="false" title="Compact list" aria-label="Compact list"><svg class="ic" aria-hidden="true"><use href="#i-rows"/></svg></button>
+      </div>
       <div class="view-actions">
-        <button class="btn" id="devicesRefresh" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Check all</button>
-        <button class="btn" id="remoteAccessBtn" type="button" title="Open DCC Lite from another computer or phone" hidden><svg class="ic"><use href="#i-lock"/></svg>Remote access</button>
-        <button class="btn" id="devicesScan" type="button" title="Search the local network for receivers"><svg class="ic"><use href="#i-search"/></svg>Find devices</button>
-        <button class="btn primary" id="deviceAdd" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add device</button>
+        <button class="btn" id="devicesRefresh" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Check all</button>
+        <button class="btn" id="remoteAccessBtn" type="button" title="Open DCC Lite from another computer or phone" hidden><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Remote access</button>
+        <button class="btn" id="devicesScan" type="button" title="Search the local network for receivers"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Find devices</button>
+        <button class="btn primary" id="deviceAdd" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add device</button>
       </div>
     </div>
-    <div id="deviceGrid" class="device-grid" aria-live="polite"></div>
+    <div id="deviceGrid" class="sites" aria-live="polite"></div>
     <div id="deviceEmpty" class="empty" hidden>
       <svg class="ic xl"><use href="#i-devices"/></svg>
       <h2>Add your first device</h2>
       <p>Enter the IP address of your receiver or server. New devices use <code>root</code> / <code>dreambox</code> unless you change them.</p>
-      <button class="btn primary" id="deviceAddEmpty" type="button"><svg class="ic"><use href="#i-plus"/></svg>Add device</button>
+      <button class="btn primary" id="deviceAddEmpty" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add device</button>
     </div>
   </section>
 
   <section class="view" id="view-files" aria-label="Files" hidden>
     <div class="connbar" id="fileConnBar">
-      <span class="status-pill" id="fileStatus" data-state="idle" role="img" aria-label="Not connected" title="Not connected"></span>
-      <div class="seg" id="fileProtocol" role="radiogroup" aria-label="File protocol">
-        <button type="button" role="radio" data-protocol="ftp" aria-checked="true" title="FTP sends the password and files without encryption. Use it on a trusted network.">FTP</button>
-      </div>
-      <label class="field-inline">Port <input id="filePort" type="number" min="1" max="65535" value="21" inputmode="numeric"></label>
-      <button class="btn primary" id="fileConnect" type="button" title="Connect" aria-label="Connect"><svg class="ic"><use href="#i-plug"/></svg><span class="lbl">Connect</span></button>
-      <button class="btn" id="fileDisconnect" type="button" title="Disconnect" aria-label="Disconnect" hidden><svg class="ic"><use href="#i-stop"/></svg><span class="lbl">Disconnect</span></button>
+      <label class="field-inline" hidden>Port <input id="filePort" type="number" min="1" max="65535" value="21" inputmode="numeric"></label>
+      <button class="btn primary" id="fileConnect" type="button" title="Connect" aria-label="Connect"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg><span class="lbl">Connect</span></button>
+      <button class="btn" id="fileDisconnect" type="button" title="Disconnect" aria-label="Disconnect" hidden><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">Disconnect</span></button>
       <span class="spacer"></span>
-      <button class="btn" id="fileTerminalHere" type="button" title="Open a terminal in the current remote folder"><svg class="ic"><use href="#i-terminal"/></svg><span>Terminal here</span></button>
-      <button class="btn" id="fileRun" type="button" title="Run the selected remote file in a terminal"><svg class="ic"><use href="#i-play"/></svg><span>Run…</span></button>
+      <button class="icon-btn" id="fileSites" type="button" title="Saved sites: switch device without leaving Files" aria-label="Saved sites" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-devices"/></svg></button>
+      <button class="icon-btn" id="fileSwap" type="button" title="Swap the panels (local left or right)" aria-label="Swap the panels"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg></button>
+      <button class="icon-btn" id="fileSync" type="button" title="Synchronised browsing: opening or leaving a folder does the same in the other panel" aria-label="Synchronised browsing" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg></button>
+      <span class="vr"></span>
+      <button class="btn" id="fileTerminalHere" type="button" title="Open a terminal in the current remote folder"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span>Terminal here</span></button>
+      <button class="btn" id="fileRun" type="button" title="Run the selected remote file in a terminal"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span>Run…</span></button>
     </div>
 
     <div class="pane-switch" id="paneSwitch" role="tablist" aria-label="Panel">
-      <button type="button" role="tab" data-pane="remote" aria-selected="true">Remote</button>
-      <button type="button" role="tab" data-pane="local" aria-selected="false">This computer</button>
+      <button type="button" role="tab" data-pane="remote" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-tv"/></svg>Remote</button>
+      <button type="button" role="tab" data-pane="local" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-screen"/></svg>This computer</button>
     </div>
 
     <div class="devicebar" id="deviceBar" hidden>
-      <button class="btn primary" id="deviceUpload" type="button" title="Choose files on this device and send them to the current device folder"><svg class="ic"><use href="#i-upload"/></svg>Upload files…</button>
-      <button class="btn" id="deviceUploadFolder" type="button" title="Choose a folder on this device and send all of it"><svg class="ic"><use href="#i-newfolder"/></svg>Upload folder…</button>
-      <button class="btn" id="deviceDownload" type="button" title="Save the selected files on this device (F5)"><svg class="ic"><use href="#i-download"/></svg>Download to this device</button>
-      <span class="hint">Files are sent from, and saved on, <b>your own device</b>. You can also drop files or folders onto the list.</span>
+      <button class="btn primary" id="deviceUpload" type="button" title="Choose files on this device and send them to the current device folder"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Upload files…</button>
+      <button class="btn" id="deviceUploadFolder" type="button" title="Choose a folder on this device and send all of it"><svg class="ic" aria-hidden="true"><use href="#i-newfolder"/></svg>Upload folder…</button>
+      <button class="btn" id="deviceDownload" type="button" title="Save the selected files on this device (F5)"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download</button>
     </div>
     <input type="file" id="deviceFileInput" multiple hidden>
     <input type="file" id="deviceFolderInput" webkitdirectory multiple hidden>
 
-    <div class="commander" id="commander" data-active-pane="remote">
+    <div class="files-body">
+    <aside class="sites-side" id="sitesSide" aria-label="Saved sites" hidden>
+      <input id="sitesSideFilter" class="filter-input" type="search" placeholder="Find a site" aria-label="Find a saved site" autocomplete="off" spellcheck="false">
+      <div class="sites-side-list" id="sitesSideList" role="listbox" aria-label="Saved sites"></div>
+      <button class="btn sm" id="sitesSideAdd" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add device</button>
+    </aside>
+    <div class="commander" id="commander" data-active-pane="remote" data-local-left="1">
       <section class="pane" id="remotePane" data-kind="remote" aria-label="Remote files">
         <header class="pane-head">
           <div class="pathbar">
-            <div class="pane-title"><span class="pane-badge device">Remote</span><span id="remoteHost" class="muted ellipsis">—</span></div>
-            <button class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
-            <button class="icon-btn" data-act="root" title="Root folder" aria-label="Root folder"><svg class="ic"><use href="#i-home"/></svg></button>
-            <button class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <div class="pane-title"><span id="remoteHost" class="muted ellipsis">—</span></div>
+            <button type="button" class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
+            <button type="button" class="icon-btn" data-act="root" title="Root folder" aria-label="Root folder"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
+            <button type="button" class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
             <input class="path-input" id="remotePath" type="text" spellcheck="false" autocomplete="off" aria-label="Remote path" value="/">
-            <button class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic"><use href="#i-star"/></svg></button>
+            <button type="button" class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
           </div>
           <div class="filterbar">
             <svg class="ic sm"><use href="#i-search"/></svg>
@@ -190,19 +254,19 @@
       </section>
 
       <div class="bridge" aria-label="Transfer">
-        <button class="btn bridge-btn" id="btnDownload" type="button" title="Download selected remote items to this computer (F5)"><svg class="ic"><use href="#i-right"/></svg><span>Download</span></button>
-        <button class="btn bridge-btn" id="btnUpload" type="button" title="Upload selected local items to the remote folder (F5)"><svg class="ic"><use href="#i-left"/></svg><span>Upload</span></button>
+        <button class="btn bridge-btn" id="btnDownload" type="button" title="Download selected remote items to this computer (F5)"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span>Download</span></button>
+        <button class="btn bridge-btn" id="btnUpload" type="button" title="Upload selected local items to the remote folder (F5)"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span>Upload</span></button>
       </div>
 
       <section class="pane" id="localPane" data-kind="local" aria-label="Local files">
         <header class="pane-head">
           <div class="pathbar">
-            <div class="pane-title"><span class="pane-badge local">Local</span><span id="localRoot" class="muted ellipsis">Home folder</span></div>
-            <button class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
-            <button class="icon-btn" data-act="root" title="Home folder" aria-label="Home folder"><svg class="ic"><use href="#i-home"/></svg></button>
-            <button class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
+            <div class="pane-title"><span id="localRoot" class="muted ellipsis">Home folder</span></div>
+            <button type="button" class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
+            <button type="button" class="icon-btn" data-act="root" title="Home folder" aria-label="Home folder"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
+            <button type="button" class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
             <input class="path-input" id="localPath" type="text" spellcheck="false" autocomplete="off" aria-label="Local path" value=".">
-            <button class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic"><use href="#i-star"/></svg></button>
+            <button type="button" class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
           </div>
           <div class="filterbar">
             <svg class="ic sm"><use href="#i-search"/></svg>
@@ -220,28 +284,28 @@
         <footer class="pane-foot"><span id="localSummary">—</span></footer>
       </section>
     </div>
+    </div>
 
     <div class="actionbar" role="toolbar" aria-label="File actions" title="Function keys work on the active panel. Tip: drag items between the panels, or onto a folder.">
-      <button class="btn sm" data-cmd="rename" data-fkey="F2" type="button"><svg class="ic"><use href="#i-edit"/></svg><kbd>F2</kbd><span>Rename</span></button>
-      <button class="btn sm" data-cmd="edit" data-fkey="F4" type="button" title="Edit the selected device file as text (Shift+F4: new text file)"><svg class="ic"><use href="#i-file"/></svg><kbd>F4</kbd><span>Edit</span></button>
-      <button class="btn sm fkey-copy" data-cmd="transfer" data-fkey="F5" type="button" title="Copy the selected items to the other panel: download or upload"><svg class="ic"><use href="#i-right"/></svg><kbd>F5</kbd><span>Copy</span></button>
-      <button class="btn sm" data-cmd="mkdir" data-fkey="F7" type="button"><svg class="ic"><use href="#i-newfolder"/></svg><kbd>F7</kbd><span>New folder</span></button>
-      <button class="btn sm danger" data-cmd="delete" data-fkey="F8" type="button"><svg class="ic"><use href="#i-trash"/></svg><kbd>F8</kbd><span>Delete</span></button>
-      <button class="btn sm" data-cmd="chmod" data-fkey="F9" type="button"><svg class="ic"><use href="#i-lock"/></svg><kbd>F9</kbd><span>Permissions</span></button>
-      <button class="btn sm" data-cmd="ipk" type="button" title="Upload an .ipk package to the receiver and install it with opkg"><svg class="ic"><use href="#i-box"/></svg><span>Install .ipk</span></button>
-      <button class="btn sm" data-cmd="copypath" type="button"><svg class="ic"><use href="#i-copy"/></svg><span>Copy path</span></button>
-      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic"><use href="#i-check"/></svg><span>Select all</span></button>
-      <button class="btn sm primary only-mobile" id="btnTransferActive" data-cmd="transfer" type="button"><svg class="ic"><use href="#i-download"/></svg><span id="transferActiveLabel">Download</span></button>
+      <button class="btn sm" data-cmd="rename" data-fkey="F2" type="button"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><kbd>F2</kbd><span>Rename</span></button>
+      <button class="btn sm" data-cmd="edit" data-fkey="F4" type="button" title="Edit the selected device file as text (Shift+F4: new text file)"><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg><kbd>F4</kbd><span>Edit</span></button>
+      <button class="btn sm fkey-copy" data-cmd="transfer" data-fkey="F5" type="button" title="Copy the selected items to the other panel: download or upload"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><kbd>F5</kbd><span>Copy</span></button>
+      <button class="btn sm" data-cmd="mkdir" data-fkey="F7" type="button"><svg class="ic" aria-hidden="true"><use href="#i-newfolder"/></svg><kbd>F7</kbd><span>New folder</span></button>
+      <button class="btn sm danger" data-cmd="delete" data-fkey="F8" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><kbd>F8</kbd><span>Delete</span></button>
+      <button class="btn sm" data-cmd="chmod" data-fkey="F9" type="button"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><kbd>F9</kbd><span>Permissions</span></button>
+      <button class="btn sm" data-cmd="ipk" type="button" title="Upload an .ipk package to the receiver and install it with opkg"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg><span>Install .ipk</span></button>
+      <button class="btn sm" data-cmd="copypath" type="button"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy path</span></button>
+      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Select all</span></button>
+      <button class="btn sm primary only-mobile" id="btnTransferActive" data-cmd="transfer" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span id="transferActiveLabel">Download</span></button>
     </div>
 
     <section class="queue" id="queuePanel" aria-label="Transfers">
       <div class="queue-resize" id="queueResize" role="separator" aria-orientation="horizontal" aria-label="Resize the transfer list" title="Drag to resize the transfer list (double-click to reset)" tabindex="0"></div>
       <header class="queue-head">
-        <h2>Transfers</h2>
         <span class="muted" id="transferSummary">No transfers yet</span>
         <span class="spacer"></span>
-        <button class="btn sm" id="transferClear" type="button" title="Remove the finished transfers"><svg class="ic"><use href="#i-eraser"/></svg>Clear finished</button>
-        <button class="icon-btn" id="transferToggle" type="button" title="Hide the list" aria-label="Hide the list" aria-expanded="true"><svg class="ic"><use href="#i-chev-down"/></svg></button>
+        <button class="btn sm" id="transferClear" type="button" title="Remove the finished transfers"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Clear finished</button>
+        <button class="icon-btn" id="transferToggle" type="button" title="Hide the list" aria-label="Hide the list" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
       </header>
       <div id="transferList" class="transfer-list" tabindex="0" aria-live="polite"></div>
     </section>
@@ -252,8 +316,8 @@
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
       <div class="tools-actions">
         <label class="field-inline">Settings folder <input id="bqDir" value="/etc/enigma2" spellcheck="false" autocomplete="off"></label>
-        <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again">Load</button>
-        <button class="btn sm primary" id="listsConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
+        <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Load</button>
+        <button class="btn sm primary" id="listsConnect" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
       </div>
     </div>
     <h1 id="listsTitle" class="sr-only">Channel editor <span id="listsDevice"></span></h1>
@@ -269,10 +333,10 @@
           <input id="bqListFilter" type="search" aria-label="Find a bouquet" placeholder="Find a bouquet" autocomplete="off">
           <ul class="bq-list" id="bqBouquets" role="listbox" aria-label="Bouquets"></ul>
           <div class="bq-actions">
-            <button class="btn sm" id="bqNew" type="button" title="Create an empty bouquet"><svg class="ic"><use href="#i-plus"/></svg>New</button>
-            <button class="btn sm sq" id="bqListUp" type="button" title="Move bouquet up in the list" aria-label="Move bouquet up">▲</button>
-            <button class="btn sm sq" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down">▼</button>
-            <button class="btn sm sq" id="bqListMore" type="button" title="Duplicate, remove or delete this bouquet" aria-haspopup="menu"><svg class="ic"><use href="#i-more"/></svg></button>
+            <button class="btn sm" id="bqNew" type="button" title="Create an empty bouquet"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New</button>
+            <button class="btn sm sq" id="bqListUp" type="button" title="Move bouquet up in the list" aria-label="Move bouquet up"><svg class="ic" aria-hidden="true"><use href="#i-chev-up"/></svg></button>
+            <button class="btn sm sq" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
+            <button class="btn sm sq" id="bqListMore" type="button" title="Duplicate, remove or delete this bouquet" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
           </div>
           <p class="bq-hint">Drag channels onto a bouquet to copy them there. Hold <kbd>Shift</kbd> to move.</p>
         </aside>
@@ -284,24 +348,24 @@
           </div>
           <div class="bq-tools" role="toolbar" aria-label="Edit channels">
             <div class="bq-group">
-              <button class="btn sm" id="bqUndo" type="button" title="Undo (Ctrl+Z)"><svg class="ic"><use href="#i-history"/></svg>Undo</button>
-              <button class="btn sm" id="bqRedo" type="button" title="Redo (Ctrl+Y)">Redo</button>
+              <button class="btn sm" id="bqUndo" type="button" title="Undo (Ctrl+Z)"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg>Undo</button>
+              <button class="btn sm" id="bqRedo" type="button" title="Redo (Ctrl+Y)"><svg class="ic" aria-hidden="true"><use href="#i-redo"/></svg>Redo</button>
             </div>
             <div class="bq-group">
-              <button class="btn sm" id="bqAdd" type="button" title="Search the receiver's channel list (lamedb) and add channels"><svg class="ic"><use href="#i-plus"/></svg>Channels…</button>
-              <button class="btn sm" id="bqStream" type="button" title="Add an IPTV stream address or import an M3U playlist"><svg class="ic"><use href="#i-link"/></svg>Stream / M3U…</button>
-              <button class="btn sm" id="bqMarker" type="button" title="A heading line between channels"><svg class="ic"><use href="#i-minus"/></svg>Marker</button>
+              <button class="btn sm" id="bqAdd" type="button" title="Search the receiver's channel list (lamedb) and add channels"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Channels…</button>
+              <button class="btn sm" id="bqStream" type="button" title="Add an IPTV stream address or import an M3U playlist"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg>Stream / M3U…</button>
+              <button class="btn sm" id="bqMarker" type="button" title="A heading line between channels"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg>Marker</button>
             </div>
             <div class="bq-group">
-              <button class="btn sm" id="bqRename" type="button" title="Rename in this bouquet (F2)"><svg class="ic"><use href="#i-edit"/></svg>Rename</button>
-              <button class="btn sm" id="bqCopy" type="button" title="Copy (Ctrl+C), then paste into any bouquet (Ctrl+V)"><svg class="ic"><use href="#i-copy"/></svg>Copy</button>
-              <button class="btn sm" id="bqPaste" type="button" title="Paste after the selection (Ctrl+V)"><svg class="ic"><use href="#i-paste"/></svg>Paste</button>
-              <button class="btn sm danger" id="bqDelete" type="button" title="Remove from this bouquet (Delete)"><svg class="ic"><use href="#i-trash"/></svg>Delete</button>
+              <button class="btn sm" id="bqRename" type="button" title="Rename in this bouquet (F2)"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>Rename</button>
+              <button class="btn sm" id="bqCopy" type="button" title="Copy (Ctrl+C), then paste into any bouquet (Ctrl+V)"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>Copy</button>
+              <button class="btn sm" id="bqPaste" type="button" title="Paste after the selection (Ctrl+V)"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg>Paste</button>
+              <button class="btn sm danger" id="bqDelete" type="button" title="Remove from this bouquet (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button>
             </div>
             <div class="bq-group">
-              <button class="btn sm sq" id="bqUp" type="button" title="Move up (Alt+↑)" aria-label="Move up">▲</button>
-              <button class="btn sm sq" id="bqDown" type="button" title="Move down (Alt+↓)" aria-label="Move down">▼</button>
-              <button class="btn sm" id="bqMore" type="button" title="Sort, clean up, export…" aria-haspopup="menu"><svg class="ic"><use href="#i-more"/></svg>More</button>
+              <button class="btn sm sq" id="bqUp" type="button" title="Move up (Alt+↑)" aria-label="Move up"><svg class="ic" aria-hidden="true"><use href="#i-chev-up"/></svg></button>
+              <button class="btn sm sq" id="bqDown" type="button" title="Move down (Alt+↓)" aria-label="Move down"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
+              <button class="btn sm" id="bqMore" type="button" title="Sort, clean up, export…" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg>More</button>
             </div>
           </div>
           <ul class="bq-entries" id="bqEntries" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Channels"></ul>
@@ -312,32 +376,37 @@
         <p id="bqStatus" class="editor-status" role="status" aria-live="polite"></p>
         <span class="spacer"></span>
         <a href="#" id="listsGoBackup" class="muted small" title="A wrong channel list can confuse Enigma2">Back up first</a>
-        <button class="btn" id="bqReload" type="button" title="Ask the receiver to re-read the channel lists (needs its web interface)">Reload on receiver</button>
-        <button class="btn primary" id="bqSave" type="button" disabled>Save <kbd>Ctrl+S</kbd></button>
+        <button class="btn" id="bqReload" type="button" title="Ask the receiver to re-read the channel lists (needs its web interface)"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reload on receiver</button>
+        <button class="btn primary" id="bqSave" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save <kbd>Ctrl+S</kbd></button>
       </div>
     </div>
 
     <div class="lists-pane" id="listsBackup" hidden>
-      <div class="tools-body">
-        <section class="tools-sec" aria-labelledby="toolsBackupTitle">
-          <h3 id="toolsBackupTitle">Back up</h3>
-          <p class="muted small">Saves lamedb and the bouquets as a .zip file on this device.</p>
-          <div class="tools-row">
-            <div class="seg" id="toolsScope" role="radiogroup" aria-label="What to back up">
-              <button type="button" role="radio" data-scope="channels" aria-checked="true">Channel list</button>
-              <button type="button" role="radio" data-scope="all" aria-checked="false">All files in the folder</button>
-            </div>
-            <button class="btn primary" id="toolsBackup" type="button">Download backup</button>
+      <div class="tools-body bk">
+        <section class="tools-sec bk-card" aria-labelledby="toolsBackupTitle">
+          <header class="bk-head">
+            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg></span>
+            <div><h3 id="toolsBackupTitle">Back up</h3></div>
+          </header>
+          <div class="seg bk-scope" id="toolsScope" role="radiogroup" aria-label="What to back up">
+            <button type="button" role="radio" data-scope="channels" aria-checked="true"><span class="bk-opt-t">Channel list</span><span class="bk-opt-d">lamedb and all bouquets</span></button>
+            <button type="button" role="radio" data-scope="all" aria-checked="false"><span class="bk-opt-t">All files</span><span class="bk-opt-d">The whole settings folder</span></button>
           </div>
+          <div class="bk-foot"><button class="btn primary" id="toolsBackup" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download backup</button></div>
         </section>
-        <section class="tools-sec" aria-labelledby="toolsRestoreTitle">
-          <h3 id="toolsRestoreTitle">Restore</h3>
-          <p class="muted small">Puts the channel list files of a backup back and reloads them. Other files in the backup are ignored.</p>
-          <div class="tools-row">
+        <section class="tools-sec bk-card" aria-labelledby="toolsRestoreTitle">
+          <header class="bk-head">
+            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg></span>
+            <div><h3 id="toolsRestoreTitle">Restore</h3></div>
+          </header>
+          <label class="bk-drop" id="toolsDrop">
             <input type="file" id="toolsRestoreFile" accept=".zip,application/zip" aria-label="Backup .zip file">
-            <button class="btn" id="toolsRestore" type="button">Restore…</button>
-          </div>
+            <svg class="ic xl" aria-hidden="true"><use href="#i-ft-archive"/></svg>
+            <b id="toolsDropName">Choose a backup .zip</b>
+            <span class="muted small" id="toolsDropHint">or drop it here</span>
+          </label>
           <p class="small" id="toolsRestoreResult" role="status" hidden></p>
+          <div class="bk-foot"><button class="btn" id="toolsRestore" type="button"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Restore…</button></div>
         </section>
         <div class="tools-progress" id="toolsProgress" hidden>
           <div class="tools-bar"><span></span></div>
@@ -352,46 +421,46 @@
     <div class="term-top">
     <div class="termtabs">
       <div class="termtabs-list" id="terminalTabs" role="tablist" aria-label="Terminal tabs"></div>
-      <button class="icon-btn" id="terminalNewTab" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab"><svg class="ic"><use href="#i-plus"/></svg></button>
-      <button class="icon-btn" id="terminalTabList" type="button" title="All terminal tabs by name (Alt+1…9 switches)" aria-label="List terminal tabs"><svg class="ic"><use href="#i-list"/></svg></button>
+      <button class="icon-btn" id="terminalNewTab" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button class="icon-btn" id="terminalLauncher" type="button" title="Open a saved device in a new tab" aria-label="Open a saved device in a new tab" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
+      <button class="icon-btn" id="terminalTabList" type="button" title="All terminal tabs by name (Alt+1…9 switches)" aria-label="List terminal tabs"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg></button>
     </div>
     <div class="connbar" id="terminalBar">
-      <span class="status-pill" id="terminalStatus" data-state="idle" role="img" aria-label="No session" title="No session"></span>
-      <div class="seg" id="terminalProtocol" role="radiogroup" aria-label="Terminal protocol">
-        <button type="button" role="radio" data-protocol="telnet" aria-checked="true" title="Telnet is unencrypted. Use it on a trusted network.">Telnet</button>
-      </div>
-      <label class="field-inline">Port <input id="terminalPort" type="number" min="1" max="65535" value="23" inputmode="numeric"></label>
-      <button class="btn primary" id="terminalConnect" type="button" title="Connect" aria-label="Connect"><svg class="ic"><use href="#i-plug"/></svg><span class="lbl">Connect</span></button>
-      <button class="btn" id="terminalDisconnect" type="button" title="Disconnect" aria-label="Disconnect" hidden><svg class="ic"><use href="#i-stop"/></svg><span class="lbl">Disconnect</span></button>
+      <label class="field-inline" hidden>Port <input id="terminalPort" type="number" min="1" max="65535" value="23" inputmode="numeric"></label>
+      <button class="btn primary" id="terminalConnect" type="button" title="Connect" aria-label="Connect"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg><span class="lbl">Connect</span></button>
+      <button class="btn" id="terminalDisconnect" type="button" title="Disconnect" aria-label="Disconnect" hidden><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">Disconnect</span></button>
       <span class="spacer"></span>
-      <button class="btn" id="terminalFiles" type="button" title="Open this device in Files"><svg class="ic"><use href="#i-files"/></svg><span>Files</span></button>
+      <button class="btn" id="terminalFiles" type="button" title="Open this device in Files"><svg class="ic" aria-hidden="true"><use href="#i-files"/></svg><span>Files</span></button>
     </div>
     </div>
 
-    <div class="termframe" id="terminalFrame" data-theme="midnight">
+    <div class="termframe" id="terminalFrame" data-theme="black">
       <div class="termtools" role="toolbar" aria-label="Terminal tools">
-        <button class="icon-btn" id="termSnippets" type="button" title="Saved commands" aria-label="Saved commands"><svg class="ic"><use href="#i-bolt"/></svg></button>
-        <button class="icon-btn" id="termHistory" type="button" title="Previous commands (Ctrl+Shift+H)" aria-label="Previous commands"><svg class="ic"><use href="#i-history"/></svg></button>
+        <button class="icon-btn" id="termSplitRight" type="button" title="Split right (Ctrl+Shift+D)" aria-label="Split right"><svg class="ic" aria-hidden="true"><use href="#i-split-h"/></svg></button>
+        <button class="icon-btn" id="termSplitDown" type="button" title="Split down (Ctrl+Shift+E)" aria-label="Split down"><svg class="ic" aria-hidden="true"><use href="#i-split-v"/></svg></button>
         <span class="vr"></span>
-        <button class="icon-btn" id="termCopy" type="button" title="Copy selection (Ctrl+Shift+C), or all output" aria-label="Copy"><svg class="ic"><use href="#i-copy"/></svg></button>
-        <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic"><use href="#i-paste"/></svg></button>
-        <button class="icon-btn" id="termClear" type="button" title="Clear screen" aria-label="Clear screen"><svg class="ic"><use href="#i-eraser"/></svg></button>
-        <button class="icon-btn" id="termSave" type="button" title="Save output to a file" aria-label="Save output"><svg class="ic"><use href="#i-save"/></svg></button>
+        <button class="icon-btn" id="termSnippets" type="button" title="Saved commands" aria-label="Saved commands"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
+        <button class="icon-btn" id="termHistory" type="button" title="Previous commands (Ctrl+Shift+H)" aria-label="Previous commands"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg></button>
         <span class="vr"></span>
-        <button class="icon-btn" id="termFontDown" type="button" title="Smaller text" aria-label="Smaller text"><svg class="ic"><use href="#i-minus"/></svg></button>
+        <button class="icon-btn" id="termCopy" type="button" title="Copy selection (Ctrl+Shift+C), or all output" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+        <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg></button>
+        <button class="icon-btn" id="termClear" type="button" title="Clear screen" aria-label="Clear screen"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
+        <button class="icon-btn" id="termSave" type="button" title="Save output to a file" aria-label="Save output"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg></button>
+        <span class="vr"></span>
+        <button class="icon-btn" id="termFontDown" type="button" title="Smaller text" aria-label="Smaller text"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button>
         <span class="font-size" id="termFontLabel">13</span>
-        <button class="icon-btn" id="termFontUp" type="button" title="Larger text" aria-label="Larger text"><svg class="ic"><use href="#i-plus"/></svg></button>
-        <label class="sr-only" for="termTheme">Terminal theme</label>
-        <select id="termTheme" class="mini-select" title="Terminal theme">
-          <option value="midnight">Midnight</option><option value="black">Black</option><option value="light">Light</option>
-        </select>
-        <button class="icon-btn" id="termCustomize" type="button" title="Terminal appearance: colors, font, size, cursor" aria-label="Terminal appearance"><svg class="ic"><use href="#i-sliders"/></svg></button>
+        <button class="icon-btn" id="termFontUp" type="button" title="Larger text" aria-label="Larger text"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+        <div class="term-swatches" id="termTheme" role="radiogroup" aria-label="Terminal theme">
+          <button type="button" class="term-swatch dark" role="radio" data-v="black" aria-checked="true" title="Black" aria-label="Black terminal"></button>
+          <button type="button" class="term-swatch light" role="radio" data-v="light" aria-checked="false" title="White" aria-label="White terminal"></button>
+        </div>
+        <button class="icon-btn" id="termCustomize" type="button" title="Terminal appearance: colors, font, size, cursor" aria-label="Terminal appearance"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
         <span class="spacer"></span>
         <div class="filterbar compact">
           <svg class="ic sm"><use href="#i-search"/></svg>
           <input id="termFind" class="filter-input" type="search" placeholder="Find in output" aria-label="Find in terminal output">
         </div>
-        <button class="icon-btn" id="termFullscreen" type="button" title="Full screen" aria-label="Full screen"><svg class="ic"><use href="#i-expand"/></svg></button>
+        <button class="icon-btn" id="termFullscreen" type="button" title="Full screen" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
       </div>
       <div class="screens" id="terminalScreens"></div>
       <div class="quickkeys" id="quickKeys" aria-label="Quick keys">
@@ -409,8 +478,8 @@
       <div class="tools-actions"><span class="logs-live" id="logsLive" data-state="on">Live</span></div>
     </div>
     <div class="logs-tabs" role="tablist" aria-label="Logs and faults">
-      <button type="button" class="logs-tab" role="tab" data-logtab="log" aria-selected="true">Log</button>
-      <button type="button" class="logs-tab" role="tab" data-logtab="faults" aria-selected="false">Faults <span class="badge warn" id="faultCount"></span></button>
+      <button type="button" class="logs-tab" role="tab" data-logtab="log" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Log</button>
+      <button type="button" class="logs-tab" role="tab" data-logtab="faults" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bug"/></svg>Faults <span class="badge warn" id="faultCount"></span></button>
     </div>
     <div class="logs-pane" id="logsPaneLog">
       <div class="screen-tools logs-tools">
@@ -423,10 +492,10 @@
         <input class="filter-input logs-search" id="logsSearch" type="search" placeholder="Search log" aria-label="Search log" autocomplete="off">
         <span class="spacer"></span>
         <label class="check"><input type="checkbox" id="logsFollow" checked> Follow</label>
-        <button class="btn sm" id="logsPause" type="button"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
-        <button class="btn sm" id="logsCopy" type="button" title="Copy the visible lines"><svg class="ic"><use href="#i-copy"/></svg><span>Copy</span></button>
-        <button class="btn sm" id="logsDownload" type="button" title="Download a report with system info, open faults and the visible lines"><svg class="ic"><use href="#i-download"/></svg><span>Report</span></button>
-        <button class="btn sm danger" id="logsClear" type="button" title="Clear this view (the log file is kept)"><svg class="ic"><use href="#i-trash"/></svg><span>Clear</span></button>
+        <button class="btn sm" id="logsPause" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
+        <button class="btn sm" id="logsCopy" type="button" title="Copy the visible lines"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+        <button class="btn sm" id="logsDownload" type="button" title="Download a report with system info, open faults and the visible lines"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Report</span></button>
+        <button class="btn sm danger" id="logsClear" type="button" title="Clear this view (the log file is kept)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
       </div>
       <div class="lg-chips" id="logsChips" aria-label="Entries per level"></div>
       <div class="logs-list" id="logsList" role="log" tabindex="0"></div>
@@ -434,7 +503,7 @@
       <div class="logs-foot">
         <label class="field-inline">Detail level
           <select id="logsCapture" title="How much the program records (console, and trace in this view)">
-            <option value="trace">Trace - every device request</option><option value="debug">Debug</option><option value="info">Info (default)</option><option value="warn">Warnings</option><option value="error">Errors</option>
+            <option value="trace">Trace</option><option value="debug">Debug</option><option value="info">Info (default)</option><option value="warn">Warnings</option><option value="error">Errors</option>
           </select>
         </label>
         <span class="muted small" id="logsShown"></span>
@@ -447,8 +516,8 @@
         <span class="muted small" id="faultsSummary"></span>
         <span class="spacer"></span>
         <label class="check"><input type="checkbox" id="faultsShowAcked"> Show acknowledged</label>
-        <button class="btn sm" id="faultsAckAll" type="button"><svg class="ic"><use href="#i-check"/></svg><span>Acknowledge all</span></button>
-        <button class="btn sm danger" id="faultsClear" type="button"><svg class="ic"><use href="#i-trash"/></svg><span>Clear</span></button>
+        <button class="btn sm" id="faultsAckAll" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Acknowledge all</span></button>
+        <button class="btn sm danger" id="faultsClear" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
       </div>
       <div class="faults-list" id="faultsList"></div>
       <p class="muted logs-empty" id="faultsEmpty" hidden>No faults recorded. Warnings and errors from the program, your devices and this page are grouped here.</p>
@@ -457,7 +526,6 @@
   <section class="view" id="view-signal" aria-label="Signal meter" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
-      <div class="tools-actions"><span class="sig-live" id="sigLive" data-state="wait" role="img" title="Waiting"><span>Waiting</span></span></div>
     </div>
     <code id="sigSub" class="sr-only"></code>
     <div class="screen-tools sig-tools">
@@ -468,10 +536,10 @@
         <select id="sigGood"><option value="50">50 %</option><option value="60">60 %</option><option value="70">70 %</option><option value="80">80 %</option></select>
       </label>
       <span class="spacer"></span>
-      <button class="btn sm" id="sigSound" type="button" aria-pressed="false" title="Beeps faster and higher as the signal improves, so you can turn the dish without looking at the screen"><svg class="ic"><use href="#i-signal"/></svg><span>Sound: off</span></button>
-      <button class="btn sm" id="sigPeakReset" type="button" title="Forget the best and worst values"><svg class="ic"><use href="#i-refresh"/></svg><span>Reset peak</span></button>
-      <button class="btn sm" id="sigPause" type="button"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
-      <button class="btn sm" id="sigFull" type="button" title="Full screen, for a phone or tablet next to the dish"><svg class="ic"><use href="#i-expand"/></svg><span>Full screen</span></button>
+      <button class="btn sm" id="sigSound" type="button" aria-pressed="false" title="Beeps faster and higher as the signal improves, so you can turn the dish without looking at the screen"><svg class="ic" aria-hidden="true"><use href="#i-signal"/></svg><span>Sound: off</span></button>
+      <button class="btn sm" id="sigPeakReset" type="button" title="Forget the best and worst values"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span>Reset peak</span></button>
+      <button class="btn sm" id="sigPause" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
+      <button class="btn sm" id="sigFull" type="button" title="Full screen, for a phone or tablet next to the dish"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg><span>Full screen</span></button>
     </div>
     <div class="sig-body" id="sigBody">
       <div class="sig-card sig-main" id="sigMain" data-level="none">
@@ -501,7 +569,6 @@
           <span class="legend"><i class="l-snr"></i>SNR</span><span class="legend"><i class="l-agc"></i>AGC</span><span class="legend"><i class="l-best"></i>Best</span>
         </div>
         <div class="sig-plot"><canvas id="sigCanvas" role="img" aria-label="Signal quality over the last two minutes"></canvas></div>
-        <p class="sig-tip"><b>Tip:</b> turn the dish a few millimetres, wait a second for the reading to settle, and stop where SNR is highest. Then fine-tune the LNB skew and elevation the same way.</p>
       </div>
     </div>
     <p class="form-error" id="sigError" role="alert" hidden></p>
@@ -517,28 +584,28 @@
       <label class="field-inline">Width (px)
         <select id="screenWidth" title="Picture width in pixels. Larger pictures are sharper but slower and heavier for the receiver. 3840 is 4K."><option value="480">480</option><option value="720">720</option><option value="1280">1280</option><option value="1920">1920</option><option value="3840">3840</option></select>
       </label>
-      <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Automatically refresh every</label>
+      <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Auto-refresh every</label>
         <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
       <span class="spacer"></span>
-      <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic"><use href="#i-remote"/></svg>Remote</button>
-      <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic"><use href="#i-list"/></svg>Channels</button>
-      <button class="btn sm" id="guideShow" type="button" title="Programme guide, timers and recordings"><svg class="ic"><use href="#i-calendar"/></svg>Guide</button>
-      <button class="btn sm" id="screenPause" type="button" title="Pause or resume the picture"><svg class="ic"><use href="#i-pause"/></svg><span>Pause</span></button>
-      <button class="btn sm" id="screenFull" type="button" title="Full screen (F)"><svg class="ic"><use href="#i-expand"/></svg>Full screen</button>
-      <button class="btn sm" id="screenSave" type="button" title="Save the picture"><svg class="ic"><use href="#i-download"/></svg>Save picture</button>
+      <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic" aria-hidden="true"><use href="#i-remote"/></svg>Remote</button>
+      <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Channels</button>
+      <button class="btn sm" id="guideShow" type="button" title="Programme guide, timers and recordings"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Guide</button>
+      <button class="btn sm" id="screenPause" type="button" title="Pause or resume the picture"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
+      <button class="btn sm" id="screenFull" type="button" title="Full screen (F)"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Full screen</button>
+      <button class="btn sm" id="screenSave" type="button" title="Save the picture"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Save picture</button>
     </div>
     <div class="screen-body">
       <aside class="remote" id="remotePad" aria-label="Receiver remote control">
         <header class="remote-head">
           <h3 class="sr-only">Remote</h3>
           <span class="spacer"></span>
-          <button class="remote-top" id="remotePower" type="button" title="Power (standby)" aria-label="Power"><svg class="ic"><use href="#i-power"/></svg></button>
-          <button class="remote-top" id="remoteText" type="button" title="Type text on the receiver (search box, keyboard)" aria-label="Type text on the receiver"><svg class="ic"><use href="#i-edit"/></svg></button>
-          <button class="remote-top" id="remoteMessage" type="button" title="Show a message on the TV" aria-label="Send a message to the TV"><svg class="ic"><use href="#i-mail"/></svg></button>
-          <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic"><use href="#i-collapse"/></svg></button>
+          <button class="remote-top" id="remotePower" type="button" title="Power (standby)" aria-label="Power"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg></button>
+          <button class="remote-top" id="remoteText" type="button" title="Type text on the receiver (search box, keyboard)" aria-label="Type text on the receiver"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg></button>
+          <button class="remote-top" id="remoteMessage" type="button" title="Show a message on the TV" aria-label="Send a message to the TV"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></button>
+          <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic" aria-hidden="true"><use href="#i-collapse"/></svg></button>
         </header>
         <div class="remote-keys" id="remoteKeys"></div>
-        <button class="btn sm remote-more" id="remoteMore" type="button" aria-expanded="false"><svg class="ic"><use href="#i-chev-down"/></svg><span>More keys</span></button>
+        <button class="btn sm remote-more" id="remoteMore" type="button" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg><span>More keys</span></button>
         <p class="form-error" id="remoteError" role="alert" hidden></p>
       </aside>
       <div class="screen-main">
@@ -549,7 +616,7 @@
             <div class="now-ev ellipsis" id="nowTitle"></div>
             <div class="now-next ellipsis" id="nowNext"></div>
           </div>
-          <button class="btn sm primary" id="nowStandby" type="button" hidden>In standby · Wake up</button>
+          <button class="btn sm primary" id="nowStandby" type="button" hidden><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg>In standby · Wake up</button>
           <div class="now-time" id="nowTime"></div>
           <div class="now-progress" aria-hidden="true"><span id="nowProgress"></span></div>
         </div>
@@ -559,7 +626,7 @@
         </div>
         <p class="form-error" id="screenError" role="alert" hidden></p>
         <div class="screen-foot">
-          <button class="btn sm" id="screenRefresh" type="button" title="Take a new picture now"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
+          <button class="btn sm" id="screenRefresh" type="button" title="Take a new picture now"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
           <p class="muted small" id="screenStats" role="status" aria-live="off"></p>
         </div>
       </div>
@@ -567,9 +634,9 @@
         <header class="remote-head">
           <h3 class="sr-only">Channels</h3>
           <span class="spacer"></span>
-          <button class="remote-top" id="channelWatch" type="button" title="Watch the current channel on this computer (opens a playlist in VLC or your player)" aria-label="Watch the current channel on this computer"><svg class="ic"><use href="#i-play"/></svg></button>
-          <button class="remote-top" id="channelReload" type="button" title="Reload the channel list" aria-label="Reload the channel list"><svg class="ic"><use href="#i-refresh"/></svg></button>
-          <button class="remote-top" id="channelHide" type="button" title="Hide the channel list" aria-label="Hide the channel list"><svg class="ic"><use href="#i-collapse"/></svg></button>
+          <button class="remote-top" id="channelWatch" type="button" title="Watch the current channel on this computer (opens a playlist in VLC or your player)" aria-label="Watch the current channel on this computer"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
+          <button class="remote-top" id="channelReload" type="button" title="Reload the channel list" aria-label="Reload the channel list"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+          <button class="remote-top" id="channelHide" type="button" title="Hide the channel list" aria-label="Hide the channel list"><svg class="ic" aria-hidden="true"><use href="#i-collapse"/></svg></button>
         </header>
         <div class="ch-tools">
           <div class="seg" id="channelKind" role="radiogroup" aria-label="List type">
@@ -592,31 +659,30 @@
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
       <div class="tools-actions">
-        <button class="btn sm primary" id="ipkConnect" type="button"><svg class="ic"><use href="#i-plug"/></svg>Connect</button>
+        <button class="btn sm primary" id="ipkConnect" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
       </div>
     </div>
     <span id="ipkDevice" class="sr-only"></span>
     <section class="ipk-card" aria-label="Install a plugin">
       <div class="ipk-drop" id="ipkDrop" tabindex="0" role="button" aria-label="Choose an .ipk file or drop it here">
         <svg class="ic xl"><use href="#i-box"/></svg>
-        <strong>Drop an .ipk file here, or click to choose</strong>
-        <span class="muted small">Sent to /tmp on the receiver and installed with opkg in a Terminal tab. The file is removed after a good install.</span>
+        <strong>Drop an .ipk file or click</strong>
       </div>
       <input type="file" id="toolsIpkFile" accept=".ipk" hidden>
       <div class="ipk-file" id="ipkFile" hidden>
-        <span class="ipk-file-ic"><svg class="ic"><use href="#i-box"/></svg></span>
+        <span class="ipk-file-ic"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg></span>
         <div class="ipk-file-text">
           <div class="ipk-file-name ellipsis" id="ipkFileName"></div>
           <div class="muted small ellipsis" id="ipkFileMeta"></div>
         </div>
-        <button class="icon-btn" id="ipkFileClear" type="button" title="Choose another file" aria-label="Remove the chosen file"><svg class="ic"><use href="#i-x"/></svg></button>
+        <button class="icon-btn" id="ipkFileClear" type="button" title="Choose another file" aria-label="Remove the chosen file"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
       </div>
       <div class="ipk-bar">
-        <label class="check" title="Update a plugin or repair a broken install"><input type="checkbox" id="toolsIpkForce"> Reinstall over an installed version</label>
-        <label class="check" title="Most plugins only appear after the GUI restarts (a few seconds without picture)"><input type="checkbox" id="toolsIpkRestart"> Restart Enigma2 afterwards</label>
+        <label class="check" title="Update a plugin or repair a broken install"><input type="checkbox" id="toolsIpkForce"> Reinstall</label>
+        <label class="check" title="Most plugins only appear after the GUI restarts (a few seconds without picture)"><input type="checkbox" id="toolsIpkRestart"> Restart Enigma2</label>
         <span class="spacer"></span>
         <span class="muted small" id="ipkHint">Choose a package to continue.</span>
-        <button class="btn primary" id="toolsIpk" type="button" disabled><svg class="ic"><use href="#i-upload"/></svg>Upload and install</button>
+        <button class="btn primary" id="toolsIpk" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Upload and install</button>
       </div>
       <div class="tools-progress" id="ipkProgress" hidden>
         <div class="tools-bar"><span></span></div>
@@ -632,27 +698,26 @@
   <form method="dialog" id="deviceForm" class="dialog-card" autocomplete="off">
     <h2 id="deviceDialogTitle">Add device</h2>
     <label class="field"><span>Name</span><input id="devName" required maxlength="64" placeholder="Living room"></label>
-    <label class="field"><span>IP address or host name</span><input id="devHost" required maxlength="253" placeholder="192.168.1.20" spellcheck="false" inputmode="url"></label>
+    <label class="field"><span>Address</span><input id="devHost" required maxlength="253" placeholder="192.168.1.20" spellcheck="false" inputmode="url"></label>
     <div class="grid2">
       <label class="field"><span>Username</span><input id="devUser" maxlength="128" value="root" spellcheck="false"></label>
       <label class="field"><span>Password</span>
-        <span class="input-row"><input id="devPass" type="text" maxlength="4096" placeholder="dreambox" spellcheck="false" autocomplete="off"><button class="icon-btn" id="devPassToggle" type="button" title="Show or hide password" aria-label="Show or hide password"><svg class="ic"><use href="#i-eye"/></svg></button></span>
+        <span class="input-row"><input id="devPass" type="password" maxlength="4096" placeholder="dreambox" spellcheck="false" autocomplete="off"><button class="icon-btn" id="devPassToggle" type="button" title="Show or hide password" aria-label="Show or hide password"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button></span>
       </label>
     </div>
-    <details class="advanced">
-      <summary>Ports</summary>
+    <details class="advanced" id="devPorts">
+      <summary>Custom ports</summary>
       <div class="grid3">
         <label class="field"><span>FTP</span><input id="devFtp" type="number" min="1" max="65535" placeholder="21"></label>
         <label class="field"><span>Telnet</span><input id="devTelnet" type="number" min="1" max="65535" placeholder="23"></label>
         <label class="field"><span>Web (live screen)</span><input id="devWeb" type="number" min="1" max="65535" placeholder="80"></label>
       </div>
-      <label class="check"><input id="devWebHttps" type="checkbox"> HTTPS</label>
     </details>
     <p class="form-error" id="deviceError" role="alert" hidden></p>
     <div class="dialog-actions">
       <span class="spacer"></span>
-      <button class="btn" id="deviceCancel" type="button">Cancel</button>
-      <button class="btn primary" id="deviceSave" type="submit">Save</button>
+      <button class="btn" id="deviceCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="deviceSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
     </div>
   </form>
 </dialog>
@@ -661,15 +726,14 @@
 
 <dialog id="histDialog" aria-labelledby="histTitle">
   <div class="dialog-card">
-    <h2 id="histTitle">Previous commands</h2>
+    <h2 id="histTitle">History</h2>
     <p class="muted small" id="histSub"></p>
     <input id="histFilter" class="filter-input" type="search" placeholder="Search commands" aria-label="Search previous commands" autocomplete="off" spellcheck="false">
     <div class="hist-list" id="histList" role="list"></div>
-    <p class="muted small">Click a command to type it into the terminal. Enter types the first match, Shift+Enter runs it. A command starting with a space, or typed while nothing is echoed (passwords), is never saved.</p>
     <div class="dialog-actions">
-      <button class="btn danger" id="histClear" type="button">Clear history</button>
+      <button class="btn danger" id="histClear" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Clear history</button>
       <span class="spacer"></span>
-      <button class="btn" id="histClose" type="button">Close</button>
+      <button class="btn" id="histClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
   </div>
 </dialog>
@@ -700,23 +764,44 @@
     </div>
     <p class="muted small">A font must be installed on this computer. If it is not, the next available monospace font is used. Choosing a theme resets the colors.</p>
     <div class="dialog-actions">
-      <button class="btn" id="termCfgReset" type="button">Reset</button>
+      <button class="btn" id="termCfgReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reset</button>
       <span class="spacer"></span>
-      <button class="btn primary" type="submit">Done</button>
+      <button class="btn primary" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Done</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="pasteDialog" aria-labelledby="pasteTitle">
   <form class="dialog-card" id="pasteForm" method="dialog">
-    <h2 id="pasteTitle">Paste into the terminal</h2>
+    <h2 id="pasteTitle">Paste</h2>
     <p class="muted small">This browser does not let the page read the clipboard (it needs HTTPS). Press <b>Ctrl+V</b> in the box below, then Send. You can also press Ctrl+V or Ctrl+Shift+V directly in the terminal.</p>
     <textarea id="pasteText" rows="6" spellcheck="false" autocomplete="off" aria-label="Text to paste"></textarea>
     <div class="dialog-actions"><span class="spacer"></span>
-      <button class="btn" id="pasteCancel" type="button">Cancel</button>
-      <button class="btn primary" type="submit">Send</button>
+      <button class="btn" id="pasteCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-send"/></svg>Send</button>
     </div>
   </form>
+</dialog>
+
+
+<dialog id="themeDialog" aria-labelledby="themeTitle">
+  <div class="dialog-card ap-card">
+    <h2 id="themeTitle">Appearance</h2>
+    <div class="ap-body">
+      <div class="ap-row"><span class="ap-l">Mode</span><div class="seg ap-seg" data-ap="mode" role="radiogroup"><button type="button" role="radio" data-v="auto" aria-checked="false">Auto</button><button type="button" role="radio" data-v="light" aria-checked="false">Light</button><button type="button" role="radio" data-v="dark" aria-checked="false">Dark</button></div></div>
+      <div class="ap-row"><span class="ap-l">Accent colour</span><div class="ap-sws" data-ap="accent"><button type="button" class="ap-sw" data-v="teal" title="Teal" style="--c:#14a8b8" aria-label="Teal"></button><button type="button" class="ap-sw" data-v="blue" title="Blue" style="--c:#3b82f6" aria-label="Blue"></button><button type="button" class="ap-sw" data-v="violet" title="Violet" style="--c:#8b5cf6" aria-label="Violet"></button><button type="button" class="ap-sw" data-v="rose" title="Rose" style="--c:#ec4899" aria-label="Rose"></button><button type="button" class="ap-sw" data-v="green" title="Green" style="--c:#22a35a" aria-label="Green"></button><button type="button" class="ap-sw" data-v="slate" title="Slate" style="--c:#7a8aa3" aria-label="Slate"></button><button type="button" class="ap-sw" data-v="red" title="Red" style="--c:#ef4444" aria-label="Red"></button><label class="ap-sw ap-custom" title="Custom colour"><input type="color" id="apAccentCustom" value="#14a8b8" aria-label="Custom accent colour"></label></div></div>
+      <div class="ap-row"><span class="ap-l">Folder colour</span><div class="ap-sws" data-ap="folder"><button type="button" class="ap-sw" data-v="accent" title="Same as accent" style="--c:conic-gradient(var(--accent),var(--accent))" aria-label="Same as accent"></button><button type="button" class="ap-sw" data-v="blue" title="Blue" style="--c:#3b82c4" aria-label="Blue"></button><button type="button" class="ap-sw" data-v="teal" title="Teal" style="--c:#14a8b8" aria-label="Teal"></button><button type="button" class="ap-sw" data-v="violet" title="Violet" style="--c:#8b5cf6" aria-label="Violet"></button><button type="button" class="ap-sw" data-v="green" title="Green" style="--c:#22a35a" aria-label="Green"></button><button type="button" class="ap-sw" data-v="slate" title="Slate" style="--c:#7a8aa3" aria-label="Slate"></button><button type="button" class="ap-sw" data-v="gold" title="Gold" style="--c:#d6b11e" aria-label="Gold"></button><label class="ap-sw ap-custom" title="Custom colour"><input type="color" id="apFolderCustom" value="#3b82c4" aria-label="Custom folder colour"></label></div></div>
+      <div class="ap-row"><span class="ap-l">Background</span><div class="seg ap-seg" data-ap="tone" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="cool" aria-checked="false">Cool</button><button type="button" role="radio" data-v="neutral" aria-checked="false">Neutral</button><button type="button" role="radio" data-v="oled" aria-checked="false">Black / white</button></div></div>
+      <div class="ap-row"><span class="ap-l">Buttons</span><div class="seg ap-seg" data-ap="btn" role="radiogroup"><button type="button" role="radio" data-v="outline" aria-checked="false">Outline</button><button type="button" role="radio" data-v="tinted" aria-checked="false">Tinted</button><button type="button" role="radio" data-v="solid" aria-checked="false">Solid</button></div></div>
+      <div class="ap-row"><span class="ap-l">Edges</span><div class="seg ap-seg" data-ap="edge" role="radiogroup"><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="default" aria-checked="false">Normal</button><button type="button" role="radio" data-v="strong" aria-checked="false">Strong</button></div></div>
+      <div class="ap-row"><span class="ap-l">Corners</span><div class="seg ap-seg" data-ap="radius" role="radiogroup"><button type="button" role="radio" data-v="sharp" aria-checked="false">Sharp</button><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="round" aria-checked="false">Round</button></div></div>
+      <div class="ap-row"><span class="ap-l">Density</span><div class="seg ap-seg" data-ap="density" role="radiogroup"><button type="button" role="radio" data-v="compact" aria-checked="false">Compact</button><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="roomy" aria-checked="false">Roomy</button></div></div>
+      <div class="ap-row"><span class="ap-l">Icon weight</span><div class="seg ap-seg" data-ap="icons" role="radiogroup"><button type="button" role="radio" data-v="thin" aria-checked="false">Thin</button><button type="button" role="radio" data-v="default" aria-checked="false">Regular</button><button type="button" role="radio" data-v="bold" aria-checked="false">Bold</button></div></div>
+      <div class="ap-row"><span class="ap-l">Font</span><div class="seg ap-seg" data-ap="font" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="system" aria-checked="false">System</button><button type="button" role="radio" data-v="rounded" aria-checked="false">Rounded</button><button type="button" role="radio" data-v="serif" aria-checked="false">Serif</button></div></div>
+      <div class="ap-row"><span class="ap-l">Animations</span><div class="seg ap-seg" data-ap="motion" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">On</button><button type="button" role="radio" data-v="reduced" aria-checked="false">Off</button></div></div>
+    </div>
+    <div class="dialog-actions"><button class="btn" id="apReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>Reset</button><span class="spacer"></span><button class="btn primary" id="apDone" type="button" autofocus><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Done</button></div>
+  </div>
 </dialog>
 
 <dialog id="raDialog" aria-labelledby="raTitle">
@@ -725,53 +810,45 @@
       <h2 id="raTitle">Remote access</h2>
       <p id="raState" class="ra-state" role="status"></p>
     </div>
-    <p class="muted small">Open DCC Lite from another computer or phone with a password. Anyone with it can use your devices, so choose a strong one.</p>
-    <label class="check ra-switch"><input id="raEnabled" type="checkbox"> Allow access from other devices</label>
-    <div class="ra-grid">
-      <label class="field"><span>Listen address</span><input id="raListen" maxlength="100" placeholder="0.0.0.0:8788" spellcheck="false"></label>
-      <label class="field"><span>Connection</span>
-        <select id="raMode">
-          <option value="https">HTTPS (encrypted, recommended)</option>
-          <option value="http">HTTP (not encrypted)</option>
-        </select>
-      </label>
-    </div>
-    <p class="ra-warn" id="raPlainWarn" role="note" hidden><b>Not encrypted.</b> Use a long random password.</p>
-    <label class="field"><span>Public IP or dynamic DNS name</span><input id="raHosts" maxlength="600" placeholder="myname.ddns.net, 105.105.220.122" spellcheck="false" title="Used for the link below and, with HTTPS, added to the certificate. Forward this port in your router and allow it in the firewall."></label>
+    <label class="check ra-switch"><input id="raEnabled" type="checkbox"> Allow remote access</label>
+    <label class="field"><span>HTTPS listen address</span><input id="raListen" maxlength="100" placeholder="0.0.0.0:443" spellcheck="false"></label>
+    <label class="field"><span>Public hostname</span><input id="raHosts" maxlength="600" placeholder="myname.example.net" spellcheck="false" title="The public DNS name used in the HTTPS link and trusted certificate."></label>
+    <label class="field"><span>Email <small class="muted">(optional)</small></span><input id="raEmail" type="email" maxlength="320" placeholder="admin@example.net" autocomplete="email"></label>
+    <p class="muted small">A trusted certificate is obtained automatically. Point a public DNS/DDNS name to your public IP and forward TCP ports 80 and 443 to this computer. Use that name from outside your network, not the receiver’s IP.</p>
     <div id="raInfo" class="ra-info" hidden>
       <b>Link</b>
       <ul id="raUrls"></ul>
+      <p id="raAutoCert" class="muted small" hidden>Trusted HTTPS certificate managed automatically. It is requested on first secure visit and renewed before expiry.</p>
       <details id="raCert" class="ra-cert">
-        <summary>Certificate fingerprint (SHA-256)</summary>
+        <summary>Fingerprint (SHA-256)</summary>
         <span id="raFingerprint" class="ra-fp"></span>
-        <p class="muted small">The browser warns once about the self-signed certificate. Compare this fingerprint before accepting.</p>
+        <p class="muted small">This identifies the configured certificate. A browser-trusted certificate should not require a security warning.</p>
       </details>
     </div>
     <section class="ra-pass" aria-label="Password">
-      <div class="input-row"><input id="raPass" type="text" maxlength="256" spellcheck="false" autocomplete="off" placeholder="Password (at least 10 characters)" aria-label="Remote access password"><button class="btn" id="raPassSet" type="button">Set</button><button class="btn" id="raPassGen" type="button" title="Generate a random password"><svg class="ic"><use href="#i-refresh"/></svg>Generate</button><button class="btn icon-btn" id="raSecretCopy" type="button" title="Copy password" aria-label="Copy password"><svg class="ic"><use href="#i-copy"/></svg></button></div>
+      <div class="input-row"><input id="raPass" type="text" maxlength="256" spellcheck="false" autocomplete="off" placeholder="Password (at least 10 characters)" aria-label="Remote access password"><button class="btn" id="raPassSet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Set</button><button class="btn" id="raPassGen" type="button" title="Generate a random password"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Generate</button><button class="btn icon-btn" id="raSecretCopy" type="button" title="Copy password" aria-label="Copy password"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button></div>
     </section>
     <p class="form-error" id="raError" role="alert" hidden></p>
     <div class="dialog-actions">
       <span class="spacer"></span>
-      <button class="btn" id="raClose" type="button">Close</button>
-      <button class="btn primary" id="raSave" type="submit">Apply</button>
+      <button class="btn" id="raClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+      <button class="btn primary" id="raSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apply</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="scanDialog" aria-labelledby="scanTitle">
   <div class="dialog-card scan-card">
-    <h2 id="scanTitle">Find devices on your network</h2>
-    <p class="muted">Looks for receivers answering on FTP (21) or Telnet (23) in a private address range.</p>
+    <h2 id="scanTitle">Find devices</h2>
     <form id="scanForm" class="scan-form">
       <label class="field"><span>Address range</span><input id="scanRange" list="scanRanges" placeholder="192.168.1.0/24 or 192.168.1.10-50" spellcheck="false" autocomplete="off"></label>
       <datalist id="scanRanges"></datalist>
-      <button class="btn primary" id="scanStart" type="submit">Scan</button>
+      <button class="btn primary" id="scanStart" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Scan</button>
     </form>
     <p class="form-error" id="scanError" role="alert" hidden></p>
     <p class="muted" id="scanStatus" role="status" aria-live="polite"></p>
     <ul class="scan-results" id="scanResults"></ul>
-    <div class="dialog-actions"><span class="spacer"></span><button class="btn" id="scanClose" type="button">Close</button></div>
+    <div class="dialog-actions"><span class="spacer"></span><button class="btn" id="scanClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button></div>
   </div>
 </dialog>
 
@@ -786,10 +863,10 @@
     <p id="bqAddStatus" class="editor-status" role="status" aria-live="polite"></p>
     <div class="dialog-actions">
       <span class="muted" id="bqAddCount"></span>
-      <button class="btn sm" id="bqAddAll" type="button" title="Select every channel in the list (Ctrl+A)">Select all</button>
+      <button class="btn sm" id="bqAddAll" type="button" title="Select every channel in the list (Ctrl+A)"><svg class="ic" aria-hidden="true"><use href="#i-select"/></svg>Select all</button>
       <span class="spacer"></span>
-      <button class="btn" id="bqAddClose" type="button">Close</button>
-      <button class="btn primary" id="bqAddConfirm" type="button" disabled>Add selected</button>
+      <button class="btn" id="bqAddClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+      <button class="btn primary" id="bqAddConfirm" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg><span class="lbl">Add selected</span></button>
     </div>
   </div>
 </dialog>
@@ -807,12 +884,12 @@
     </div>
     <div id="bqStreamM3u" class="bq-stream-pane" hidden>
       <div class="bq-stream-row">
-        <label class="btn sm" for="bqM3uFile"><svg class="ic"><use href="#i-upload"/></svg>Choose .m3u file…</label>
+        <label class="btn sm" for="bqM3uFile"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Choose .m3u file…</label>
         <input id="bqM3uFile" type="file" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>
         <span class="muted small" id="bqM3uInfo">or paste the playlist below</span>
       </div>
       <textarea id="bqM3uText" class="bq-m3u-text" spellcheck="false" autocomplete="off" aria-label="M3U playlist" placeholder="#EXTM3U&#10;#EXTINF:-1,Channel name&#10;http://server/stream"></textarea>
-      <label class="check"><input type="checkbox" id="bqM3uGroups" checked> Add each <b>group-title</b> as a marker</label>
+      <label class="check"><input type="checkbox" id="bqM3uGroups" checked> Group titles as markers</label>
     </div>
     <label class="field"><span>Player</span>
       <select id="bqStreamType">
@@ -823,8 +900,8 @@
     </label>
     <p class="form-error" id="bqStreamError" role="alert" hidden></p>
     <div class="dialog-actions"><span class="muted small" id="bqStreamCount"></span><span class="spacer"></span>
-      <button class="btn" id="bqStreamCancel" type="button">Cancel</button>
-      <button class="btn primary" id="bqStreamOk" type="submit">Add</button>
+      <button class="btn" id="bqStreamCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="bqStreamOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg><span class="lbl">Add</span></button>
     </div>
   </form>
 </dialog>
@@ -846,10 +923,10 @@
       <label class="check"><input type="checkbox" id="editorWrap"> Wrap lines</label>
     </div>
     <div class="dialog-actions">
-      <button class="btn" id="editorReload" type="button">Reload</button>
+      <button class="btn" id="editorReload" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reload</button>
       <span class="spacer"></span>
-      <button class="btn" id="editorClose" type="button">Close</button>
-      <button class="btn primary" id="editorSave" type="button">Save <kbd>Ctrl+S</kbd></button>
+      <button class="btn" id="editorClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+      <button class="btn primary" id="editorSave" type="button"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save <kbd>Ctrl+S</kbd></button>
     </div>
   </div>
 </dialog>
@@ -873,7 +950,7 @@
       </div>
     </div>
     <div class="power-extra" role="group" aria-labelledby="powerExtraTitle">
-      <h3 id="powerExtraTitle">Sleep timer and recording</h3>
+      <h3 id="powerExtraTitle">Sleep &amp; recording</h3>
       <div class="pe-row">
         <label class="field-inline" for="sleepMinutes"><span>Switch off in</span>
           <select id="sleepMinutes">
@@ -882,21 +959,21 @@
           </select></label>
           <label class="field-inline" for="sleepAction"><span>then</span>
           <select id="sleepAction"><option value="standby">Standby</option><option value="shutdown">Deep standby</option></select></label>
-        <button class="btn sm" id="sleepSet" type="button">Start</button>
-        <button class="btn sm" id="sleepOff" type="button">Cancel</button>
+        <button class="btn sm" id="sleepSet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>Start</button>
+        <button class="btn sm" id="sleepOff" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
       </div>
       <p class="power-note" id="sleepState"></p>
       <div class="pe-row">
-        <button class="btn sm" id="recNow" type="button" title="Record the programme that is on now, until it ends"><svg class="ic"><use href="#i-rec"/></svg>Record this programme</button>
-        <button class="btn sm" id="recInfinite" type="button" title="Record the current channel until you stop it from the Timers list"><svg class="ic"><use href="#i-rec"/></svg>Record until I stop it</button>
+        <button class="btn sm" id="recNow" type="button" title="Record the programme that is on now, until it ends"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Record this programme</button>
+        <button class="btn sm" id="recInfinite" type="button" title="Record the current channel until you stop it from the Timers list"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Record until I stop it</button>
       </div>
     </div>
     <p class="form-error" id="powerError" hidden></p>
     <div class="dialog-actions">
-      <button class="btn" id="powerReload" type="button">Reload channel lists</button>
-      <button class="btn" id="powerKey" type="button">Power key</button>
+      <button class="btn" id="powerReload" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reload channel lists</button>
+      <button class="btn" id="powerKey" type="button"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg>Power key</button>
       <span class="spacer"></span>
-      <button class="btn primary" id="powerClose" type="button">Close</button>
+      <button class="btn primary" id="powerClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
   </div>
 </dialog>
@@ -907,11 +984,11 @@
       <div class="editor-title"><h2 id="guideTitle">Guide</h2><code id="guideSub" class="ellipsis"></code></div>
       <span class="spacer"></span>
       <div class="seg" id="guideTabs" role="tablist" aria-label="Guide sections">
-        <button type="button" role="tab" data-tab="epg" aria-selected="true">Programmes</button>
-        <button type="button" role="tab" data-tab="timers" aria-selected="false">Timers</button>
-        <button type="button" role="tab" data-tab="movies" aria-selected="false">Recordings</button>
+        <button type="button" role="tab" data-tab="epg" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Programmes</button>
+        <button type="button" role="tab" data-tab="timers" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg>Timers</button>
+        <button type="button" role="tab" data-tab="movies" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Recordings</button>
       </div>
-      <button class="icon-btn" id="guideClose" type="button" title="Close" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+      <button class="icon-btn" id="guideClose" type="button" title="Close" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
     </header>
     <div class="gd-tools" data-for="epg">
       <label class="sr-only" for="guideBouquet">Bouquet</label>
@@ -924,17 +1001,17 @@
       </div>
     </div>
     <div class="gd-tools" data-for="timers" hidden>
-      <button class="btn sm" id="guideTimersRefresh" type="button"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
-      <button class="btn sm" id="guideCleanup" type="button" title="Remove the timers that are finished"><svg class="ic"><use href="#i-eraser"/></svg>Clean up finished</button>
+      <button class="btn sm" id="guideTimersRefresh" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
+      <button class="btn sm" id="guideCleanup" type="button" title="Remove the timers that are finished"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Clean up finished</button>
     </div>
     <div class="gd-tools" data-for="movies" hidden>
-      <button class="icon-btn" id="guideUp" type="button" title="Parent folder" aria-label="Parent folder"><svg class="ic"><use href="#i-up"/></svg></button>
+      <button class="icon-btn" id="guideUp" type="button" title="Parent folder" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
       <code id="guideDir" class="gd-dir ellipsis"></code>
       <div class="filterbar">
         <svg class="ic sm"><use href="#i-search"/></svg>
         <input class="filter-input" id="guideMovieFilter" type="search" placeholder="Filter recordings" aria-label="Filter recordings" autocomplete="off" spellcheck="false">
       </div>
-      <button class="icon-btn" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
+      <button class="icon-btn" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="gd-body" id="guideList" data-tab="epg" tabindex="-1" autofocus aria-live="polite"></div>
     <p class="form-error" id="guideError" role="alert" hidden></p>
@@ -963,8 +1040,8 @@
     <p class="form-error" id="timerError" role="alert" hidden></p>
     <div class="dialog-actions">
       <span class="spacer"></span>
-      <button class="btn" id="timerCancel" type="button">Cancel</button>
-      <button class="btn primary" id="timerSave" type="submit">Save</button>
+      <button class="btn" id="timerCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="timerSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
     </div>
   </form>
 </dialog>
@@ -976,13 +1053,19 @@
     <label class="field" id="askField"><span id="askLabel">Name</span><input id="askInput" spellcheck="false" autocomplete="off"></label>
     <p class="form-error" id="askError" role="alert" hidden></p>
     <div class="dialog-actions"><span class="spacer"></span>
-      <button class="btn" id="askCancel" type="button">Cancel</button>
-      <button class="btn primary" id="askOk" type="submit">OK</button>
+      <button class="btn" id="askCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="askOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>OK</button>
     </div>
   </form>
 </dialog>
 
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer class="statusbar" id="statusBar">
+  <span class="spacer"></span>
+  <button class="sb-item sb-btn" id="sbTransfers" type="button" title="Open file transfers"><svg class="ic sm"><use href="#i-upload"/></svg><span id="sbTransfersText">No transfers</span></button>
+  <span class="sb-item muted" id="sbVersion"></span>
+</footer>
 </body>
 </html>

@@ -251,7 +251,7 @@ func (f *LocalFS) ReplaceTemp(tempPath, targetRelative string, overwrite bool) e
 		if info.IsDir() {
 			return errors.New("cannot replace a directory with a file")
 		}
-		backup := target + ".dccnext-backup-" + time.Now().UTC().Format("20060102150405.000000000")
+		backup := target + ".dcclite-backup-" + time.Now().UTC().Format("20060102150405.000000000")
 		if err := os.Rename(target, backup); err != nil {
 			return fmt.Errorf("preserve existing destination: %w", err)
 		}

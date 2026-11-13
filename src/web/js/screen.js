@@ -8,7 +8,7 @@ const screenIntervalMs = () => {
 };
 function screenQuery() {
   const params = new URLSearchParams({ mode: $("#screenMode").value, width: $("#screenWidth").value });
-  return `/api/v1/profiles/${encodeURIComponent(screenView.profileID)}/screen?${params}`;
+  return profileURL(screenView.profileID, `screen?${params}`);
 }
 function screenShowError(message) {
   const node = $("#screenError");
@@ -54,7 +54,7 @@ async function screenLoop(gen) {
     const floor = auto ? screenIntervalMs() : 1000;
     const since = performance.now() - screenView.lastStart;
     if (since < floor) {
-      await new Promise((resolve) => window.setTimeout(resolve, floor - since));
+      await sleep(floor - since);
       if (gen !== screenView.gen) return;
       if (screenView.paused || document.hidden) continue;
     }
@@ -65,14 +65,7 @@ async function screenLoop(gen) {
     let delay = screenIntervalMs();
     screenView.once = false;
     try {
-      const response = await fetch(screenQuery(), { signal: controller.signal, cache: "no-store" });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        if (response.status === 401 && data.code === "auth_required") { window.location.assign("/login"); return; }
-        const error = new Error(data.error || `Request failed (${response.status})`);
-        error.fatal = response.status === 404 || response.status === 409;
-        throw error;
-      }
+      const response = await fetchChecked(screenQuery(), { signal: controller.signal, cache: "no-store" });
       const blob = await response.blob();
       if (gen !== screenView.gen) return;
       if (!(await screenSetPicture(blob, gen))) return;
@@ -82,6 +75,7 @@ async function screenLoop(gen) {
     } catch (error) {
       if (gen !== screenView.gen) return;
       if (error.name === "AbortError") continue;
+      if (error.auth) return;
       screenView.failures += 1;
       screenShowError(error.message);
       screenShowStats("retrying…");
@@ -178,13 +172,8 @@ $("#screenPause").addEventListener("click", () => {
 });
 $("#screenSave").addEventListener("click", () => {
   if (!screenView.blob) return;
-  const d = new Date(), pad = (n) => String(n).padStart(2, "0");
-  const name = `screen-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.jpg`;
-  const link = h("a", { href: URL.createObjectURL(screenView.blob), download: name });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+  const d = new Date();
+  downloadBlob(screenView.blob, `screen-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}.jpg`);
 });
 $("#screenImg").addEventListener("load", () => { $("#screenSave").disabled = false; });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view.current === "screen") screenRestart(); });

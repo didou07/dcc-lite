@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   try {
-    const theme = JSON.parse((localStorage.getItem("dcclite.theme") ?? localStorage.getItem("boxdeck.theme") ?? localStorage.getItem("dccnext.theme")) || "\"auto\"");
+    const theme = JSON.parse((localStorage.getItem("dcclite.theme")) || "\"dark\"");
     if (["auto", "light", "dark"].includes(theme)) document.documentElement.dataset.theme = theme;
   } catch { }
 

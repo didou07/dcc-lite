@@ -10,12 +10,14 @@ import (
 var sensitiveKeys = map[string]bool{
 	"password": true, "pass": true, "passwd": true, "pwd": true, "secret": true,
 	"token": true, "cookie": true, "authorization": true, "credential": true,
-	"api_key": true, "apikey": true, "private_key": true, "key_pem": true,
+	"api_key": true, "apikey": true, "access_token": true, "refresh_token": true,
+	"client_secret": true, "private_key": true, "privatekey": true, "key_pem": true,
 }
 
 var (
-	secretPair = regexp.MustCompile(`(?i)\b(password|passwd|pwd|token|secret|authorization)(\s*[=:]\s*)("[^"]*"|\S+)`)
+	secretPair = regexp.MustCompile(`(?i)\b(password|pass|passwd|pwd|token|secret|authorization|credential|access_token|refresh_token|client_secret|api[_-]?key|private[_-]?key|key_pem)(\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s&,;]+)`)
 	urlUser    = regexp.MustCompile(`(?i)(\w+://[^/\s:@]+):[^/\s@]+@`)
+	urlSecret  = regexp.MustCompile(`(?i)([?&](?:password|passwd|pwd|token|secret|access_token|refresh_token|client_secret|api[_-]?key|authorization)=)[^&#\s]*`)
 )
 
 var homeDirs = func() []string {
@@ -36,6 +38,7 @@ func Redact(s string) string {
 	}
 	s = secretPair.ReplaceAllString(s, "${1}${2}***")
 	s = urlUser.ReplaceAllString(s, "${1}:***@")
+	s = urlSecret.ReplaceAllString(s, "${1}***")
 	return s
 }
 

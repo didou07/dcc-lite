@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -14,15 +15,24 @@ import (
 )
 
 type remoteMode struct {
-	auth *remoteaccess.Auth
+	auth         *remoteaccess.Auth
+	allowedHosts map[string]struct{}
 }
 
 type RemoteOptions struct {
-	Auth *remoteaccess.Auth
+	Auth         *remoteaccess.Auth
+	AllowedHosts []string
 }
 
 func NewRemote(application *app.App, options RemoteOptions) http.Handler {
-	s := &Server{app: application, remote: &remoteMode{auth: options.Auth}}
+	allowedHosts := make(map[string]struct{}, len(options.AllowedHosts))
+	for _, host := range options.AllowedHosts {
+		host = normalizeRemoteHost(host)
+		if host != "" {
+			allowedHosts[host] = struct{}{}
+		}
+	}
+	s := &Server{app: application, remote: &remoteMode{auth: options.Auth, allowedHosts: allowedHosts}}
 	protected := s.requireSignIn(s.routes())
 
 	root := http.NewServeMux()
@@ -34,7 +44,19 @@ func NewRemote(application *app.App, options RemoteOptions) http.Handler {
 	root.HandleFunc("POST /api/v1/auth/logout", s.logout)
 	root.HandleFunc("GET /api/v1/auth/status", s.authStatus)
 	root.Handle("/", protected)
-	return securityHeaders(s.remoteCSP, s.remoteGuard(observe(root)))
+	handler := securityHeaders(s.remoteCSP, s.remoteGuard(observe(root)))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		handler.ServeHTTP(w, r)
+	})
+}
+
+func normalizeRemoteHost(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	if host, _, err := net.SplitHostPort(hostport); err == nil {
+		hostport = host
+	}
+	return strings.TrimSuffix(strings.ToLower(strings.Trim(hostport, "[]")), ".")
 }
 
 var safeHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
@@ -42,20 +64,22 @@ var safeHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
 func (s *Server) remoteCSP(r *http.Request) string {
 	connect := "'self'"
 	if safeHostPattern.MatchString(r.Host) {
-		scheme := "wss://"
-		if s.remote.auth.Plain() {
-			scheme = "ws://"
-		}
-		connect += " " + scheme + r.Host
+		connect += " wss://" + r.Host
 	}
 	return strings.Replace(baseCSP, "%s", connect, 1)
 }
 
 func (s *Server) remoteGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host == "" {
-			rejected(r, "missing Host header")
-			http.Error(w, "missing Host header", http.StatusBadRequest)
+		host := normalizeRemoteHost(r.Host)
+		if host == "" {
+			rejected(r, "missing or invalid Host header")
+			http.Error(w, "missing or invalid Host header", http.StatusBadRequest)
+			return
+		}
+		if _, ok := s.remote.allowedHosts[host]; !ok {
+			rejected(r, "unconfigured Host header")
+			http.Error(w, "unconfigured host", http.StatusMisdirectedRequest)
 			return
 		}
 		if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") && r.Header.Get("Sec-Fetch-Mode") != "navigate" {
@@ -66,7 +90,7 @@ func (s *Server) remoteGuard(next http.Handler) http.Handler {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 		default:
-			if !remoteaccess.SameOriginFor(r, !s.remote.auth.Plain()) {
+			if !remoteaccess.SameOrigin(r) {
 				rejected(r, "cross-origin request")
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 				return

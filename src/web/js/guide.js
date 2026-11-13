@@ -7,10 +7,9 @@ const guide = {
   gen: { epg: 0, timers: 0, movies: 0 },
 };
 const GUIDE_TABS = ["epg", "timers", "movies"];
-const guideURL = (path) => `/api/v1/profiles/${encodeURIComponent(guide.profileID)}/${path}`;
+const guideURL = (path) => profileURL(guide.profileID, path);
 
-const gdPad = (n) => String(n).padStart(2, "0");
-const gdClock = (ts) => { const d = new Date(ts * 1000); return `${gdPad(d.getHours())}:${gdPad(d.getMinutes())}`; };
+const gdClock = (ts) => { const d = new Date(ts * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 const gdDayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 function gdDay(ts, long = true) {
   const d = new Date(ts * 1000), diff = Math.round((gdDayStart(d) - gdDayStart(new Date())) / 86400000);
@@ -21,7 +20,7 @@ function gdDay(ts, long = true) {
 }
 function gdDuration(seconds) {
   const minutes = Math.max(1, Math.round(seconds / 60));
-  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${gdPad(minutes % 60)} min` : `${minutes} min`;
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${pad2(minutes % 60)} min` : `${minutes} min`;
 }
 const gdNow = () => (guide.now ? guide.now + (Date.now() - guide.nowAt) / 1000 : Date.now() / 1000);
 const gdChannelOf = (ref) => ch.bouquets.flatMap((b) => b.channels || []).find((c) => !c.marker && c.ref === ref);
@@ -31,10 +30,6 @@ function gdError(message) {
   node.hidden = !message;
 }
 function gdStatus(message) { $("#guideStatus").textContent = message || ""; }
-function gdDownload(url) {
-  const link = h("a", { href: url, download: "" });
-  document.body.append(link); link.click(); link.remove();
-}
 function gdEmpty(text) { return h("p", { class: "gd-empty muted", text }); }
 function gdDayHeader(ts) { return h("div", { class: "gd-day", role: "presentation", text: gdDay(ts) }); }
 function gdGrouped(rows, key, header) {
@@ -280,7 +275,7 @@ function gdMovieNode(m) {
       m.info ? h("div", { class: "gd-short ellipsis", title: m.info, text: m.info }) : null),
     h("div", { class: "gd-acts" },
       iconButton("play", "Watch on this computer (opens a playlist in VLC or your player)", () => {
-        gdDownload(guideURL(`movie.m3u?file=${encodeURIComponent(m.file)}&name=${encodeURIComponent(m.title)}`));
+        downloadLink(guideURL(`movie.m3u?file=${encodeURIComponent(m.file)}&name=${encodeURIComponent(m.title)}`));
         toast("Playlist saved: open it with VLC or your media player");
       }),
       iconButton("edit", "Rename this recording", () => gdRenameMovie(m)),

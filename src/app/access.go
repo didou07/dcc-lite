@@ -4,8 +4,7 @@ type RemoteSettings struct {
 	Enabled  bool   `json:"enabled"`
 	Listen   string `json:"listen"`
 	TLSHosts string `json:"tls_hosts"`
-
-	PlainHTTP bool `json:"plain_http"`
+	TLSEmail string `json:"tls_email"`
 }
 
 type RemoteStatus struct {

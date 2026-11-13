@@ -176,7 +176,7 @@ func (r *ResilientFTP) SetModTime(ctx context.Context, remotePath string, modifi
 }
 
 func (r *ResilientFTP) DownloadPartial(ctx context.Context, remotePath, partialPath string, progress func(core.TransferProgress)) error {
-	return r.run(ctx, true, func(c *FTPClient) error { return c.DownloadPartial(ctx, remotePath, partialPath, progress) })
+	return r.run(ctx, false, func(c *FTPClient) error { return c.DownloadPartial(ctx, remotePath, partialPath, progress) })
 }
 
 func (r *ResilientFTP) ResumeDownload(ctx context.Context, remotePath, partialPath string, progress func(core.TransferProgress)) error {

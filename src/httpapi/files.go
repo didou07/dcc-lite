@@ -195,7 +195,7 @@ func (s *Server) listRemoteFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := s.app.Files.List(r.Context(), r.PathValue("id"), remotePath)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeFilesError(w, err)
 		return
 	}
 	parent := path.Dir(remotePath)
@@ -214,7 +214,7 @@ func (s *Server) makeRemoteDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.app.Files.Mkdir(r.Context(), r.PathValue("id"), input.Path); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeFilesError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -230,7 +230,7 @@ func (s *Server) renameRemoteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.app.Files.Rename(r.Context(), r.PathValue("id"), input.OldPath, input.NewPath); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeFilesError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -247,7 +247,7 @@ func (s *Server) removeRemoteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.app.Files.Remove(r.Context(), r.PathValue("id"), input.Path, input.Directory); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeFilesError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -268,7 +268,7 @@ func (s *Server) chmodRemoteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.app.Files.Chmod(r.Context(), r.PathValue("id"), input.Path, uint32(mode)); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeFilesError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -322,6 +322,18 @@ func (s *Server) writeRemoteText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"file": file})
+}
+
+func writeSessionNotFound(w http.ResponseWriter) {
+	writeJSON(w, http.StatusNotFound, map[string]any{"error": "file session not found", "code": "session_not_found"})
+}
+
+func writeFilesError(w http.ResponseWriter, err error) {
+	if errors.Is(err, filetransfer.ErrSessionNotFound) {
+		writeSessionNotFound(w)
+		return
+	}
+	writeError(w, http.StatusBadGateway, err.Error())
 }
 
 func writeEditError(w http.ResponseWriter, err error) {

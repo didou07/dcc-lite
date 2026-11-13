@@ -15,7 +15,9 @@ type liveSignal struct {
 	SNRdB     float64 `json:"snr_db"`
 	HasDB     bool    `json:"has_db"`
 	AGC       int     `json:"agc"`
-	BER       int     `json:"ber"`
+	HasAGC    bool    `json:"has_agc"`
+	BER       uint64  `json:"ber"`
+	HasBER    bool    `json:"has_ber"`
 	Tuner     string  `json:"tuner,omitempty"`
 	Standby   bool    `json:"standby,omitempty"`
 	Channel   string  `json:"channel,omitempty"`
@@ -33,26 +35,73 @@ func decibels(v any) (float64, bool) {
 	return f, true
 }
 
+func signalBool(values ...any) (bool, bool) {
+	for _, value := range values {
+		switch v := value.(type) {
+		case bool:
+			return v, true
+		case float64:
+			if v == 0 || v == 1 {
+				return v == 1, true
+			}
+		case int:
+			if v == 0 || v == 1 {
+				return v == 1, true
+			}
+		case string:
+			switch strings.ToLower(strings.TrimSpace(v)) {
+			case "true", "yes", "on", "1", "locked", "lock":
+				return true, true
+			case "false", "no", "off", "0", "unlocked", "unlock":
+				return false, true
+			}
+		}
+	}
+	return false, false
+}
+
+func signalCounter(value any) (uint64, bool) {
+	text := strings.TrimSpace(jsonText(value))
+	if text == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(text, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func firstSignalValue(raw map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value, ok := raw[key]; ok && strings.TrimSpace(jsonText(value)) != "" {
+			return value
+		}
+	}
+	return nil
+}
+
 func buildLiveSignal(raw map[string]any) liveSignal {
 	out := liveSignal{}
-	snr, ok := percent(raw["snr"])
+	snr, ok := percent(firstSignalValue(raw, "snr", "SNR"))
 	if !ok {
 		return out
 	}
 	out.Available = true
 	out.SNR = snr
-	out.AGC, _ = percent(raw["agc"])
-	if out.AGC == 0 {
-		out.AGC, _ = percent(raw["acg"])
-	}
-	out.BER, _ = percent(raw["ber"])
-	out.SNRdB, out.HasDB = decibels(raw["snr_db"])
-	out.Standby = jsonText(raw["inStandby"]) == "true"
-	if n := jsonText(raw["tunernumber"]); n != "" {
-		out.Tuner = joinWords(jsonText(raw["tunertype"]), "#"+n)
+	out.AGC, out.HasAGC = percent(firstSignalValue(raw, "agc", "acg", "AGC"))
+	out.BER, out.HasBER = signalCounter(firstSignalValue(raw, "ber", "BER"))
+	out.SNRdB, out.HasDB = decibels(firstSignalValue(raw, "snr_db", "snrdb", "SNRdB"))
+	out.Standby, _ = signalBool(raw["inStandby"], raw["in_standby"], raw["standby"])
+	if n := jsonText(firstSignalValue(raw, "tunernumber", "tuner_number")); n != "" {
+		out.Tuner = joinWords(jsonText(firstSignalValue(raw, "tunertype", "tuner_type")), "#"+n)
 	}
 
-	out.Locked = !out.Standby && out.SNR > 0
+	if locked, present := signalBool(raw["lock"], raw["locked"], raw["has_lock"]); present {
+		out.Locked = locked && !out.Standby
+	} else {
+		out.Locked = !out.Standby && out.SNR > 0
+	}
 	return out
 }
 

@@ -1,9 +1,9 @@
 "use strict";
 const term = {
-  tabs: new Map(), active: "",
+  tabs: new Map(), active: "", groups: [], layoutSig: "",
   protocol: "telnet",
   fontSize: Math.max(9, Math.min(28, Number(store.get("termFont", 14)) || 14)),
-  theme: ["midnight", "black", "light"].includes(store.get("termTheme", "midnight")) ? store.get("termTheme", "midnight") : "midnight",
+  theme: store.get("termTheme", "black") === "light" ? "light" : "black",
 };
 const TERMINAL_KEYS = { "ctrl-c": "\u0003", "ctrl-d": "\u0004", tab: "\t", escape: "\u001b", up: "\u001b[A", down: "\u001b[B", right: "\u001b[C", left: "\u001b[D", home: "\u001b[H", end: "\u001b[F", pageup: "\u001b[5~", pagedown: "\u001b[6~" };
 const DEFAULT_SNIPPETS = [
@@ -68,7 +68,7 @@ function terminalOptions() {
   if (c.sel) theme.selectionBackground = `${c.sel}aa`;
   return {
     theme, fontFamily: TERM_FONTS[c.font] || TERM_FONTS.default, fontSize: term.fontSize, lineHeight: c.lineHeight,
-    fontWeight: c.weight, cursorStyle: c.cursorStyle, cursorBlink: c.blink, minimumContrastRatio: c.bg || c.fg ? 1 : 4.5,
+    fontWeight: c.weight, cursorStyle: c.cursorStyle, cursorInactiveStyle: c.cursorStyle, cursorBlink: c.blink, minimumContrastRatio: c.bg || c.fg ? 1 : 4.5,
   };
 }
 
@@ -124,22 +124,143 @@ function tabTitle(tab) {
   const device = deviceByID(tab.profileID);
   const same = [...term.tabs.values()].filter((t) => t.profileID === tab.profileID && t.protocol === tab.protocol);
   const index = same.indexOf(tab) + 1;
-  return `${device ? device.name : "New tab"} · ${tab.protocol.toUpperCase()}${same.length > 1 ? ` #${index}` : ""}`;
+  return `${device ? device.name : "New tab"}${same.length > 1 ? ` #${index}` : ""}`;
 }
+
+/* ── Panes: every tab-strip entry is a group holding one or more terminal sessions in a split layout ── */
+const leaf = (tabId) => ({ kind: "leaf", tabId });
+const treeHas = (node, id) => (node.kind === "leaf" ? node.tabId === id : treeHas(node.a, id) || treeHas(node.b, id));
+function treeLeaves(node, out = []) { if (node.kind === "leaf") out.push(node.tabId); else { treeLeaves(node.a, out); treeLeaves(node.b, out); } return out; }
+function treeSplit(node, id, dir, newId) {
+  if (node.kind === "leaf") return node.tabId === id ? { kind: "split", dir, ratio: 0.5, a: node, b: leaf(newId) } : node;
+  return { ...node, a: treeSplit(node.a, id, dir, newId), b: treeSplit(node.b, id, dir, newId) };
+}
+function treeRemove(node, id) {
+  if (node.kind === "leaf") return node.tabId === id ? null : node;
+  const a = treeRemove(node.a, id), b = treeRemove(node.b, id);
+  if (!a) return b;
+  if (!b) return a;
+  return { ...node, a, b };
+}
+const treeShape = (node) => (node.kind === "leaf" ? node.tabId : `${node.dir}(${treeShape(node.a)},${treeShape(node.b)})`);
+const groupOfTab = (id) => term.groups.find((g) => treeHas(g.root, id)) || null;
+const groupLead = (group) => term.tabs.get(group.focus && treeHas(group.root, group.focus) ? group.focus : treeLeaves(group.root)[0]);
+function setActive(id) {
+  term.active = id;
+  const group = groupOfTab(id);
+  if (group) group.focus = id;
+}
+
 function renderTabs() {
   const list = $("#terminalTabs");
   list.replaceChildren();
-  for (const tab of term.tabs.values()) {
+  term.groups.forEach((group) => {
+    const tab = groupLead(group);
+    if (!tab) return;
+    const count = treeLeaves(group.root).length, current = treeHas(group.root, term.active);
     const state = tab.state === "connected" ? "online" : tab.state === "connecting" ? "checking" : tab.state === "error" ? "error" : "unknown";
-    list.append(h("div", { class: `tt${tab.id === term.active ? " active" : ""}`, role: "tab", "aria-selected": String(tab.id === term.active), dataset: { id: tab.id }, onClick: () => activateTab(tab.id),
+    const device = deviceByID(tab.profileID);
+    list.append(h("div", { class: `tt${current ? " active" : ""}`, role: "tab", "aria-selected": String(current), dataset: { id: tab.id, color: device?.color || "" }, onClick: () => activateTab(tab.id),
       onDblclick: (event) => { event.preventDefault(); renameTab(tab); },
       onContextmenu: (event) => { event.preventDefault(); openTabMenu(tab, event.clientX, event.clientY); } },
       h("span", { class: "dot", dataset: { state } }),
-      h("button", { class: "tt-label", type: "button", title: `${tabTitle(tab)} — ${tab.protocol.toUpperCase()} · ${tab.host || "not connected"} (double-click to rename)`, text: tabTitle(tab) }),
-      iconButton("x", "Close tab", (event) => { event.stopPropagation(); closeTab(tab.id); })));
-    tab.screen.hidden = tab.id !== term.active;
-  }
+      h("button", { class: "tt-label", type: "button", title: `${tabTitle(tab)} — ${protoName(tab.protocol)} · ${tab.host || "not connected"} (double-click to rename)`, text: tabTitle(tab) }),
+      count > 1 ? h("span", { class: "tt-count", title: `${count} panels in this tab`, text: String(count) }) : null,
+      iconButton("x", count > 1 ? `Close this tab and its ${count} panels` : "Close tab", (event) => { event.stopPropagation(); closeGroup(group); })));
+  });
+  layoutTerminals();
   updateTerminalBar();
+}
+async function closeGroup(group) { for (const id of treeLeaves(group.root)) await closeTab(id); }
+
+/* Builds the split layout of the active group; only rebuilds the DOM when the shape changes. */
+function layoutTerminals() {
+  const host = $("#terminalScreens");
+  let layout = host.querySelector(":scope > .tlayout"), park = host.querySelector(":scope > .tparking");
+  if (!layout) { layout = h("div", { class: "tlayout" }); host.append(layout); }
+  if (!park) { park = h("div", { class: "tparking", hidden: true }); host.append(park); }
+  const group = groupOfTab(term.active);
+  const sig = group ? `${group.id}:${treeShape(group.root)}` : "";
+  if (sig !== term.layoutSig) {
+    term.layoutSig = sig;
+    for (const tab of term.tabs.values()) { tab.screen.hidden = true; park.append(tab.screen); }
+    layout.replaceChildren();
+    if (group) layout.append(buildLayoutNode(group.root));
+    requestAnimationFrame(() => { for (const id of group ? treeLeaves(group.root) : []) fitTab(term.tabs.get(id)); });
+  }
+  const many = group ? treeLeaves(group.root).length > 1 : false;
+  layout.classList.toggle("multi", many);
+  for (const tab of term.tabs.values()) {
+    tab.screen.classList.toggle("focused", many && tab.id === term.active);
+    const badge = tab.screen.parentElement?.querySelector(":scope > .tpane-badge");
+    if (badge) {
+      const device = deviceByID(tab.profileID);
+      badge.dataset.state = tab.state;
+      badge.dataset.color = device?.color || "";
+      badge.querySelector(".tpane-name").textContent = tabTitle(tab);
+    }
+  }
+}
+function buildLayoutNode(node) {
+  if (node.kind === "leaf") {
+    const tab = term.tabs.get(node.tabId);
+    const pane = h("div", { class: "tpane", dataset: { id: node.tabId } });
+    tab.screen.hidden = false;
+    pane.append(tab.screen,
+      h("div", { class: "tpane-badge", dataset: { state: tab.state } },
+        h("span", { class: "dot" }), h("span", { class: "tpane-name", text: tabTitle(tab) }),
+        iconButton("x", "Close this panel (Ctrl+Shift+W)", (event) => { event.stopPropagation(); closeTab(tab.id); })));
+    pane.addEventListener("pointerdown", () => { if (term.active !== tab.id) activateTab(tab.id); }, true);
+    return pane;
+  }
+  const el = h("div", { class: `tsplit ${node.dir}` });
+  const a = buildLayoutNode(node.a), b = buildLayoutNode(node.b);
+  const apply = () => { a.style.flex = `${node.ratio} 1 0`; b.style.flex = `${1 - node.ratio} 1 0`; };
+  apply();
+  const bar = h("div", { class: "tbar", role: "separator", tabindex: "0", "aria-orientation": node.dir === "row" ? "vertical" : "horizontal", title: "Drag to resize (double-click to even out)" });
+  bar.addEventListener("pointerdown", (event) => {
+    event.preventDefault(); bar.setPointerCapture(event.pointerId); bar.classList.add("drag");
+    const rect = el.getBoundingClientRect();
+    const move = (e) => {
+      const pos = node.dir === "row" ? (e.clientX - rect.left) / rect.width : (e.clientY - rect.top) / rect.height;
+      node.ratio = Math.max(0.12, Math.min(0.88, pos)); apply();
+    };
+    const up = () => { bar.classList.remove("drag"); bar.removeEventListener("pointermove", move); bar.removeEventListener("pointerup", up); bar.removeEventListener("pointercancel", up); };
+    bar.addEventListener("pointermove", move); bar.addEventListener("pointerup", up); bar.addEventListener("pointercancel", up);
+  });
+  bar.addEventListener("dblclick", () => { node.ratio = 0.5; apply(); });
+  bar.addEventListener("keydown", (event) => {
+    const step = event.key === (node.dir === "row" ? "ArrowRight" : "ArrowDown") ? 0.03 : event.key === (node.dir === "row" ? "ArrowLeft" : "ArrowUp") ? -0.03 : 0;
+    if (!step) return;
+    event.preventDefault(); node.ratio = Math.max(0.12, Math.min(0.88, node.ratio + step)); apply();
+  });
+  el.append(a, bar, b);
+  return el;
+}
+function splitActive(dir) {
+  const tab = activeTab();
+  if (!tab) { createTerminalTab({ profileID: currentDevice()?.id || "", autoConnect: false }); return; }
+  if (treeLeaves(groupOfTab(tab.id).root).length >= 8) { toast("A tab holds at most 8 panels"); return; }
+  createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port, directory: tab.directory, split: { of: tab.id, dir }, autoConnect: !!tab.profileID });
+}
+/* Moves focus to the neighbouring panel in a direction (Alt+Shift+arrows). */
+function focusNeighbour(dir) {
+  const group = groupOfTab(term.active);
+  const ids = group ? treeLeaves(group.root) : [];
+  if (ids.length < 2) return;
+  const rect = (id) => term.tabs.get(id).screen.getBoundingClientRect();
+  const from = rect(term.active), cx = from.left + from.width / 2, cy = from.top + from.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const id of ids) {
+    if (id === term.active) continue;
+    const r = rect(id), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const dx = x - cx, dy = y - cy;
+    const ahead = dir === "left" ? dx < -4 : dir === "right" ? dx > 4 : dir === "up" ? dy < -4 : dy > 4;
+    if (!ahead) continue;
+    const score = dir === "left" || dir === "right" ? Math.abs(dx) + Math.abs(dy) * 2 : Math.abs(dy) + Math.abs(dx) * 2;
+    if (score < bestScore) { bestScore = score; best = id; }
+  }
+  if (best) activateTab(best);
 }
 function updateTerminalBar() {
   const tab = activeTab();
@@ -151,7 +272,7 @@ function updateTerminalBar() {
   $("#terminalPort").value = String(tab?.port || defaultPort(currentDevice(), term.protocol));
   $("#terminalPort").disabled = connected || busy;
   setStatusDot($("#terminalStatus"), state === "disconnected" ? "idle" : state,
-    !tab ? "No session" : connected ? `${tab.host || "Connected"} · ${tab.protocol.toUpperCase()}` : busy ? (tab.reconnecting ? "Reconnecting…" : "Connecting…") : state === "error" ? (tab.error || "Connection error") : "Disconnected");
+    !tab ? "No session" : connected ? `${tab.host || "Connected"} · ${protoName(tab.protocol)}` : busy ? (tab.reconnecting ? "Reconnecting…" : "Connecting…") : state === "error" ? (tab.error || "Connection error") : "Disconnected");
   $("#terminalFiles").disabled = !tab || !deviceByID(tab.profileID);
   if (tab) tab.terminal.options.disableStdin = !connected;
 }
@@ -167,11 +288,14 @@ function hardenTerminalInput(terminal) {
   for (const [name, value] of Object.entries(hints)) box.setAttribute(name, value);
 }
 
-function createTerminalTab({ profileID = "", protocol = term.protocol, port = null, directory = "", initialCommand = "", autoConnect = true } = {}) {
+function createTerminalTab({ profileID = "", protocol = term.protocol, port = null, directory = "", initialCommand = "", autoConnect = true, split = null } = {}) {
+  directory = directory || deviceByID(profileID)?.start_dir || "";
   if (!window.DCCXterm?.Terminal || !window.DCCXterm?.FitAddon) { toast("The bundled terminal engine could not be loaded.", "error"); return null; }
   const id = (crypto.randomUUID?.() || `t${Date.now()}${Math.random().toString(16).slice(2)}`).replace(/[^a-zA-Z0-9_-]/g, "");
   const screen = h("div", { class: "terminal-screen", id: `screen-${id}`, role: "tabpanel", hidden: true });
-  $("#terminalScreens").append(screen);
+  let parking = $("#terminalScreens > .tparking");
+  if (!parking) { parking = h("div", { class: "tparking", hidden: true }); $("#terminalScreens").append(parking); }
+  parking.append(screen);
   const terminal = new window.DCCXterm.Terminal({
     cols: 100, rows: 30, cursorWidth: 2, cursorInactiveStyle: "bar", scrollback: 8000,
     fontWeightBold: "700", rightClickSelectsWord: false, allowTransparency: false,
@@ -182,6 +306,7 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
   terminal.open(screen);
   hardenTerminalInput(terminal);
   terminal.options.disableStdin = true;
+  terminal.textarea?.addEventListener("focus", () => { if (term.tabs.has(id) && term.active !== id) activateTab(id); });
   const tab = {
     id, profileID, protocol, port: port || defaultPort(deviceByID(profileID), protocol), directory, initialCommand,
     screen, terminal, fit, decoder: new TextDecoder("utf-8"), socket: null, sessionID: "", state: "disconnected", host: "", error: "",
@@ -199,6 +324,10 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
     if (event.type !== "keydown") return true;
     if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "t") { event.preventDefault(); newTabFromActive(); return false; }
     const key = event.key.toLowerCase();
+    if (event.ctrlKey && event.shiftKey && !event.altKey && key === "d") { event.preventDefault(); splitActive("row"); return false; }
+    if (event.ctrlKey && event.shiftKey && !event.altKey && key === "e") { event.preventDefault(); splitActive("col"); return false; }
+    if (event.ctrlKey && event.shiftKey && !event.altKey && key === "w") { event.preventDefault(); closeTab(tab.id); return false; }
+    if (event.altKey && event.shiftKey && !event.ctrlKey && event.key.startsWith("Arrow")) { event.preventDefault(); focusNeighbour(event.key.slice(5).toLowerCase()); return false; }
     if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && canRecallHistory(tab)) {
       event.preventDefault(); historyStep(tab, event.key === "ArrowUp" ? 1 : -1); return false;
     }
@@ -210,7 +339,7 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
     return true;
   });
   if (typeof ResizeObserver !== "undefined") { tab.observer = new ResizeObserver(() => fitTab(tab)); tab.observer.observe(screen); }
-  screen.addEventListener("click", () => focusTab(tab));
+  screen.addEventListener("click", () => { if (term.active !== tab.id) activateTab(tab.id); else focusTab(tab); });
   screen.addEventListener("contextmenu", (event) => {
     event.preventDefault(); event.stopPropagation();
     if (event.shiftKey) { openTerminalMenu(tab, event.clientX, event.clientY); return; }
@@ -230,7 +359,10 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
   }, { passive: false });
   terminal.writeln("DCC Lite · Terminal");
   term.tabs.set(id, tab);
-  term.active = id;
+  const host = split ? groupOfTab(split.of) : null;
+  if (host) { host.root = treeSplit(host.root, split.of, split.dir, id); }
+  else term.groups.push({ id: `g${id}`, root: leaf(id), focus: id });
+  setActive(id);
   renderTabs();
   requestAnimationFrame(() => { fitTab(tab); if (profileID && autoConnect) connectTab(tab); else terminal.writeln(profileID ? "Press Connect to sign in." : "Choose a device, then press Connect."); });
   return tab;
@@ -248,7 +380,7 @@ function focusTab(tab = activeTab()) {
 }
 function activateTab(id) {
   if (!term.tabs.has(id)) return;
-  term.active = id;
+  setActive(id);
   const tab = activeTab();
   const device = deviceByID(tab.profileID);
   if (device && device.id !== devices.currentID) { devices.currentID = device.id; store.set("device", device.id); $("#deviceSelect").value = device.id; updateDeviceDot(); renderDeviceGrid(); fileDisconnect(true); }
@@ -258,14 +390,27 @@ function activateTab(id) {
 async function closeTab(id) {
   const tab = term.tabs.get(id);
   if (!tab) return;
+  const group = groupOfTab(id);
+  const order = group ? treeLeaves(group.root) : [];
   await dropSession(tab);
   tab.observer?.disconnect();
   tab.subs.forEach((s) => s?.dispose?.());
   tab.terminal.dispose();
   tab.screen.remove();
-  const ids = [...term.tabs.keys()], index = ids.indexOf(id);
   term.tabs.delete(id);
-  if (term.active === id) term.active = ids[index + 1] || ids[index - 1] || "";
+  let next = "";
+  if (group) {
+    const rest = treeRemove(group.root, id);
+    if (rest) { group.root = rest; const left = treeLeaves(rest); next = left[Math.min(order.indexOf(id), left.length - 1)] || left[0]; group.focus = next; }
+    else {
+      const at = term.groups.indexOf(group);
+      term.groups.splice(at, 1);
+      const other = term.groups[at] || term.groups[at - 1];
+      next = other ? groupLead(other)?.id || "" : "";
+    }
+  }
+  if (term.active === id) { if (next) setActive(next); else term.active = ""; }
+  term.layoutSig = "";
   if (!term.tabs.size) { const d = currentDevice(); createTerminalTab({ profileID: d?.id || "", protocol: term.protocol, autoConnect: false }); return; }
   renderTabs();
   requestAnimationFrame(() => { fitTab(activeTab()); focusTab(); });
@@ -374,7 +519,7 @@ async function reconnectTab(tab) {
     if (!term.tabs.has(tab.id) || tab.manualOff || !tab.sessionID) { tab.reconnecting = false; return; }
     try {
       const status = await fetch(`/api/v1/terminal/sessions/${encodeURIComponent(tab.sessionID)}`, { cache: "no-store" });
-      if (status.status === 401) { window.location.assign("/login"); return; }
+      if (authExpired(status.status)) return;
       if (status.status === 404) {
         tab.reconnecting = false; tab.sessionID = "";
         setTabState(tab, "disconnected", "The session no longer exists on the server. Press Connect to start a new one");
@@ -409,7 +554,7 @@ async function connectTab(tab) {
   tab.manualOff = false;
   tab.decoder = new TextDecoder("utf-8"); tab.lastSize = null;
   tab.terminal.reset();
-  tab.terminal.writeln(`Connecting to ${device.host} (${tab.protocol.toUpperCase()} ${port})…`);
+  tab.terminal.writeln(`Connecting to ${device.host} (${protoName(tab.protocol)} ${port})…`);
   setTabState(tab, "connecting");
   const size = tabDimensions(tab);
   const payload = { profile_id: device.id, protocol: tab.protocol, port, columns: size.cols, rows: size.rows };
@@ -447,7 +592,7 @@ function terminalEnter() {
     const own = [...term.tabs.values()].filter((t) => t.profileID === device.id);
     const current = activeTab();
     if (!current || current.profileID !== device.id) {
-      if (own.length) { term.active = own[own.length - 1].id; renderTabs(); }
+      if (own.length) { setActive(own[own.length - 1].id); renderTabs(); }
       else createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol) });
     }
   } else if (!term.tabs.size) createTerminalTab({ profileID: "", autoConnect: false });
@@ -456,6 +601,23 @@ function terminalEnter() {
 }
 
 $("#terminalNewTab").addEventListener("click", newTabFromActive);
+$("#termSplitRight").addEventListener("click", () => splitActive("row"));
+$("#termSplitDown").addEventListener("click", () => splitActive("col"));
+$("#terminalLauncher").addEventListener("click", (event) => {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const items = [{ heading: "Open in a new tab" }];
+  const sorted = sortedSites();
+  if (!sorted.length) items.push({ label: "No saved devices yet", disabled: true });
+  let lastGroup = null;
+  for (const site of sorted) {
+    const g = site.group || "";
+    if (g !== lastGroup && g) items.push({ heading: g });
+    lastGroup = g;
+    items.push({ label: `${site.favorite ? "★ " : ""}${site.name}`, icon: "terminal", sub: site.host, run: () => createTerminalTab({ profileID: site.id, protocol: term.protocol, port: defaultPort(site, term.protocol), directory: site.start_dir || "" }) });
+  }
+  items.push("-", { label: "Manage saved devices…", icon: "devices", run: () => showView("devices") });
+  openMenu(items, rect.left, rect.bottom + 4);
+});
 $("#terminalConnect").addEventListener("click", () => connectTab(activeTab()));
 $("#terminalDisconnect").addEventListener("click", () => disconnectTab(activeTab()));
 $("#terminalPort").addEventListener("change", () => { const tab = activeTab(); if (tab) tab.port = Number($("#terminalPort").value); });
@@ -467,28 +629,6 @@ $$("#quickKeys button").forEach((button) => button.addEventListener("click", () 
   focusTab(tab);
 }));
 
-async function clipboardWrite(text) {
-  if (window.isSecureContext && navigator.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(text); return true; } catch { }
-  }
-  const active = document.activeElement;
-  const box = h("textarea", { "aria-hidden": "true", tabindex: "-1", readonly: true, style: "position:fixed;left:-9999px;top:0;opacity:0" });
-  box.value = text;
-  document.body.append(box);
-  box.select();
-  box.setSelectionRange(0, text.length);
-  let ok = false;
-  try { ok = document.execCommand("copy"); } catch { ok = false; }
-  box.remove();
-  active?.focus?.({ preventScroll: true });
-  return ok;
-}
-async function clipboardRead() {
-  if (window.isSecureContext && navigator.clipboard?.readText) {
-    try { return await navigator.clipboard.readText(); } catch { return null; }
-  }
-  return null;
-}
 async function copyTerminal() {
   const tab = activeTab();
   if (!tab) return;
@@ -529,7 +669,7 @@ function openTerminalMenu(tab, x, y) {
     { label: "Select all", icon: "check", run: () => { tab.terminal.selectAll(); } },
     { label: store.get("termCopyOnSelect", false) ? "✓ Copy when selecting" : "Copy when selecting", icon: "copy", run: () => { store.set("termCopyOnSelect", !store.get("termCopyOnSelect", false)); toast(store.get("termCopyOnSelect", false) ? "Selected text is copied automatically" : "Automatic copy is off"); } },
     "-",
-    { label: "Previous commands…", icon: "history", sub: "Ctrl+Shift+H", run: openHistory },
+    { label: "History…", icon: "history", sub: "Ctrl+Shift+H", run: openHistory },
     { label: "Copy all output", icon: "copy", run: () => { tab.terminal.clearSelection(); copyTerminal(); } },
     { label: "Clear screen", icon: "eraser", run: () => clearTerminal(tab) },
   ], x, y);
@@ -543,28 +683,38 @@ async function renameTab(tab) {
   focusTab(tab);
 }
 function openTabMenu(tab, x, y) {
-  const others = [...term.tabs.values()].filter((t) => t.id !== tab.id);
+  const group = groupOfTab(tab.id);
+  const panels = group ? treeLeaves(group.root).length : 1;
+  const others = term.groups.filter((g) => g !== group);
   openMenu([
     { label: "Rename…", icon: "edit", run: () => renameTab(tab) },
     { label: "Duplicate tab", icon: "plus", disabled: !tab.profileID, run: () => createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port }) },
     "-",
-    { label: "Close tab", icon: "x", run: () => closeTab(tab.id) },
-    { label: "Close other tabs", icon: "x", disabled: !others.length, danger: true, run: () => others.forEach((t) => closeTab(t.id)) },
+    { label: "Split right", icon: "split-h", sub: "Ctrl+Shift+D", run: () => { activateTab(tab.id); splitActive("row"); } },
+    { label: "Split down", icon: "split-v", sub: "Ctrl+Shift+E", run: () => { activateTab(tab.id); splitActive("col"); } },
+    { label: "Close this panel", icon: "x", sub: "Ctrl+Shift+W", disabled: panels < 2, run: () => closeTab(tab.id) },
+    "-",
+    { label: panels > 1 ? "Close tab and all its panels" : "Close tab", icon: "x", run: () => group && closeGroup(group) },
+    { label: "Close other tabs", icon: "x", disabled: !others.length, danger: true, run: () => others.forEach((g) => closeGroup(g)) },
   ], x, y);
 }
 function switchTabByNumber(number) {
-  const tab = [...term.tabs.values()][number - 1];
+  const group = term.groups[number - 1];
+  const tab = group && groupLead(group);
   if (tab) activateTab(tab.id);
 }
 $("#terminalTabList").addEventListener("click", (event) => {
-  const tabs = [...term.tabs.values()];
   const rect = event.currentTarget.getBoundingClientRect();
-  openMenu([{ heading: "Terminal tabs" }, ...tabs.map((tab, index) => ({
-    label: `${tab.id === term.active ? "● " : ""}${tabTitle(tab)}`,
-    icon: "terminal", sub: index < 9 ? `Alt+${index + 1}` : tab.state === "connected" ? "connected" : "",
-    run: () => activateTab(tab.id),
-  }))], rect.left, rect.bottom + 4);
+  openMenu([{ heading: "Terminal tabs" }, ...term.groups.map((group, index) => {
+    const tab = groupLead(group), count = treeLeaves(group.root).length;
+    return {
+      label: `${treeHas(group.root, term.active) ? "● " : ""}${tabTitle(tab)}${count > 1 ? `  (${count} panels)` : ""}`,
+      icon: "terminal", sub: index < 9 ? `Alt+${index + 1}` : tab.state === "connected" ? "connected" : "",
+      run: () => activateTab(tab.id),
+    };
+  })], rect.left, rect.bottom + 4);
 });
+
 
 const HISTORY_MAX = 300;
 const historyKey = (profileID) => `cmdhist.${profileID || "none"}`;
@@ -681,7 +831,7 @@ $("#termSave").addEventListener("click", () => {
 function applyTerminalLook() {
   const options = terminalOptions(), frame = $("#terminalFrame");
   $("#termFontLabel").textContent = String(term.fontSize);
-  $("#termTheme").value = term.theme;
+  for (const b of $$("#termTheme .term-swatch")) b.setAttribute("aria-checked", String(b.dataset.v === term.theme));
   frame.dataset.theme = term.theme;
   frame.style.background = term.custom.bg || "";
   for (const tab of term.tabs.values()) for (const [key, value] of Object.entries(options)) tab.terminal.options[key] = value;
@@ -690,8 +840,10 @@ function applyTerminalLook() {
 }
 $("#termFontDown").addEventListener("click", () => { term.fontSize = Math.max(9, term.fontSize - 1); applyTerminalLook(); });
 $("#termFontUp").addEventListener("click", () => { term.fontSize = Math.min(28, term.fontSize + 1); applyTerminalLook(); });
-$("#termTheme").addEventListener("change", (event) => {
-  term.theme = event.target.value;
+$("#termTheme").addEventListener("click", (event) => {
+  const pick = event.target.closest(".term-swatch");
+  if (!pick) return;
+  term.theme = pick.dataset.v;
   Object.assign(term.custom, { bg: "", fg: "", cursor: "", sel: "" });
   applyTerminalLook();
 });
@@ -700,7 +852,9 @@ const TERM_CFG_COLORS = { bg: "#termCfgBg", fg: "#termCfgFg", cursor: "#termCfgC
 function termCfgPaint() {
   const o = terminalOptions(), preview = $("#termCfgPreview");
   Object.assign(preview.style, { background: o.theme.background, color: o.theme.foreground, fontFamily: o.fontFamily, fontSize: `${o.fontSize}px`, lineHeight: String(o.lineHeight), fontWeight: o.fontWeight });
-  $("#termCfgCaret").style.background = o.theme.cursor;
+  const caret = $("#termCfgCaret");
+  caret.style.setProperty("--cc", o.theme.cursor);
+  caret.dataset.shape = o.cursorStyle; caret.dataset.blink = String(o.cursorBlink);
 }
 function termCfgRefresh() {
   const o = terminalOptions(), c = term.custom;
@@ -879,7 +1033,8 @@ $("#dccScriptFile").addEventListener("change", async (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "t" && view.current === "terminal") { event.preventDefault(); newTabFromActive(); }
 });
-window.addEventListener("resize", () => fitTab(activeTab()));
+function fitVisible() { const g = groupOfTab(term.active); for (const id of g ? treeLeaves(g.root) : []) fitTab(term.tabs.get(id)); }
+window.addEventListener("resize", fitVisible);
 window.addEventListener("pagehide", (event) => {
   if (event.persisted) return;
   for (const tab of term.tabs.values()) {

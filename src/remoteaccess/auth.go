@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -14,10 +15,10 @@ import (
 
 const (
 	CookieName         = "__Host-dcc_session"
-	PlainCookieName    = "dcc_session"
 	sessionIdleTimeout = 12 * time.Hour
 	sessionMaxAge      = 7 * 24 * time.Hour
 	maxSessions        = 32
+	maxTrackedClients  = 4096
 	freeAttempts       = 5
 	baseLockout        = time.Minute
 	maxLockout         = 15 * time.Minute
@@ -43,7 +44,6 @@ type attempts struct {
 
 type Auth struct {
 	creds *Credentials
-	plain bool
 	now   func() time.Time
 	sleep func(time.Duration)
 
@@ -56,20 +56,7 @@ func NewAuth(creds *Credentials) *Auth {
 	return &Auth{creds: creds, now: time.Now, sleep: time.Sleep, sessions: make(map[[32]byte]*session), tries: make(map[string]*attempts)}
 }
 
-func NewPlainAuth(creds *Credentials) *Auth {
-	a := NewAuth(creds)
-	a.plain = true
-	return a
-}
-
-func (a *Auth) Plain() bool { return a.plain }
-
-func (a *Auth) cookieName() string {
-	if a.plain {
-		return PlainCookieName
-	}
-	return CookieName
-}
+func (a *Auth) cookieName() string { return CookieName }
 
 func clientKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -92,10 +79,14 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, password string) er
 	}
 	a.mu.Unlock()
 
-	if !a.creds.Verify(password) {
+	validPassword, credentialRevision := a.creds.verify(password)
+	if !validPassword {
 		a.mu.Lock()
 		t = a.tries[key]
 		if t == nil {
+			if len(a.tries) >= maxTrackedClients {
+				a.evictOldestAttemptLocked()
+			}
 			t = &attempts{}
 			a.tries[key] = t
 		}
@@ -118,6 +109,10 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, password string) er
 		return err
 	}
 	a.mu.Lock()
+	if !a.creds.revisionMatches(credentialRevision) {
+		a.mu.Unlock()
+		return ErrBadPassword
+	}
 	delete(a.tries, key)
 	if len(a.sessions) >= maxSessions {
 		a.evictOldestLocked()
@@ -127,7 +122,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, password string) er
 
 	http.SetCookie(w, &http.Cookie{
 		Name: a.cookieName(), Value: base64.RawURLEncoding.EncodeToString(token), Path: "/",
-		HttpOnly: true, Secure: !a.plain, SameSite: http.SameSiteStrictMode, MaxAge: int(sessionMaxAge / time.Second),
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: int(sessionMaxAge / time.Second),
 	})
 	return nil
 }
@@ -165,7 +160,7 @@ func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 			a.mu.Unlock()
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: a.cookieName(), Value: "", Path: "/", HttpOnly: true, Secure: !a.plain, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: a.cookieName(), Value: "", Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 }
 
 func (a *Auth) RevokeAll() {
@@ -187,6 +182,20 @@ func (a *Auth) pruneLocked(now time.Time) {
 	}
 }
 
+func (a *Auth) evictOldestAttemptLocked() {
+	var oldestKey string
+	var oldest time.Time
+	found := false
+	for key, entry := range a.tries {
+		if !found || entry.last.Before(oldest) {
+			oldestKey, oldest, found = key, entry.last, true
+		}
+	}
+	if found {
+		delete(a.tries, oldestKey)
+	}
+}
+
 func (a *Auth) evictOldestLocked() {
 	var oldestID [32]byte
 	var oldest time.Time
@@ -201,30 +210,17 @@ func (a *Auth) evictOldestLocked() {
 	}
 }
 
-func SameOrigin(r *http.Request) bool { return SameOriginFor(r, true) }
-
-func SameOriginFor(r *http.Request, secure bool) bool {
+func SameOrigin(r *http.Request) bool {
+	if r == nil || r.Host == "" {
+		return false
+	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin == "" || r.Host == "" {
+	if origin == "" {
 		return false
 	}
-	scheme := "https://"
-	if !secure {
-		scheme = "http://"
-	}
-	if !strings.HasPrefix(strings.ToLower(origin), scheme) {
+	u, err := url.Parse(origin)
+	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return false
 	}
-	rest := origin[len(scheme):]
-	if strings.ContainsAny(rest, "/?#@") {
-		return false
-	}
-	if strings.EqualFold(rest, r.Host) {
-		return true
-	}
-
-	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0]); forwarded != "" {
-		return strings.EqualFold(rest, forwarded)
-	}
-	return false
+	return strings.EqualFold(u.Host, r.Host)
 }

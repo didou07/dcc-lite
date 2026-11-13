@@ -51,11 +51,11 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "Do not open the web interface automatically")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	remote := remoteSettings{}
-	flag.StringVar(&remote.Listen, "remote-listen", "", "Also serve the interface over HTTPS with a password on this address, for example 0.0.0.0:8788 (off by default)")
-	flag.StringVar(&remote.CertFile, "tls-cert", "", "PEM certificate for the remote HTTPS listener (default: generate a self-signed one)")
+	flag.StringVar(&remote.Listen, "remote-listen", "", "Also serve the interface over HTTPS with a password on this address, for example 0.0.0.0:443 (off by default)")
+	flag.StringVar(&remote.CertFile, "tls-cert", "", "Trusted PEM certificate for remote HTTPS (automatic Let's Encrypt certificate is used when omitted)")
 	flag.StringVar(&remote.KeyFile, "tls-key", "", "PEM private key for --tls-cert")
-	flag.StringVar(&remote.ExtraHost, "tls-host", "", "Extra host names or IPs to put in the self-signed certificate, comma separated")
-	flag.BoolVar(&remote.Plain, "remote-http", false, "Serve --remote-listen as plain HTTP without encryption (password and data are readable on the network; use only on a trusted network)")
+	flag.StringVar(&remote.ExtraHost, "tls-host", "", "Public DNS/DDNS names for automatic trusted HTTPS certificates, comma separated")
+	flag.StringVar(&remote.Email, "tls-email", "", "Optional contact email for automatic HTTPS certificate registration")
 	logLevel := flag.String("log-level", envOr("DCCLITE_LOG_LEVEL", "info"), "Console log level: trace, debug, info, warn or error")
 	logFileLevel := flag.String("log-file-level", envOr("DCCLITE_LOG_FILE_LEVEL", "debug"), "Log file level: trace, debug, info, warn or error")
 	logDir := flag.String("log-dir", "", "Folder for dcclite.log and faults.json (default: logs inside the data directory; \"off\" disables the file)")
@@ -159,8 +159,7 @@ func main() {
 	defer listener.Close()
 
 	application := app.New(version, store, root)
-	defer application.Terminals.CloseAll()
-	defer application.Files.CloseAll()
+	defer application.Close()
 	server := &http.Server{
 		Addr:              *listen,
 		Handler:           httpapi.New(application),
@@ -168,7 +167,7 @@ func main() {
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      3 * time.Minute,
 		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    1 << 20,
+		MaxHeaderBytes:    64 << 10,
 	}
 
 	url := "http://" + listener.Addr().String()
@@ -209,7 +208,7 @@ func displayHosts(hosts []string) []string {
 		if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsLinkLocalUnicast()) {
 			continue
 		}
-		if host == "localhost" {
+		if strings.EqualFold(host, "localhost") {
 			continue
 		}
 		out = append(out, host)

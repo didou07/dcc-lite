@@ -87,7 +87,7 @@ func (s *Server) backupEnigma2(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
 	if !ok {
-		writeError(w, http.StatusNotFound, "file session not found")
+		writeSessionNotFound(w)
 		return
 	}
 	dir, err := bouquetDir(r.URL.Query().Get("dir"))
@@ -165,7 +165,7 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
 	if !ok {
-		writeError(w, http.StatusNotFound, "file session not found")
+		writeSessionNotFound(w)
 		return
 	}
 	dir, err := bouquetDir(r.URL.Query().Get("dir"))

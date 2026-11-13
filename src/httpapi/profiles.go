@@ -21,16 +21,6 @@ func (s *Server) listProfiles(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"profiles": views})
 }
 
-func (s *Server) revealCredential(w http.ResponseWriter, r *http.Request) {
-	profile, ok := s.app.Profiles.Get(r.PathValue("id"))
-	if !ok {
-		writeError(w, http.StatusNotFound, "profile not found")
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"password": profile.Password})
-}
-
 func (s *Server) setCredential(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	profile, ok := s.app.Profiles.Get(id)
@@ -92,11 +82,18 @@ type profileRequest struct {
 	FTPPort    int    `json:"ftp_port"`
 	TelnetPort int    `json:"telnet_port"`
 
-	WebPort  int    `json:"web_port"`
-	WebHTTPS bool   `json:"web_https"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Enabled  *bool  `json:"enabled"`
+	WebPort               int    `json:"web_port"`
+	WebHTTPS              bool   `json:"web_https"`
+	TLSInsecureSkipVerify bool   `json:"tls_insecure_skip_verify"`
+	Username              string `json:"username"`
+	Password              string `json:"password"`
+	Enabled               *bool  `json:"enabled"`
+
+	Group    string `json:"group"`
+	Color    string `json:"color"`
+	Favorite bool   `json:"favorite"`
+	StartDir string `json:"start_dir"`
+	Note     string `json:"note"`
 }
 
 func (s *Server) createProfile(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +144,47 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"profile": saved, "credential_configured": saved.Password != ""})
 }
 
+func (s *Server) updateProfileMeta(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	existing, ok := s.app.Profiles.Get(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "profile not found")
+		return
+	}
+	var input struct {
+		Group    *string `json:"group"`
+		Color    *string `json:"color"`
+		Favorite *bool   `json:"favorite"`
+		StartDir *string `json:"start_dir"`
+		Note     *string `json:"note"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if input.Group != nil {
+		existing.Group = strings.TrimSpace(*input.Group)
+	}
+	if input.Color != nil {
+		existing.Color = strings.ToLower(strings.TrimSpace(*input.Color))
+	}
+	if input.Favorite != nil {
+		existing.Favorite = *input.Favorite
+	}
+	if input.StartDir != nil {
+		existing.StartDir = strings.TrimSpace(*input.StartDir)
+	}
+	if input.Note != nil {
+		existing.Note = strings.TrimSpace(*input.Note)
+	}
+	saved, err := s.app.Profiles.Save(existing)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"profile": saved, "credential_configured": saved.Password != ""})
+}
+
 func (s *Server) deleteProfile(w http.ResponseWriter, r *http.Request) {
 	logAction(w, r, "device profile delete requested")
 	id := r.PathValue("id")
@@ -174,10 +212,12 @@ func profileFromRequest(input profileRequest) config.Profile {
 		FTPPort: input.FTPPort, TelnetPort: input.TelnetPort,
 		Port:     input.WebPort,
 		Username: username, Password: input.Password, Enabled: enabled,
+		Group: strings.TrimSpace(input.Group), Color: strings.ToLower(strings.TrimSpace(input.Color)),
+		Favorite: input.Favorite, StartDir: strings.TrimSpace(input.StartDir), Note: strings.TrimSpace(input.Note),
 	}
 	if input.WebHTTPS {
-
-		p.Scheme, p.InsecureTLS = "https", true
+		p.Scheme = "https"
 	}
+	p.InsecureTLS = input.TLSInsecureSkipVerify
 	return p
 }

@@ -1,63 +1,137 @@
-name: Release
+name: Build and Release
 
 on:
   push:
     branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub Release after all checks pass
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
-  group: release
+  group: dcc-lite-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  build-and-test:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Read the version
-        id: v
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version="$(tr -d '[:space:]' < VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "VERSION '$version' is not like 1.2.3" >&2; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if gh release view "v$version" >/dev/null 2>&1; then
-            echo "Release v$version already exists; raise VERSION to publish a new one."
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          fi
+
       - name: Install Go
-        if: steps.v.outputs.exists != 'true'
         uses: actions/setup-go@v7
         with:
           go-version: '1.27.3'
           check-latest: false
-      - name: Vet and test
-        if: steps.v.outputs.exists != 'true'
+
+      - name: Validate release version
+        id: meta
+        shell: bash
         run: |
-          go vet ./...
-          go test ./...
-      - name: Install the Go toolchain patched for Windows 7
-        if: steps.v.outputs.exists != 'true'
-        run: echo "GO_WIN7=$(bash scripts/setup-go-win7.sh)" >> "$GITHUB_ENV"
-      - name: Build all platforms
-        if: steps.v.outputs.exists != 'true'
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Invalid VERSION: $version" >&2; exit 1; }
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME must match VERSION (v$version)." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check Go formatting
+        shell: bash
         run: |
-          VERSION="${{ steps.v.outputs.version }}" bash scripts/build.sh
-          ls dist/*-win7.zip
-          for f in dist/*.zip; do
-            [[ "$(unzip -Z1 "$f" | wc -l)" -eq 1 ]] || { echo "$f must hold only the binary" >&2; exit 1; }
+          set -euo pipefail
+          files="$(gofmt -l $(find src -name '*.go' -type f))"
+          if [[ -n "$files" ]]; then
+            echo "$files"
+            echo "Run gofmt on the listed files." >&2
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check first-party JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find src/web -type f -name '*.js' ! -path 'src/web/vendor/*' -print0)
+
+      - name: Build all release targets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: bash build.sh all
+
+      - name: Validate packages and native version
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          count=0
+          for file in dist/*.zip; do
+            [[ -f "$file" ]] || { echo "No release archives found" >&2; exit 1; }
+            entries="$(unzip -Z1 "$file")"
+            [[ "$(printf '%s\n' "$entries" | wc -l | tr -d ' ')" == "1" ]] || { echo "$file must contain exactly one executable" >&2; exit 1; }
+            count=$((count + 1))
           done
-      - name: Publish GitHub release
-        if: steps.v.outputs.exists != 'true'
+          [[ "$count" -eq 10 ]] || { echo "Expected 10 platform archives, found $count" >&2; exit 1; }
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          unzip -p "dist/DCC-Lite-${VERSION}-linux-amd64.zip" DCCLite > "$tmp/DCCLite"
+          chmod +x "$tmp/DCCLite"
+          "$tmp/DCCLite" --version | grep -F "DCC Lite ${VERSION} (linux/amd64)"
+
+      - name: Upload build artifacts
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DCC-Lite-release-packages
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@v4
+        with:
+          name: DCC-Lite-release-packages
+          path: dist/
+
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build-and-test.outputs.version }}
+        shell: bash
         run: |
-          tag="v${{ steps.v.outputs.version }}"
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to replace published files." >&2
+            exit 1
+          fi
+          [[ "$(find dist -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')" == "10" ]] || { echo "Expected 10 release packages." >&2; exit 1; }
           flags=()
           [[ "$tag" == *-* ]] && flags+=(--prerelease)
           gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "DCC Lite $tag" --generate-notes "${flags[@]}"

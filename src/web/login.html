@@ -1,23 +1,25 @@
 <!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="dark" data-radius="sharp">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <title>Sign in — DCC Lite</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2335b36a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10a7.31 7.31 0 0 0 10 10Z'/%3E%3Cpath d='m9 15 3-3'/%3E%3Cpath d='M17 13a6 6 0 0 0-6-6'/%3E%3Cpath d='M21 13A10 10 0 0 0 11 3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/app.css">
 </head>
 <body class="login-page">
   <main class="login-card" aria-labelledby="loginTitle">
-    <div class="brand"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span><span class="brand-name">DCC <b>Lite</b></span></div>
+    <div class="brand"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a7.31 7.31 0 0 0 10 10Z"/><path d="m9 15 3-3"/><path d="M17 13a6 6 0 0 0-6-6"/><path d="M21 13A10 10 0 0 0 11 3"/></svg></span><span class="brand-name">DCC <b>Lite</b></span></div>
     <h1 id="loginTitle">Remote access</h1>
     <p class="muted">Enter the remote access password to manage your devices from this browser.</p>
     <form id="loginForm" autocomplete="on">
-      <label class="field"><span>Password</span><input id="loginPassword" name="password" type="text" autocomplete="current-password" autocapitalize="off" autocorrect="off" required autofocus spellcheck="false"></label>
+      <label class="field"><span>Password</span><input id="loginPassword" name="password" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" required autofocus spellcheck="false"></label>
       <p class="form-error" id="loginError" role="alert" hidden></p>
       <button class="btn primary" id="loginSubmit" type="submit">Sign in</button>
     </form>
   </main>
+  <script src="/js/appearance.js"></script>
   <script src="/login.js"></script>
 </body>
 </html>

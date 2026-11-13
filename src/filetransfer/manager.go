@@ -1,12 +1,12 @@
 package filetransfer
 
 import (
-	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/didou07/dcc-lite/src/logx"
 	"math"
 	"os"
 	"path"
@@ -34,7 +34,6 @@ const (
 	maxFileSessionsPerDevice = 2
 	maxTransferTasks         = 100
 	idleSessionTTL           = 2 * time.Hour
-	stalledTransferAfter     = 90 * time.Second
 	maxDirectoryEntries      = 100000
 	maxDirectoryDepth        = 64
 )
@@ -63,10 +62,17 @@ type Manager struct {
 	opening          int
 	openingByProfile map[string]int
 	closed           bool
+	stop             chan struct{}
+	reaperDone       chan struct{}
+	closeOnce        sync.Once
+	openWG           sync.WaitGroup
+	shutdownCtx      context.Context
+	shutdownCancel   context.CancelFunc
 }
 
 func NewManager() *Manager {
-	m := &Manager{sessions: make(map[string]*managedSession), tasks: make(map[string]*taskEntry), queue: make(chan struct{}, 2), openingByProfile: make(map[string]int)}
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+	m := &Manager{sessions: make(map[string]*managedSession), tasks: make(map[string]*taskEntry), queue: make(chan struct{}, 2), openingByProfile: make(map[string]int), stop: make(chan struct{}), reaperDone: make(chan struct{}), shutdownCtx: shutdownCtx, shutdownCancel: shutdownCancel}
 	go m.reapIdleLoop()
 	return m
 }
@@ -115,7 +121,15 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	}
 	m.opening++
 	m.openingByProfile[profile.ID]++
+	m.openWG.Add(1)
 	m.mu.Unlock()
+	defer m.openWG.Done()
+	dialCtx, cancelDial := context.WithCancel(ctx)
+	stopShutdown := context.AfterFunc(m.shutdownCtx, cancelDial)
+	defer func() {
+		stopShutdown()
+		cancelDial()
+	}()
 	if len(evicted) > 0 {
 		go closeSessions(evicted)
 	}
@@ -138,7 +152,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	var err error
 	switch protocol {
 	case "ftp":
-		adapter, err = OpenResilientFTP(ctx, FTPOptions{Host: profile.Host, Port: port, Username: profile.Username, Password: password})
+		adapter, err = OpenResilientFTP(dialCtx, FTPOptions{Host: profile.Host, Port: port, Username: profile.Username, Password: password})
 	}
 	if err != nil {
 		flog.Warn("file session failed to open", "device", profile.Name, "host", profile.Host, "port", port, "error", err)
@@ -276,16 +290,11 @@ func (m *Manager) idleSessionLocked(profileID string, deviceOnly bool) *managedS
 func (m *Manager) sessionUsageLocked() (map[string]bool, map[string]time.Time) {
 	busy := make(map[string]bool)
 	latest := make(map[string]time.Time)
-	now := time.Now()
 	for _, task := range m.tasks {
 		id := task.info.SessionID
 		switch task.info.State {
-		case "queued":
+		case "queued", "running":
 			busy[id] = true
-		case "running":
-			if now.Sub(task.info.UpdatedAt) < stalledTransferAfter {
-				busy[id] = true
-			}
 		}
 		if task.info.UpdatedAt.After(latest[id]) {
 			latest[id] = task.info.UpdatedAt
@@ -316,26 +325,32 @@ func lastUse(session *managedSession, lastTask time.Time) time.Time {
 func (m *Manager) reapIdleLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		m.mu.Lock()
-		if m.closed {
-			m.mu.Unlock()
+	defer close(m.reaperDone)
+	for {
+		select {
+		case <-m.stop:
 			return
-		}
-		busy, latest := m.sessionUsageLocked()
-		now := time.Now()
-		var stale []*managedSession
-		for id, session := range m.sessions {
-			if !busy[id] && now.Sub(lastUse(session, latest[id])) > idleSessionTTL {
-				stale = append(stale, session)
-				delete(m.sessions, id)
+		case <-ticker.C:
+			m.mu.Lock()
+			if m.closed {
+				m.mu.Unlock()
+				return
 			}
+			busy, latest := m.sessionUsageLocked()
+			now := time.Now()
+			var stale []*managedSession
+			for id, session := range m.sessions {
+				if !busy[id] && now.Sub(lastUse(session, latest[id])) > idleSessionTTL {
+					stale = append(stale, session)
+					delete(m.sessions, id)
+				}
+			}
+			m.mu.Unlock()
+			if len(stale) > 0 {
+				flog.Debug("closing idle file sessions", "count", len(stale))
+			}
+			closeSessions(stale)
 		}
-		m.mu.Unlock()
-		if len(stale) > 0 {
-			flog.Debug("closing idle file sessions", "count", len(stale))
-		}
-		closeSessions(stale)
 	}
 }
 
@@ -384,14 +399,20 @@ func (m *Manager) CloseProfile(profileID string) {
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	m.closed = true
-	ids := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		ids = append(ids, id)
-	}
 	for _, task := range m.tasks {
 		if task.info.State == "queued" || task.info.State == "running" {
 			task.cancel()
 		}
+	}
+	m.mu.Unlock()
+	m.shutdownCancel()
+	m.closeOnce.Do(func() { close(m.stop) })
+	<-m.reaperDone
+	m.openWG.Wait()
+	m.mu.Lock()
+	ids := make([]string, 0, len(m.sessions))
+	for id := range m.sessions {
+		ids = append(ids, id)
 	}
 	m.mu.Unlock()
 	for _, id := range ids {
@@ -556,12 +577,12 @@ func (m *Manager) startTransfer(sessionID, direction, localRelative, remotePath 
 }
 
 func partialDownloadPath(target, id string) string {
-	name := "." + filepath.Base(target) + ".dccnext-" + id + ".part"
+	name := "." + filepath.Base(target) + ".dcclite-" + id + ".part"
 	return filepath.Join(filepath.Dir(target), name)
 }
 
 func partialRemotePath(target, id string) string {
-	return path.Join(path.Dir(target), "."+path.Base(target)+".dccnext-"+id+".part")
+	return path.Join(path.Dir(target), "."+path.Base(target)+".dcclite-"+id+".part")
 }
 
 func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool) {
@@ -1360,7 +1381,7 @@ func downloadFile(ctx context.Context, adapter core.FileTransfer, local *LocalFS
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(localAbsolute), ".dccnext-transfer-*.part")
+	tmp, err := os.CreateTemp(filepath.Dir(localAbsolute), ".dcclite-transfer-*.part")
 	if err != nil {
 		return err
 	}

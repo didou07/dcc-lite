@@ -125,7 +125,9 @@ func readLimited(path string) ([]byte, error) {
 	}
 	defer f.Close()
 	if os.PathSeparator != '\\' {
-		_ = os.Chmod(path, 0o600)
+		if err := os.Chmod(path, 0o600); err != nil {
+			return nil, fmt.Errorf("secure settings file: %w", err)
+		}
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxStoreBytes+1))
 	if err != nil {
@@ -154,20 +156,7 @@ func (s *ProfileStore) loadINI(data []byte) error {
 		return fmt.Errorf("%s: %w", filepath.Base(s.path), err)
 	}
 	s.remote = doc.Remote
-	changed := false
 	for _, p := range doc.Profiles {
-		if strings.TrimSpace(p.ID) == "" {
-			id, err := newID()
-			if err != nil {
-				return err
-			}
-			p.ID = id
-			changed = true
-		}
-		if strings.TrimSpace(p.Username) == "" {
-			p.Username = DefaultUsername
-			changed = true
-		}
 		p.Name = trimSpace(p.Name)
 		p.Host = trimSpace(p.Host)
 		if err := p.Validate(); err != nil {
@@ -177,11 +166,6 @@ func (s *ProfileStore) loadINI(data []byte) error {
 			return fmt.Errorf("%s: duplicate device id %q", filepath.Base(s.path), p.ID)
 		}
 		s.profiles[p.ID] = p
-	}
-	if changed {
-		if err := s.persistLocked(); err != nil {
-			return fmt.Errorf("update settings file: %w", err)
-		}
 	}
 	return nil
 }
@@ -208,9 +192,13 @@ func (s *ProfileStore) persistLocked() error {
 		tmp.Close()
 		return fmt.Errorf("secure temporary settings file: %w", err)
 	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write settings file: %w", err)
+	n, writeErr := tmp.Write(data)
+	if writeErr != nil || n != len(data) {
+		_ = tmp.Close()
+		if writeErr == nil {
+			writeErr = io.ErrShortWrite
+		}
+		return fmt.Errorf("write settings file: %w", writeErr)
 	}
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()
@@ -221,6 +209,16 @@ func (s *ProfileStore) persistLocked() error {
 	}
 	if err := os.Rename(tmpName, s.path); err != nil {
 		return fmt.Errorf("replace settings file: %w", err)
+	}
+	if os.PathSeparator != '\\' {
+		dir, err := os.Open(filepath.Dir(s.path))
+		if err != nil {
+			return fmt.Errorf("open settings directory for sync: %w", err)
+		}
+		defer dir.Close()
+		if err := dir.Sync(); err != nil {
+			return fmt.Errorf("sync settings directory: %w", err)
+		}
 	}
 	return nil
 }
@@ -261,7 +259,15 @@ func (s *ProfileStore) PasswordRecord() (salt, hash string, iterations int) {
 }
 
 func (s *ProfileStore) SavePasswordRecord(salt, hash string, iterations int) error {
-	r := s.Remote()
-	r.PasswordSalt, r.PasswordHash, r.PasswordIterations = salt, hash, iterations
-	return s.SaveRemote(r)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := s.remote
+	s.remote.PasswordSalt = salt
+	s.remote.PasswordHash = hash
+	s.remote.PasswordIterations = iterations
+	if err := s.persistLocked(); err != nil {
+		s.remote = previous
+		return err
+	}
+	return nil
 }

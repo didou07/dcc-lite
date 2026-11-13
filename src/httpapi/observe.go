@@ -33,7 +33,7 @@ func isQuiet(path string) bool {
 			return true
 		}
 	}
-	return strings.HasSuffix(path, "/screen") || strings.HasSuffix(path, "/signal") || strings.HasSuffix(path, "/picon")
+	return strings.HasSuffix(path, "/screen") || strings.HasSuffix(path, "/signal") || strings.HasSuffix(path, "/picon") || strings.HasSuffix(path, "/boximage")
 }
 
 func newRequestID() string {

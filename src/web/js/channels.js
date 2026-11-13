@@ -6,12 +6,11 @@ const ch = {
 };
 function watchOnPC(entry) {
   if (!entry || !entry.ref || !ch.profileID) { toast("Pick a channel first"); return; }
-  const url = `/api/v1/profiles/${encodeURIComponent(ch.profileID)}/stream.m3u?ref=${encodeURIComponent(entry.ref)}&name=${encodeURIComponent(entry.name || "")}`;
-  const link = h("a", { href: url, download: "" });
-  document.body.append(link); link.click(); link.remove();
+  const url = profileURL(ch.profileID, `stream.m3u?ref=${encodeURIComponent(entry.ref)}&name=${encodeURIComponent(entry.name || "")}`);
+  downloadLink(url);
   toast("Playlist saved: open it with VLC or your media player");
 }
-const piconURL = (ref, name = "") => `/api/v1/profiles/${encodeURIComponent(ch.profileID)}/picon?ref=${encodeURIComponent(ref)}&name=${encodeURIComponent(name)}`;
+const piconURL = (ref, name = "") => profileURL(ch.profileID, `picon?ref=${encodeURIComponent(ref)}&name=${encodeURIComponent(name)}`);
 
 function setChannelsOpen(open) {
   $("#channelPane").hidden = !open;
@@ -68,7 +67,7 @@ async function loadChannels(force = false) {
   channelStatus("Loading channels…");
   $("#channelReload").disabled = true;
   try {
-    const data = await api(`/api/v1/profiles/${encodeURIComponent(id)}/channels?type=${kind}`);
+    const data = await api(profileURL(id, `channels?type=${kind}`));
     if (token !== ch.loading || id !== ch.profileID || kind !== ch.kind) return;
     ch.cache.set(kind, data.bouquets || []);
     ch.epg.clear();
@@ -171,7 +170,7 @@ async function loadEPG(force) {
   const have = ch.epg.get(ref);
   if (!force && have && Date.now() - have.at < 60000) return;
   try {
-    const data = await api(`/api/v1/profiles/${encodeURIComponent(id)}/epgnow?bouquet=${encodeURIComponent(ref)}`);
+    const data = await api(profileURL(id, `epgnow?bouquet=${encodeURIComponent(ref)}`));
     if (id !== ch.profileID) return;
     ch.epg.set(ref, { at: Date.now(), now: data.now || Math.floor(Date.now() / 1000), events: data.events || {} });
     if (ref === ch.bouquetRef) paintEPG();
@@ -192,7 +191,7 @@ async function zapTo(entry) {
   showNow({ ref: entry.ref, name: entry.name, now: null, next: null }, entry);
   channelStatus(`Switching to ${entry.name}…`);
   try {
-    await post(`/api/v1/profiles/${encodeURIComponent(id)}/zap`, { ref: entry.ref });
+    await post(profileURL(id, "zap"), { ref: entry.ref });
     if (token !== ch.zapping || id !== ch.profileID) return;
     channelStatus("");
     window.setTimeout(() => { if (id === ch.profileID && !screenView.paused) screenRestart(); }, 1200);
@@ -205,8 +204,8 @@ async function zapTo(entry) {
 }
 
 function fmtClock(seconds) {
-  const s = Math.max(0, Math.floor(seconds)), m = Math.floor(s / 60), r = s % 60, pad = (n) => String(n).padStart(2, "0");
-  return m >= 60 ? `${Math.floor(m / 60)}:${pad(m % 60)}:${pad(r)}` : `${m}:${pad(r)}`;
+  const s = Math.max(0, Math.floor(seconds)), m = Math.floor(s / 60), r = s % 60;
+  return m >= 60 ? `${Math.floor(m / 60)}:${pad2(m % 60)}:${pad2(r)}` : `${m}:${pad2(r)}`;
 }
 function showNow(info, entry = null) {
   const bar = $("#nowBar");
@@ -236,7 +235,7 @@ async function pollCurrent(now = false) {
   if (!id || view.current !== "screen") return;
   if (now || (!document.hidden && !screenView.paused)) {
     try {
-      const info = await api(`/api/v1/profiles/${encodeURIComponent(id)}/current`);
+      const info = await api(profileURL(id, "current"));
       if (id !== ch.profileID) return;
       if (info.ref && info.ref !== ch.currentRef) {
         ch.currentRef = info.ref;

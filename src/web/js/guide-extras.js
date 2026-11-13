@@ -56,10 +56,9 @@ async function gdMoveMovie(m) {
   } catch (error) { gdError(error.message); }
 }
 
-const tmPad = (n) => String(n).padStart(2, "0");
 const tmLocal = (ts) => {
   const d = new Date(ts * 1000);
-  return `${d.getFullYear()}-${tmPad(d.getMonth() + 1)}-${tmPad(d.getDate())}T${tmPad(d.getHours())}:${tmPad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 const tmParse = (text) => { const ms = Date.parse(text); return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0; };
 const tmState = { timer: null, beginText: "", endText: "", busy: false };

@@ -60,6 +60,7 @@ type Attachment struct {
 	closed  bool
 	onClose func(*Attachment)
 	once    sync.Once
+	ioMu    sync.Mutex
 }
 
 func newAttachment(p *outputPump, offset int64, onClose func(*Attachment)) *Attachment {
@@ -120,17 +121,38 @@ func (a *Attachment) Lost() int64 {
 	return a.lost
 }
 
-func (a *Attachment) Write(p []byte) (int, error) { return a.pump.backend.Write(p) }
+func (a *Attachment) Write(p []byte) (int, error) {
+	a.ioMu.Lock()
+	defer a.ioMu.Unlock()
+	a.pump.mu.Lock()
+	closed := a.closed
+	a.pump.mu.Unlock()
+	if closed {
+		return 0, ErrDetached
+	}
+	return a.pump.backend.Write(p)
+}
+
 func (a *Attachment) Resize(columns, rows int) error {
+	a.ioMu.Lock()
+	defer a.ioMu.Unlock()
+	a.pump.mu.Lock()
+	closed := a.closed
+	a.pump.mu.Unlock()
+	if closed {
+		return ErrDetached
+	}
 	return a.pump.backend.Resize(columns, rows)
 }
 
 func (a *Attachment) Close() error {
 	a.once.Do(func() {
+		a.ioMu.Lock()
 		a.pump.mu.Lock()
 		a.closed = true
 		a.pump.cond.Broadcast()
 		a.pump.mu.Unlock()
+		a.ioMu.Unlock()
 		if a.onClose != nil {
 			a.onClose(a)
 		}

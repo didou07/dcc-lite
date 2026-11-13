@@ -19,7 +19,7 @@ func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 	logAction(w, r, "plugin install (.ipk) requested")
 	id := r.PathValue("id")
 	if _, ok := s.sessionProfile(id); !ok {
-		writeError(w, http.StatusNotFound, "file session not found")
+		writeSessionNotFound(w)
 		return
 	}
 	longTransfer(w)

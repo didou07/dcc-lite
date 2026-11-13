@@ -30,7 +30,6 @@ func New(application *app.App) http.Handler {
 	mux.HandleFunc("PUT /api/v1/remote-access", s.putRemoteAccess)
 	mux.HandleFunc("POST /api/v1/remote-access/password", s.setRemotePassword)
 
-	mux.HandleFunc("GET /api/v1/profiles/{id}/password", s.revealCredential)
 	return secureHeaders(localOnly(observe(mux)))
 }
 
@@ -42,6 +41,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/network/ranges", s.networkRanges)
 	mux.HandleFunc("POST /api/v1/network/scan", s.networkScan)
 	mux.HandleFunc("GET /api/v1/connections", s.listConnections)
+	mux.HandleFunc("PATCH /api/v1/profiles/{id}/meta", s.updateProfileMeta)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.testConnection)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/screen", s.deviceScreen)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/remote-key", s.deviceRemoteKey)
@@ -51,6 +51,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/profiles/{id}/zap", s.deviceZap)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/current", s.deviceCurrent)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/picon", s.devicePicon)
+	mux.HandleFunc("GET /api/v1/profiles/{id}/boximage", s.deviceBoxImage)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/epgnow", s.deviceEPGNow)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/epg", s.deviceEPG)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/epgsearch", s.deviceEPGSearch)
@@ -115,8 +116,6 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/files/transfers/{id}/file", s.fetchStagedDownload)
 	mux.HandleFunc("POST /api/v1/files/transfers/{id}/resume", s.resumeFileTransfer)
 	mux.HandleFunc("POST /api/v1/files/transfers/{id}/restart", s.restartFileTransfer)
-	mux.HandleFunc("PUT /api/v1/profiles/{id}/password", s.setCredential)
-	mux.HandleFunc("DELETE /api/v1/profiles/{id}/password", s.deleteCredential)
 
 	mux.HandleFunc("PUT /api/v1/profiles/{id}/credential", s.setCredential)
 	mux.HandleFunc("DELETE /api/v1/profiles/{id}/credential", s.deleteCredential)

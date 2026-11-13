@@ -1,12 +1,12 @@
 package config
 
-const DefaultRemoteListen = "0.0.0.0:8788"
+const DefaultRemoteListen = "0.0.0.0:443"
 
 type Remote struct {
 	Enabled            bool
 	Listen             string
 	TLSHosts           string
-	PlainHTTP          bool
+	TLSEmail           string
 	PasswordSalt       string
 	PasswordHash       string
 	PasswordIterations int

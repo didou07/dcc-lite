@@ -8,8 +8,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/mail"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -25,8 +25,6 @@ const (
 	maxTLSHosts         = 10
 )
 
-var tlsHostPattern = regexp.MustCompile(`^[A-Za-z0-9.\-:\[\]]{1,255}$`)
-
 type remoteManager struct {
 	application *app.App
 	store       *config.ProfileStore
@@ -40,6 +38,7 @@ type remoteManager struct {
 	keyFile  string
 
 	server   *http.Server
+	redirect *http.Server
 	closeAll func()
 	plan     remotePlan
 	running  bool
@@ -61,7 +60,7 @@ func (m *remoteManager) Init(flags remoteSettings) error {
 	if flags.Listen != "" {
 		m.cli = true
 		m.certFile, m.keyFile = flags.CertFile, flags.KeyFile
-		m.settings = app.RemoteSettings{Enabled: true, Listen: flags.Listen, TLSHosts: flags.ExtraHost, PlainHTTP: flags.Plain}
+		m.settings = app.RemoteSettings{Enabled: true, Listen: flags.Listen, TLSHosts: flags.ExtraHost, TLSEmail: flags.Email}
 		plan, err := m.start()
 		if err != nil {
 			return err
@@ -74,6 +73,12 @@ func (m *remoteManager) Init(flags remoteSettings) error {
 	saved, err := m.load()
 	if err != nil {
 		remoteLog.Warn("could not read saved remote access settings", "error", err)
+		return nil
+	}
+	saved, err = m.normalize(saved)
+	if err != nil {
+		m.lastErr = err.Error()
+		remoteLog.Warn("saved remote access settings are invalid", "error", err)
 		return nil
 	}
 	m.settings = saved
@@ -93,17 +98,17 @@ func (m *remoteManager) Init(flags remoteSettings) error {
 
 func (m *remoteManager) load() (app.RemoteSettings, error) {
 	r := m.store.Remote()
-	return app.RemoteSettings{Enabled: r.Enabled, Listen: r.EffectiveListen(), TLSHosts: r.TLSHosts, PlainHTTP: r.PlainHTTP}, nil
+	return app.RemoteSettings{Enabled: r.Enabled, Listen: r.EffectiveListen(), TLSHosts: r.TLSHosts, TLSEmail: r.TLSEmail}, nil
 }
 
 func (m *remoteManager) save() error {
 	r := m.store.Remote()
-	r.Enabled, r.Listen, r.TLSHosts, r.PlainHTTP = m.settings.Enabled, m.settings.Listen, m.settings.TLSHosts, m.settings.PlainHTTP
+	r.Enabled, r.Listen, r.TLSHosts, r.TLSEmail = m.settings.Enabled, m.settings.Listen, m.settings.TLSHosts, m.settings.TLSEmail
 	return m.store.SaveRemote(r)
 }
 
 func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, error) {
-	out := app.RemoteSettings{Enabled: in.Enabled, Listen: strings.TrimSpace(in.Listen), PlainHTTP: in.PlainHTTP}
+	out := app.RemoteSettings{Enabled: in.Enabled, Listen: strings.TrimSpace(in.Listen), TLSEmail: strings.TrimSpace(in.TLSEmail)}
 	if out.Listen == "" {
 		out.Listen = defaultRemoteListen
 	}
@@ -111,13 +116,9 @@ func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, er
 		return out, err
 	}
 	var hosts []string
-	for _, h := range strings.Split(in.TLSHosts, ",") {
-		h = strings.TrimSpace(h)
-		if h == "" {
-			continue
-		}
-		if !tlsHostPattern.MatchString(h) {
-			return out, fmt.Errorf("%q is not a valid host name or IP address", h)
+	for _, h := range splitHostList(in.TLSHosts) {
+		if net.ParseIP(strings.Trim(h, "[]")) != nil || !validPublicDNSName(h) {
+			return out, fmt.Errorf("%q is not a valid public DNS/DDNS name; automatic certificates require a public hostname", h)
 		}
 		hosts = append(hosts, h)
 	}
@@ -125,12 +126,18 @@ func (m *remoteManager) normalize(in app.RemoteSettings) (app.RemoteSettings, er
 		return out, fmt.Errorf("at most %d names or addresses are allowed", maxTLSHosts)
 	}
 	out.TLSHosts = strings.Join(hosts, ", ")
+	if out.TLSEmail != "" {
+		address, err := mail.ParseAddress(out.TLSEmail)
+		if err != nil || address.Address != out.TLSEmail {
+			return out, errors.New("enter a valid contact email address or leave it empty")
+		}
+	}
 	return out, nil
 }
 
 func (m *remoteManager) start() (remotePlan, error) {
 	plan, err := prepareRemote(m.dataDir, m.store, remoteSettings{
-		Listen: m.settings.Listen, CertFile: m.certFile, KeyFile: m.keyFile, ExtraHost: m.settings.TLSHosts, Plain: m.settings.PlainHTTP,
+		Listen: m.settings.Listen, CertFile: m.certFile, KeyFile: m.keyFile, ExtraHost: m.settings.TLSHosts, Email: m.settings.TLSEmail,
 	})
 	if err != nil {
 		return remotePlan{}, fmt.Errorf("remote access setup: %w", err)
@@ -139,14 +146,52 @@ func (m *remoteManager) start() (remotePlan, error) {
 	if err != nil {
 		return remotePlan{}, fmt.Errorf("cannot listen on %s: %w", m.settings.Listen, err)
 	}
+	hosts := m.linkHosts(plan)
+	if len(hosts) == 0 {
+		_ = raw.Close()
+		return remotePlan{}, errors.New("remote access requires at least one usable non-loopback DNS name or IP address in the configured host list or certificate")
+	}
+	var redirectListener net.Listener
+	var redirectServer *http.Server
+	redirectAddress, err := remoteHTTPListenAddress(m.settings.Listen)
+	if err != nil {
+		_ = raw.Close()
+		return remotePlan{}, err
+	}
+	redirectListener, err = net.Listen("tcp", redirectAddress)
+	if err != nil {
+		_ = raw.Close()
+		return remotePlan{}, fmt.Errorf("cannot start HTTP-to-HTTPS redirect on %s (TCP port 80 must be reachable): %w", redirectAddress, err)
+	}
+	if !plan.Creds.Configured() {
+		password, err := plan.Creds.Generate()
+		if err != nil {
+			_ = redirectListener.Close()
+			_ = raw.Close()
+			return remotePlan{}, fmt.Errorf("create initial remote access password: %w", err)
+		}
+		plan.NewPassword = password
+	}
+	redirectHandler := newHTTPSRedirectHandler(hosts, m.portForRedirect())
+	if plan.CertManager != nil {
+		redirectHandler = plan.CertManager.HTTPHandler(redirectHandler)
+	}
+	redirectServer = &http.Server{
+		Handler:           redirectHandler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
 	server := &http.Server{
-		Handler:           httpapi.NewRemote(m.application, httpapi.RemoteOptions{Auth: plan.Auth}),
+		Handler:           httpapi.NewRemote(m.application, httpapi.RemoteOptions{Auth: plan.Auth, AllowedHosts: hosts}),
 		ErrorLog:          log.New(tlsNoiseFilter{}, "", 0),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      3 * time.Minute,
 		IdleTimeout:       90 * time.Second,
-		MaxHeaderBytes:    1 << 20,
+		MaxHeaderBytes:    64 << 10,
 	}
 
 	conns := map[net.Conn]struct{}{}
@@ -161,7 +206,7 @@ func (m *remoteManager) start() (remotePlan, error) {
 			delete(conns, c)
 		}
 	}
-	m.server, m.plan, m.running = server, plan, true
+	m.server, m.redirect, m.plan, m.running = server, redirectServer, plan, true
 	m.closeAll = func() {
 		connsMu.Lock()
 		defer connsMu.Unlock()
@@ -169,26 +214,32 @@ func (m *remoteManager) start() (remotePlan, error) {
 			_ = c.Close()
 		}
 	}
-	var listener net.Listener = raw
-	if !m.settings.PlainHTTP {
-		listener = tls.NewListener(raw, plan.Certificate.ServerConfig())
+	if plan.CertManager != nil {
+		tlsConfig := plan.CertManager.TLSConfig()
+		tlsConfig.MinVersion = tls.VersionTLS12
+		server.TLSConfig = tlsConfig
+	} else {
+		server.TLSConfig = plan.Certificate.ServerConfig()
 	}
 	_, m.port, _ = net.SplitHostPort(raw.Addr().String())
 	m.lastErr = ""
-	m.hosts = m.linkHosts(plan)
-	if m.settings.PlainHTTP {
-		remoteLog.Warn("Remote access (plain HTTP) is ready: NOT ENCRYPTED, the password and all data can be read on the network", "port", m.port)
-	} else {
-		remoteLog.Info("Remote access (HTTPS) is ready", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
-	}
+	m.hosts = hosts
+	remoteLog.Info("Remote access (HTTPS) is ready", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
 	for _, url := range m.links() {
 		remoteLog.Info("Open from another device", "url", url)
 	}
-	if !m.settings.PlainHTTP && plan.Certificate.Source == "self-signed" {
-		remoteLog.Info("Self-signed certificate: the browser will warn once; compare the SHA-256 fingerprint above before accepting")
+	if plan.AutoTLS {
+		remoteLog.Info("Trusted HTTPS certificates will be obtained and renewed automatically", "hosts", strings.Join(m.hosts, ", "))
+	}
+	if redirectServer != nil {
+		go func() {
+			if err := redirectServer.Serve(redirectListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				remoteLog.Error("HTTP-to-HTTPS redirect server", "error", err)
+			}
+		}()
 	}
 	go func() {
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.ServeTLS(raw, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			remoteLog.Error("remote HTTPS server", "error", err)
 		}
 	}()
@@ -196,17 +247,9 @@ func (m *remoteManager) start() (remotePlan, error) {
 }
 
 func (m *remoteManager) linkHosts(plan remotePlan) []string {
-	var hosts []string
-	for _, extra := range strings.Split(m.settings.TLSHosts, ",") {
-		if extra = strings.TrimSpace(extra); extra != "" {
-			hosts = append(hosts, extra)
-		}
-	}
-	if len(hosts) == 0 && m.cli {
-		if !m.settings.PlainHTTP {
-			return displayHosts(plan.Certificate.Hosts)
-		}
-		hosts = remoteaccess.DefaultHosts()
+	hosts := splitHostList(m.settings.TLSHosts)
+	if len(hosts) == 0 {
+		hosts = splitHostList(strings.Join(plan.Certificate.Hosts, ","))
 	}
 	seen := map[string]bool{}
 	var unique []string
@@ -221,32 +264,40 @@ func (m *remoteManager) linkHosts(plan remotePlan) []string {
 
 func (m *remoteManager) links() []string {
 	scheme := "https://"
-	if m.settings.PlainHTTP {
-		scheme = "http://"
-	}
 	var urls []string
 	for _, host := range m.hosts {
-		urls = append(urls, scheme+net.JoinHostPort(host, m.port))
+		urls = append(urls, scheme+remoteURLHost(host, m.port))
 	}
 	return urls
 }
 
+func (m *remoteManager) portForRedirect() string {
+	_, port, _ := net.SplitHostPort(m.settings.Listen)
+	return port
+}
+
 func (m *remoteManager) stop() {
-	if m.server == nil {
+	if m.server == nil && m.redirect == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_ = m.server.Shutdown(ctx)
-	_ = m.server.Close()
+	if m.server != nil {
+		_ = m.server.Shutdown(ctx)
+		_ = m.server.Close()
+	}
+	if m.redirect != nil {
+		_ = m.redirect.Shutdown(ctx)
+		_ = m.redirect.Close()
+	}
 	if m.closeAll != nil {
 		m.closeAll()
 	}
 	if m.plan.Auth != nil {
 		m.plan.Auth.RevokeAll()
 	}
-	m.server, m.closeAll, m.running, m.plan, m.hosts = nil, nil, false, remotePlan{}, nil
-	remoteLog.Info("Remote access (HTTPS) stopped")
+	m.server, m.redirect, m.closeAll, m.running, m.plan, m.hosts = nil, nil, nil, false, remotePlan{}, nil
+	remoteLog.Info("Remote access stopped")
 }
 
 func (m *remoteManager) Stop() {
@@ -310,7 +361,15 @@ func (m *remoteManager) Apply(in app.RemoteSettings) (app.RemoteStatus, string, 
 		m.lastErr = ""
 	}
 	if err := m.save(); err != nil {
-		return m.status(), newPassword, fmt.Errorf("the settings are active but could not be saved: %w", err)
+		m.stop()
+		m.settings = previous
+		if previous.Enabled {
+			if _, restoreErr := m.start(); restoreErr != nil {
+				m.lastErr = fmt.Sprintf("settings could not be saved (%v), and previous remote access could not be restored (%v)", err, restoreErr)
+				return m.status(), "", fmt.Errorf("could not save remote settings or restore previous access: %w", err)
+			}
+		}
+		return m.status(), "", fmt.Errorf("could not save remote settings; previous settings were restored: %w", err)
 	}
 	return m.status(), newPassword, nil
 }

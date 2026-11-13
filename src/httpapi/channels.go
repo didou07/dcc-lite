@@ -21,7 +21,9 @@ const (
 	maxPiconBytes       = 512 << 10
 )
 
-var serviceRefPattern = regexp.MustCompile(`^[0-9]+:[0-9]+(:[0-9A-Fa-f]+){8}:[^\x00-\x1f\x7f]{0,900}$`)
+var bouquetRefPattern = regexp.MustCompile(`^[0-9]+:[0-9]+(:[0-9A-Fa-f]+){8}:FROM BOUQUET "[^"\\\x00-\x1f\x7f]{1,300}"( ORDER BY [A-Za-z]+)?$`)
+
+var serviceRefPattern = regexp.MustCompile(`^[0-9]+:[0-9]+(:[0-9A-Fa-f]+){8}:[^\x00-\x20\x7f"'<>\\]{0,900}$`)
 
 var piconRefPattern = regexp.MustCompile(`^([0-9]+(?::[0-9A-Fa-f]+){9}):`)
 
@@ -315,7 +317,7 @@ func (s *Server) deviceEPGNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bouquet := strings.TrimSpace(r.URL.Query().Get("bouquet"))
-	if !serviceRefPattern.MatchString(bouquet) {
+	if !bouquetRefPattern.MatchString(bouquet) {
 		writeError(w, http.StatusBadRequest, "not a bouquet reference")
 		return
 	}

@@ -29,7 +29,9 @@ type infoSignal struct {
 	SNR     int    `json:"snr"`
 	SNRdB   string `json:"snr_db,omitempty"`
 	AGC     int    `json:"agc"`
-	BER     int    `json:"ber"`
+	HasAGC  bool   `json:"has_agc"`
+	BER     uint64 `json:"ber"`
+	HasBER  bool   `json:"has_ber"`
 	Standby bool   `json:"standby,omitempty"`
 }
 
@@ -53,6 +55,18 @@ func jsonText(v any) string {
 		return strings.TrimSpace(x)
 	case float64:
 		return strconv.FormatFloat(x, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(x)
+	case int32:
+		return strconv.FormatInt(int64(x), 10)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case uint:
+		return strconv.FormatUint(uint64(x), 10)
+	case uint32:
+		return strconv.FormatUint(uint64(x), 10)
+	case uint64:
+		return strconv.FormatUint(x, 10)
 	case bool:
 		return strconv.FormatBool(x)
 	}
@@ -87,6 +101,11 @@ func percent(v any) (int, bool) {
 		f = 100
 	}
 	return int(f + 0.5), true
+}
+
+func signalStandby(signal map[string]any) bool {
+	standby, _ := signalBool(signal["inStandby"], signal["in_standby"], signal["standby"])
+	return standby
 }
 
 func buildDeviceInfo(about, signal map[string]any) deviceInfo {
@@ -125,12 +144,15 @@ func buildDeviceInfo(about, signal map[string]any) deviceInfo {
 		}
 	}
 	if signal != nil {
-		if snr, ok := percent(signal["snr"]); ok {
-			sig := &infoSignal{SNR: snr, SNRdB: jsonText(signal["snr_db"]), Standby: jsonText(signal["inStandby"]) == "true"}
-			sig.AGC, _ = percent(signal["agc"])
-			sig.BER, _ = percent(signal["ber"])
-			if n := jsonText(signal["tunernumber"]); n != "" {
-				sig.Tuner = joinWords(jsonText(signal["tunertype"]), "#"+n)
+		if snr, ok := percent(firstSignalValue(signal, "snr", "SNR")); ok {
+			sig := &infoSignal{SNR: snr, Standby: signalStandby(signal)}
+			if db, ok := decibels(firstSignalValue(signal, "snr_db", "snrdb", "SNRdB")); ok {
+				sig.SNRdB = strconv.FormatFloat(db, 'f', 1, 64)
+			}
+			sig.AGC, sig.HasAGC = percent(firstSignalValue(signal, "agc", "acg", "AGC"))
+			sig.BER, sig.HasBER = signalCounter(firstSignalValue(signal, "ber", "BER"))
+			if n := jsonText(firstSignalValue(signal, "tunernumber", "tuner_number")); n != "" {
+				sig.Tuner = joinWords(jsonText(firstSignalValue(signal, "tunertype", "tuner_type")), "#"+n)
 			}
 			out.Signal = sig
 		}
@@ -142,7 +164,13 @@ var temperaturePaths = []string{"/proc/stb/sensors/temp0/value", "/proc/stb/fp/t
 
 func parseTemperature(data []byte) (int, bool) {
 	f, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
-	if err != nil || f < 1 || f > 150 {
+	if err != nil || f <= 0 || f > 150000 {
+		return 0, false
+	}
+	if f > 150 {
+		f /= 1000
+	}
+	if f < 1 || f > 150 {
 		return 0, false
 	}
 	return int(f + 0.5), true

@@ -5,7 +5,7 @@ async function powerAction(action, doing, confirm = null, report = remoteError) 
   if (confirm && !(await ask({ title: confirm.title, message: confirm.message, input: false, ok: confirm.ok, danger: true }))) return false;
   report("");
   try {
-    const data = await post(`/api/v1/profiles/${encodeURIComponent(id)}/power`, { action });
+    const data = await post(profileURL(id, "power"), { action });
     void data;
     toast(doing);
     if (action === "reload") { loadChannels(true); return true; }
@@ -72,7 +72,7 @@ async function powerLoadSlots(id) {
   box.replaceChildren();
   note.textContent = "Looking for MultiBoot slots…";
   try {
-    const data = await api(`/api/v1/profiles/${encodeURIComponent(id)}/multiboot`);
+    const data = await api(profileURL(id, "multiboot"));
     if (gen !== powerView.gen) return;
     const slots = data.slots || [];
     if (!slots.length) { note.textContent = "This receiver does not report MultiBoot slots."; return; }
@@ -96,7 +96,7 @@ async function powerBoot(id, slot) {
   });
   if (!ok) return false;
   try {
-    await post(`/api/v1/profiles/${encodeURIComponent(id)}/multiboot`, { slot: slot.slot, code: slot.code });
+    await post(profileURL(id, "multiboot"), { slot: slot.slot, code: slot.code });
     toast(`Restarting into ${slot.label}…`);
     return true;
   } catch (error) { powerDialogError(error.message); return false; }
@@ -108,7 +108,7 @@ function setStandby(value) {
   if (ch.standby === true) $("#screenWait").textContent = "The receiver is in standby. Use the power button to wake it up.";
 }
 
-const sleepURL = (id) => `/api/v1/profiles/${encodeURIComponent(id)}/sleeptimer`;
+const sleepURL = (id) => profileURL(id, "sleeptimer");
 function sleepShow(state) {
   const note = $("#sleepState"), select = $("#sleepMinutes");
   if (!state) { note.textContent = ""; return; }
@@ -155,7 +155,7 @@ async function powerRecordNow(infinite) {
   powerDialogError("");
   for (const button of [$("#recNow"), $("#recInfinite")]) button.disabled = true;
   try {
-    await post(`/api/v1/profiles/${encodeURIComponent(id)}/record-now`, { infinite });
+    await post(profileURL(id, "record-now"), { infinite });
     toast(infinite ? "Recording started: stop it from the Timers list" : "Recording started");
     guide.timersAt = 0;
     $("#powerDialog").close();

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/didou07/dcc-lite/src/logx"
 	"github.com/didou07/dcc-lite/src/remoteaccess"
 	"github.com/didou07/dcc-lite/src/terminal"
 )
@@ -101,7 +101,7 @@ func (s *Server) terminalStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	originOK := validWebSocketOrigin(r)
 	if s.remote != nil {
-		originOK = remoteaccess.SameOriginFor(r, !s.remote.auth.Plain())
+		originOK = remoteaccess.SameOrigin(r)
 	}
 	if !originOK {
 		http.Error(w, "a matching Origin header is required for terminal WebSocket connections", http.StatusForbidden)

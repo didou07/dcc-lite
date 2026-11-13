@@ -1,12 +1,12 @@
 package terminal
 
 import (
-	"github.com/didou07/dcc-lite/src/logx"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/didou07/dcc-lite/src/logx"
 	"net"
 	"strconv"
 	"strings"
@@ -23,6 +23,7 @@ var (
 	ErrSessionLimit    = errors.New("terminal session limit reached")
 	ErrSessionNotFound = errors.New("terminal session not found")
 	ErrSessionAttached = errors.New("terminal session is already attached")
+	ErrManagerClosed   = errors.New("terminal manager is closed")
 )
 
 const (
@@ -51,16 +52,21 @@ type managedSession struct {
 }
 
 type Manager struct {
-	mu       sync.Mutex
-	sessions map[string]*managedSession
-	opening  map[string]int
-	stop     chan struct{}
-	closed   chan struct{}
-	once     sync.Once
+	mu             sync.Mutex
+	sessions       map[string]*managedSession
+	opening        map[string]int
+	stop           chan struct{}
+	done           chan struct{}
+	closeOnce      sync.Once
+	openWG         sync.WaitGroup
+	shuttingDown   bool
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 }
 
 func NewManager() *Manager {
-	m := &Manager{sessions: make(map[string]*managedSession), opening: make(map[string]int), stop: make(chan struct{}), closed: make(chan struct{})}
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+	m := &Manager{sessions: make(map[string]*managedSession), opening: make(map[string]int), stop: make(chan struct{}), done: make(chan struct{}), shutdownCtx: shutdownCtx, shutdownCancel: shutdownCancel}
 	go m.cleanupLoop()
 	return m
 }
@@ -85,6 +91,10 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	}
 
 	m.mu.Lock()
+	if m.shuttingDown {
+		m.mu.Unlock()
+		return SessionInfo{}, ErrManagerClosed
+	}
 
 	var evicted []*managedSession
 	for {
@@ -108,8 +118,15 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 		evicted = append(evicted, victim)
 	}
 	m.opening[profile.ID]++
+	m.openWG.Add(1)
 	m.mu.Unlock()
 	closeDetachedSessions(evicted)
+	dialCtx, cancelDial := context.WithCancel(ctx)
+	stopShutdown := context.AfterFunc(m.shutdownCtx, cancelDial)
+	defer func() {
+		stopShutdown()
+		cancelDial()
+	}()
 	defer func() {
 		m.mu.Lock()
 		m.opening[profile.ID]--
@@ -117,6 +134,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 			delete(m.opening, profile.ID)
 		}
 		m.mu.Unlock()
+		m.openWG.Done()
 	}()
 
 	var backend core.TerminalSession
@@ -125,7 +143,7 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	case "telnet":
 		address := net.JoinHostPort(strings.Trim(profile.Host, "[]"), strconv.Itoa(port))
 		var conn net.Conn
-		conn, err = (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "tcp", address)
+		conn, err = (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 30 * time.Second}).DialContext(dialCtx, "tcp", address)
 		if err == nil {
 			username := profile.Username
 			if username == "" {
@@ -145,6 +163,11 @@ func (m *Manager) Open(ctx context.Context, profile config.Profile, protocol str
 	}
 	info := SessionInfo{ID: id, ProfileID: profile.ID, Protocol: protocol, Host: profile.Host, Port: port, OpenedAt: time.Now().UTC()}
 	m.mu.Lock()
+	if m.shuttingDown {
+		m.mu.Unlock()
+		_ = backend.Close()
+		return SessionInfo{}, ErrManagerClosed
+	}
 	m.sessions[id] = &managedSession{info: info, backend: backend, pump: newOutputPump(backend), expiresAt: time.Now().Add(unattachedSessionTTL)}
 	m.mu.Unlock()
 	tlog.Info("terminal opened", "device", profile.Name, "host", profile.Host, "port", port, "session", id)
@@ -176,9 +199,9 @@ func (m *Manager) SetInitialDirectoryAndCommand(sessionID, directory, command st
 	}
 	payload := append([]byte(command), '\r')
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	session, ok := m.sessions[sessionID]
-	m.mu.Unlock()
-	if !ok {
+	if !ok || m.shuttingDown {
 		return ErrSessionNotFound
 	}
 	if telnet, ok := session.backend.(*TelnetSession); ok {
@@ -279,8 +302,13 @@ func (m *Manager) Close(id string) error {
 }
 
 func (m *Manager) CloseAll() {
-	m.once.Do(func() { close(m.stop) })
-	<-m.closed
+	m.mu.Lock()
+	m.shuttingDown = true
+	m.mu.Unlock()
+	m.shutdownCancel()
+	m.closeOnce.Do(func() { close(m.stop) })
+	<-m.done
+	m.openWG.Wait()
 	m.mu.Lock()
 	all := make([]*managedSession, 0, len(m.sessions))
 	for id, session := range m.sessions {
@@ -296,7 +324,7 @@ func (m *Manager) CloseAll() {
 func (m *Manager) cleanupLoop() {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-	defer close(m.closed)
+	defer close(m.done)
 	for {
 		select {
 		case <-m.stop:

@@ -200,7 +200,7 @@ func probe(ctx context.Context, dial func(context.Context, string, string) (net.
 	host.Telnet, _ = check(ports[1], false)
 	host.HTTP, _ = check(ports[2], false)
 	host.Banner = banner
-	return host, host.FTP || host.Telnet
+	return host, host.FTP || host.Telnet || host.HTTP
 }
 
 func cleanBanner(line string) string {

@@ -1,9 +1,11 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/didou07/dcc-lite/src/config"
@@ -24,22 +26,17 @@ type App struct {
 	Staging *filetransfer.LocalFS
 
 	RemoteAccess RemoteController
+
+	backgroundCancel context.CancelFunc
+	backgroundDone   chan struct{}
+	closeOnce        sync.Once
 }
 
 func New(version string, profiles *config.ProfileStore, dirs ...string) *App {
 	localFiles, _ := filetransfer.NewLocalFS()
 	files := filetransfer.NewManager()
 	staging := newStaging(dirs)
-	if staging != nil {
-		logx.Go(logx.For("app"), "staging sweeper", func() {
-			ticker := time.NewTicker(time.Minute)
-			defer ticker.Stop()
-			for now := range ticker.C {
-				files.SweepStaged(staging, now)
-			}
-		})
-	}
-	return &App{
+	a := &App{
 		Version:     version,
 		Profiles:    profiles,
 		Connections: connection.NewManager(connection.NewTCPChecker()),
@@ -48,6 +45,43 @@ func New(version string, profiles *config.ProfileStore, dirs ...string) *App {
 		LocalFiles:  localFiles,
 		Staging:     staging,
 	}
+	if staging != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		a.backgroundCancel = cancel
+		a.backgroundDone = make(chan struct{})
+		logx.Go(logx.For("app"), "staging sweeper", func() {
+			defer close(a.backgroundDone)
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case now := <-ticker.C:
+					files.SweepStaged(staging, now)
+				}
+			}
+		})
+	}
+	return a
+}
+
+func (a *App) Close() {
+	if a == nil {
+		return
+	}
+	a.closeOnce.Do(func() {
+		if a.backgroundCancel != nil {
+			a.backgroundCancel()
+			<-a.backgroundDone
+		}
+		if a.Terminals != nil {
+			a.Terminals.CloseAll()
+		}
+		if a.Files != nil {
+			a.Files.CloseAll()
+		}
+	})
 }
 
 func newStaging(dirs []string) *filetransfer.LocalFS {

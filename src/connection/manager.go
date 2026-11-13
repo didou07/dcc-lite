@@ -1,9 +1,8 @@
 package connection
 
 import (
-	"log/slog"
-	"github.com/didou07/dcc-lite/src/logx"
 	"context"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/didou07/dcc-lite/src/config"
+	"github.com/didou07/dcc-lite/src/logx"
 )
 
 var clog = logx.For("device")
@@ -124,6 +124,7 @@ func (c *TCPChecker) Check(parent context.Context, profile config.Profile) Statu
 		timeout = 3 * time.Second
 	}
 	targets := []Service{
+		{Name: "WebIf", Port: profile.EffectiveWebPort()},
 		{Name: "FTP", Port: profile.EffectiveFTPPort()},
 		{Name: "Telnet", Port: profile.EffectiveTelnetPort()},
 	}
@@ -161,7 +162,7 @@ func (c *TCPChecker) Check(parent context.Context, profile config.Profile) Statu
 	case parent.Err() != nil:
 		status.State, status.Message = "offline", "Check was cancelled"
 	case open == len(results):
-		status.State, status.Message = "online", "FTP and Telnet are reachable"
+		status.State, status.Message = "online", "WebIf, FTP and Telnet are reachable"
 	case open > 0:
 		status.State, status.Message = "partial", "Reachable: "+strings.Join(names, ", ")
 	default:

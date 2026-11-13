@@ -1,7 +1,11 @@
 "use strict";
 (async function start() {
   applyTerminalLook();
-  api("/api/v1/health").then((health) => { $(".brand").title = `DCC Lite ${health.version}`; }).catch(() => {});
+  api("/api/v1/health").then((health) => {
+    if (!health?.version) return;
+    $(".brand").title = `DCC Lite ${health.version}`;
+    $("#sbVersion").textContent = `v${health.version}`;
+  }).catch(() => {});
   try { await loadDevices(); } catch (error) { toastError(error); }
   const saved = store.get("view", "devices");
   const first = devices.list.length ? saved : "devices";
@@ -10,9 +14,9 @@
   else if (devices.currentID && !devices.status.has(devices.currentID)) testDevice(devices.currentID);
 })();
 
-api("/api/v1/system").then((info) => {
+systemInfo().then((info) => {
   if (info?.remote !== "true") { $("#remoteAccessBtn").hidden = false; return; }
-  const beat = () => fetch("/api/v1/health", { cache: "no-store" }).then((r) => { if (r.status === 401) window.location.assign("/login"); }).catch(() => {});
+  const beat = () => fetch("/api/v1/health", { cache: "no-store" }).then((r) => { authExpired(r.status); }).catch(() => {});
   window.setInterval(beat, 4 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) beat(); });
   const button = $("#logoutButton");

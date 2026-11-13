@@ -14,7 +14,7 @@ func validWebSocketOrigin(r *http.Request) bool {
 		return false
 	}
 	u, err := url.Parse(origin)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 		return false
 	}
 	return isLoopbackHost(u.Host) && strings.EqualFold(u.Host, r.Host)
@@ -29,8 +29,8 @@ func localOnly(next http.Handler) http.Handler {
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
-			u, err := url.Parse(origin)
-			if err != nil || !isLoopbackHost(u.Host) || !strings.EqualFold(u.Host, host) {
+			u, err := url.Parse(strings.TrimSpace(origin))
+			if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || !isLoopbackHost(u.Host) || !strings.EqualFold(u.Host, host) {
 				rejected(r, "cross-origin request")
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 				return

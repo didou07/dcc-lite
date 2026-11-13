@@ -56,6 +56,8 @@ func OpenFTP(ctx context.Context, options FTPOptions) (*FTPClient, error) {
 		return nil, fmt.Errorf("connect to FTP server: %w", err)
 	}
 	client := &FTPClient{control: conn, reader: bufio.NewReaderSize(conn, 32<<10), host: strings.Trim(options.Host, "[]")}
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
 	deadline := time.Now().Add(ftpControlTimeout)
 	if value, ok := ctx.Deadline(); ok && value.Before(deadline) {
 		deadline = value
@@ -85,6 +87,20 @@ func OpenFTP(ctx context.Context, options FTPOptions) (*FTPClient, error) {
 		}
 	}
 	if err != nil {
+		_ = conn.Close()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, err
+	}
+	if !stopCancel() {
+		_ = conn.Close()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, context.Canceled
+	}
+	if err := ctx.Err(); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
@@ -155,7 +171,7 @@ func (c *FTPClient) Download(ctx context.Context, remotePath, localPath string, 
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(localPath), ".dccnext-download-*.part")
+	tmp, err := os.CreateTemp(filepath.Dir(localPath), ".dcclite-download-*.part")
 	if err != nil {
 		return fmt.Errorf("create temporary download file: %w", err)
 	}
@@ -276,11 +292,11 @@ func (c *FTPClient) ResumeUpload(ctx context.Context, localPath, remotePath stri
 	defer func() { stop(); _ = c.control.SetDeadline(time.Time{}) }()
 	c.mu.Lock()
 	offset, sizeErr := c.remoteSizeLocked(remotePath)
-	if sizeErr != nil && !isFTPPathNotFound(sizeErr) {
-		c.mu.Unlock()
-		return fmt.Errorf("cannot safely resume upload: %w", sizeErr)
-	}
 	if sizeErr != nil {
+		if !isFTPPathNotFound(sizeErr) {
+			c.mu.Unlock()
+			return fmt.Errorf("cannot safely resume upload: %w", sizeErr)
+		}
 		offset = 0
 	}
 	if offset > info.Size() {
@@ -306,8 +322,28 @@ func (c *FTPClient) ResumeUpload(ctx context.Context, localPath, remotePath stri
 	return nil
 }
 
+type ftpReplyError struct {
+	command string
+	code    int
+	message string
+}
+
+func (e *ftpReplyError) Error() string {
+	return fmt.Sprintf("FTP %s rejected (%d): %s", e.command, e.code, strings.TrimSpace(e.message))
+}
+
 func isFTPPathNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "FTP SIZE rejected (550)")
+	var reply *ftpReplyError
+	if !errors.As(err, &reply) || reply.code != 550 {
+		return false
+	}
+	message := strings.ToLower(reply.message)
+	for _, phrase := range []string{"not found", "no such file", "no such directory", "does not exist", "cannot find", "can't find"} {
+		if strings.Contains(message, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *FTPClient) remoteSizeLocked(remotePath string) (int64, error) {
@@ -316,7 +352,7 @@ func (c *FTPClient) remoteSizeLocked(remotePath string) (int64, error) {
 		return 0, err
 	}
 	if code != 213 {
-		return 0, fmt.Errorf("FTP SIZE rejected (%d)", code)
+		return 0, &ftpReplyError{command: "SIZE", code: code, message: message}
 	}
 	fields := strings.Fields(message)
 	if len(fields) == 0 {
@@ -657,7 +693,7 @@ func parseEPSVPort(message string) (int, error) {
 	}
 	delimiter := value[0]
 	parts := strings.Split(value, string(delimiter))
-	if len(parts) < 5 {
+	if len(parts) != 5 || parts[0] != "" || parts[1] != "" || parts[2] != "" || parts[4] != "" {
 		return 0, errors.New("invalid FTP EPSV port")
 	}
 	port, err := strconv.Atoi(parts[3])
@@ -677,12 +713,15 @@ func parsePASVPort(message string) (int, error) {
 	if len(parts) != 6 {
 		return 0, errors.New("invalid FTP PASV response")
 	}
-	p1, e1 := strconv.Atoi(strings.TrimSpace(parts[4]))
-	p2, e2 := strconv.Atoi(strings.TrimSpace(parts[5]))
-	if e1 != nil || e2 != nil || p1 < 0 || p1 > 255 || p2 < 0 || p2 > 255 {
-		return 0, errors.New("invalid FTP PASV port")
+	values := [6]int{}
+	for i, part := range parts {
+		value, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || value < 0 || value > 255 {
+			return 0, errors.New("invalid FTP PASV address or port")
+		}
+		values[i] = value
 	}
-	port := p1*256 + p2
+	port := values[4]*256 + values[5]
 	if port == 0 {
 		return 0, errors.New("invalid FTP PASV port")
 	}
@@ -736,7 +775,7 @@ func (c *FTPClient) readReply() (int, string, error) {
 			}
 			totalBytes += len(next) + 2
 			if totalBytes > maxFTPReplyBytes {
-				return 0, "", errors.New("FTP multiline reply exceeds size limit")
+				return 0, "", c.failControl(errors.New("FTP multiline reply exceeds size limit"))
 			}
 			lines = append(lines, next)
 			if strings.HasPrefix(next, strconv.Itoa(code)+" ") {
@@ -759,12 +798,7 @@ func (c *FTPClient) readLine() (string, error) {
 			continue
 		}
 		if err != nil {
-
-			var netErr net.Error
-			if !(errors.As(err, &netErr) && netErr.Timeout()) {
-				return "", c.failControl(err)
-			}
-			return "", err
+			return "", c.failControl(fmt.Errorf("read FTP control response: %w", err))
 		}
 		return strings.TrimRight(string(line), "\r\n"), nil
 	}

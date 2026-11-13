@@ -189,5 +189,5 @@ var (
 	lamedb4Typed    = regexp.MustCompile(`^([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):([0-9A-Fa-f]{1,8}):(\d+):\d+`)
 	lamedb4Provider = regexp.MustCompile(`^p:([^,]*)`)
 	lamedb5Full     = regexp.MustCompile(`^s:([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,]([0-9A-Fa-f]{1,8})[:,](\d+)[:,]\d+[^"]*"([^"]*)"`)
-	lamedb5Provider = regexp.MustCompile(`,p:([^,]*)`)
+	lamedb5Provider = regexp.MustCompile(`[:,]p:([^,:]*)`)
 )

@@ -1,6 +1,6 @@
 "use strict";
 const toolsState = { scope: "channels", busy: false, ui: "tools", ipkFile: null };
-const toolsSessionURL = (tail) => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/${tail}`;
+const toolsSessionURL = (tail) => sessionURL(files.sessionID, tail);
 const toolsDirValue = () => $("#bqDir").value.trim() || "/etc/enigma2";
 const toolsDirQuery = (lead) => (toolsDirValue() !== "/etc/enigma2" ? `${lead}dir=${encodeURIComponent(toolsDirValue())}` : "");
 function toolsError(message) { const box = $(`#${toolsState.ui}Error`); box.textContent = message || ""; box.hidden = !message; }
@@ -69,7 +69,7 @@ function uploadFile(url, file, label, fileName = file.name) {
     xhr.onerror = () => reject(new Error("The upload failed. Check that DCC Lite is still running."));
     xhr.onload = () => {
       const data = xhr.response || {};
-      if (xhr.status === 401 && data.code === "auth_required") { window.location.assign("/login"); return; }
+      if (authExpired(xhr.status, data)) { reject(new Error("You were signed out. Opening the sign-in page…")); return; }
       if (xhr.status < 200 || xhr.status >= 300) { reject(new Error(data.error || `The upload was refused (${xhr.status}).`)); return; }
       resolve(data);
     };
@@ -83,13 +83,10 @@ async function toolsBackup() {
   toolsState.ui = "tools";
   toolsError(""); toolsBusy(true, "Reading the files from the receiver…");
   try {
-    const response = await fetch(toolsSessionURL(`enigma2/backup?scope=${toolsState.scope}${toolsDirQuery("&")}`));
-    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || `The backup failed (${response.status}).`); }
+    const response = await fetchChecked(toolsSessionURL(`enigma2/backup?scope=${toolsState.scope}${toolsDirQuery("&")}`));
     const blob = await response.blob();
     const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "enigma2-backup.zip";
-    const link = h("a", { href: URL.createObjectURL(blob), download: name });
-    document.body.append(link); link.click(); link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    downloadBlob(blob, name);
     toast(`Backup saved as ${name}`);
   } catch (error) { toolsError(error.message); }
   toolsBusy(false);
@@ -114,7 +111,7 @@ async function toolsRestore() {
     result.textContent = text; result.hidden = false;
     ch.cache.clear(); ch.epg.clear();
     if (!$("#channelPane").hidden) loadChannels();
-    $("#toolsRestoreFile").value = "";
+    $("#toolsRestoreFile").value = ""; bkDropRefresh();
     bqReset(); bqLoadLists();
   } catch (error) { toolsError(error.message); }
   toolsBusy(false);
@@ -168,4 +165,21 @@ $("#toolsScope").addEventListener("click", (event) => {
   if (!button) return;
   toolsState.scope = button.dataset.scope;
   for (const b of $$("#toolsScope button")) b.setAttribute("aria-checked", String(b === button));
+});
+
+function bkDropRefresh() {
+  const file = $("#toolsRestoreFile").files[0];
+  $("#toolsDropName").textContent = file ? file.name : "Choose a backup .zip";
+  $("#toolsDropHint").textContent = file ? `${(file.size / 1024).toFixed(file.size < 10240 ? 1 : 0)} KB · click to choose another` : "or drop it here";
+  $("#toolsDrop").classList.toggle("has-file", !!file);
+}
+$("#toolsRestoreFile").addEventListener("change", bkDropRefresh);
+for (const type of ["dragenter", "dragover"]) $("#toolsDrop").addEventListener(type, (event) => { event.preventDefault(); $("#toolsDrop").classList.add("drag"); });
+for (const type of ["dragleave", "drop"]) $("#toolsDrop").addEventListener(type, () => $("#toolsDrop").classList.remove("drag"));
+$("#toolsDrop").addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  const transfer = new DataTransfer(); transfer.items.add(file);
+  $("#toolsRestoreFile").files = transfer.files; bkDropRefresh();
 });

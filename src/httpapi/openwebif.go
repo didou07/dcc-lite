@@ -31,33 +31,20 @@ func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
 	if profile.Scheme == "https" {
 		scheme = "https"
 	}
-	port := profile.Port
-
-	switch {
-	case port == 0 && scheme == "https", port == 80 && scheme == "https":
-		port = 443
-	case port == 0, port == 443 && scheme == "http":
-		port = 80
-	}
+	port := profile.EffectiveWebPort()
 	user := strings.TrimSpace(profile.Username)
 	if user == "" {
 		user = config.DefaultUsername
 	}
 	client := &http.Client{Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	if scheme == "https" && profile.InsecureTLS {
-
-		var suites []uint16
-		for _, suite := range tls.CipherSuites() {
-			suites = append(suites, suite.ID)
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSHandshakeTimeout = timeout
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, // #nosec G402 -- explicit per-device opt-in for receivers with self-signed certificates.
 		}
-		for _, suite := range tls.InsecureCipherSuites() {
-			suites = append(suites, suite.ID)
-		}
-		client.Transport = &http.Transport{
-			TLSHandshakeTimeout: timeout,
-			DisableKeepAlives:   true,
-			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10, CipherSuites: suites},
-		}
+		client.Transport = transport
 	}
 	return deviceWeb{
 		base: scheme + "://" + net.JoinHostPort(strings.Trim(profile.Host, "[]"), strconv.Itoa(port)),

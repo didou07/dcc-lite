@@ -131,7 +131,7 @@ func (m *Manager) WriteText(ctx context.Context, sessionID, remotePath string, w
 				return ErrEditConflict
 			}
 		}
-		tmp, err := os.CreateTemp("", "dccnext-edit-*.tmp")
+		tmp, err := os.CreateTemp("", "dcclite-edit-*.tmp")
 		if err != nil {
 			return err
 		}
@@ -210,7 +210,7 @@ func sameRemoteVersion(entry core.FileEntry, size int64, modified time.Time) boo
 
 func downloadSmall(ctx context.Context, adapter core.FileTransfer, remotePath string, limit int64) ([]byte, error) {
 
-	dir, err := os.MkdirTemp("", "dccnext-edit-*")
+	dir, err := os.MkdirTemp("", "dcclite-edit-*")
 	if err != nil {
 		return nil, err
 	}

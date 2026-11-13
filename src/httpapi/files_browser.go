@@ -58,7 +58,7 @@ func safeStageName(name string) string {
 func (s *Server) uploadFromBrowser(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 	if _, ok := s.sessionProfile(sessionID); !ok {
-		writeError(w, http.StatusNotFound, "file session not found")
+		writeSessionNotFound(w)
 		return
 	}
 	if s.app.Staging == nil {
@@ -130,7 +130,7 @@ func (s *Server) uploadFromBrowser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) prepareBrowserDownload(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 	if _, ok := s.sessionProfile(sessionID); !ok {
-		writeError(w, http.StatusNotFound, "file session not found")
+		writeSessionNotFound(w)
 		return
 	}
 	if s.app.Staging == nil {

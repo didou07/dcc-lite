@@ -2,7 +2,7 @@
 const bq = { profileID: "", dir: "/etc/enigma2", kind: "tv", lists: { tv: [], radio: [] }, file: "", entries: [], original: "", hash: "", sel: new Set(), anchor: -1, busy: false, dragging: [], namesKnown: true };
 const bqHist = { undo: [], redo: [] };
 const bqClip = { entries: [] };
-const bqURL = (tail) => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/enigma2/${tail}`;
+const bqURL = (tail) => sessionURL(files.sessionID, `enigma2/${tail}`);
 const bqSnapshot = () => JSON.stringify([$("#bqName").value, bq.entries.map((e) => [e.ref, e.description])]);
 const bqDirty = () => Boolean(bq.file) && bqSnapshot() !== bq.original;
 const bqFilter = () => $("#bqFilter").value.trim().toLowerCase();
@@ -389,7 +389,6 @@ const bqStreamSafeName = (name) => name.replace(/[:\r\n]+/g, " ").trim().slice(0
 function bqStreamRef(type, url, name) { return `${type}:0:1:${bqStreamId(url)}:0:0:0:0:0:0:${bqStreamEncode(url)}:${bqStreamSafeName(name)}`; }
 function bqStreamParts(ref) { const f = ref.split(":"); return { type: f[0], url: f[10] || "", name: f.slice(11).join(":") }; }
 function bqStreamURL(entry) { try { return decodeURIComponent(bqStreamParts(entry.ref).url); } catch { return bqStreamParts(entry.ref).url; } }
-function bqStreamHost(entry) { try { const u = new URL(bqStreamURL(entry)); return u.host + (u.pathname.length > 1 ? u.pathname : ""); } catch { return bqStreamURL(entry); } }
 function bqSetStreamName(ref, name) { const f = ref.split(":"); return [...f.slice(0, 11), bqStreamSafeName(name)].join(":"); }
 const bqStreamURLOK = (url) => /^(https?|rtmp|rtsp|rtp|udp|mms):\/\/\S+$/i.test(url.trim());
 function bqParseM3U(text) {
@@ -420,8 +419,8 @@ function bqStreamUpdate() {
   if (m3u) {
     bqStream.parsed = bqParseM3U($("#bqM3uText").value);
     $("#bqStreamCount").textContent = $("#bqM3uText").value.trim() ? `${bqPlural(bqStream.parsed.length, "stream", "streams")} found` : "";
-    $("#bqStreamOk").textContent = bqStream.parsed.length ? `Add ${bqStream.parsed.length}` : "Add";
-  } else { $("#bqStreamCount").textContent = ""; $("#bqStreamOk").textContent = "Add"; }
+    $("#bqStreamOk .lbl").textContent = bqStream.parsed.length ? `Add ${bqStream.parsed.length}` : "Add";
+  } else { $("#bqStreamCount").textContent = ""; $("#bqStreamOk .lbl").textContent = "Add"; }
 }
 function bqOpenStream() {
   if (!bq.file) return;
@@ -487,9 +486,7 @@ function bqExportM3U() {
   }
   if (!count) { bqStatus("Nothing to export.", "error"); return; }
   const file = `${($("#bqName").value.trim() || "bouquet").replace(/[^\w.-]+/g, "_")}.m3u`;
-  const link = h("a", { href: URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "audio/x-mpegurl" })), download: file });
-  document.body.append(link); link.click(); link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+  downloadBlob(new Blob([lines.join("\n") + "\n"], { type: "audio/x-mpegurl" }), file);
   bqStatus(`Exported ${bqPlural(count, "channel", "channels")} to ${file}.`, "ok");
 }
 async function bqCopyNames() {
@@ -554,7 +551,7 @@ const bqAdd = { items: [], sel: new Set(), timer: 0, seq: 0, anchor: -1, have: n
 function bqAddUpdateCount() {
   $("#bqAddCount").textContent = bqAdd.sel.size ? `${bqAdd.sel.size} selected` : "";
   $("#bqAddConfirm").disabled = !bqAdd.sel.size;
-  $("#bqAddConfirm").textContent = bqAdd.sel.size > 1 ? `Add ${bqAdd.sel.size}` : "Add selected";
+  $("#bqAddConfirm .lbl").textContent = bqAdd.sel.size > 1 ? `Add ${bqAdd.sel.size}` : "Add selected";
   $("#bqAddAll").disabled = !bqAdd.items.length;
 }
 function bqAddRender() {

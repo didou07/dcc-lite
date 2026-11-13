@@ -11,8 +11,7 @@ const logRank = (level) => Math.max(0, LOG_LEVELS.indexOf(level));
 
 function logTime(iso) {
   const d = new Date(iso);
-  const p = (n, w = 2) => String(n).padStart(w, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad2(d.getMilliseconds(), 3)}`;
 }
 function logDateTime(iso) { return new Date(iso).toLocaleString(); }
 
@@ -214,7 +213,7 @@ async function logsCopy() {
     if (e.stack) parts.push(`stack=${e.stack.split("\n").map((l) => l.trim()).filter(Boolean).join(" > ")}`);
     return parts.join(" ");
   }).join("\n");
-  try { await navigator.clipboard.writeText(text); toast("Log copied"); } catch { toast("Could not copy", "error"); }
+  if (await clipboardWrite(text)) toast("Log copied"); else toast("Could not copy", "error");
 }
 
 $("#logsLevel").value = logs.minLevel;

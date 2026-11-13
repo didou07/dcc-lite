@@ -33,6 +33,7 @@ function sigSetBar(value) {
 }
 function sigSetLive(state, text) {
   const node = $("#sigLive");
+  if (!node) return;
   node.dataset.state = state;
   $("span", node).textContent = text;
   node.title = text;
@@ -63,9 +64,9 @@ function sigRender(reading) {
   sigRenderTrend(reading.locked ? reading.snr : null);
   $("#sigMeter").setAttribute("aria-valuenow", String(reading.snr));
   $("#sigDb").textContent = reading.has_db ? `${reading.snr_db.toFixed(1)} dB` : `${reading.snr} %`;
-  $("#sigAgc").textContent = `${reading.agc} %`;
-  $("#sigAgcBar").style.width = `${reading.agc}%`;
-  $("#sigBer").textContent = String(reading.ber);
+  $("#sigAgc").textContent = reading.has_agc ? `${reading.agc} %` : "—";
+  $("#sigAgcBar").style.width = reading.has_agc ? `${reading.agc}%` : "0%";
+  $("#sigBer").textContent = reading.has_ber ? String(reading.ber) : "—";
   $("#sigTuner").textContent = reading.tuner || "—";
   if (reading.channel) $("#sigChannel").textContent = reading.channel;
 }
@@ -147,9 +148,14 @@ function sigDraw() {
   };
   stroke(trace("agc"), color("--faint"), 1.4);
   const snrRuns = trace("snr");
+  const withAlpha = (name, alpha) => {
+    ctx.fillStyle = "#888888"; ctx.fillStyle = color(name);
+    const v = String(ctx.fillStyle), m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(v);
+    return m ? `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})` : v;
+  };
   const gradient = ctx.createLinearGradient(0, top, 0, top + h);
-  gradient.addColorStop(0, color("--accent") + "55"); gradient.addColorStop(1, color("--accent") + "00");
-  if (/^#[0-9a-f]{6}$/i.test(color("--accent"))) {
+  gradient.addColorStop(0, withAlpha("--accent", 0.33)); gradient.addColorStop(1, withAlpha("--accent", 0));
+  {
     ctx.fillStyle = gradient;
     for (const r of snrRuns) {
       if (r.length < 2) continue;
@@ -168,7 +174,7 @@ function sigDraw() {
 
 function sigPush(reading) {
   const now = performance.now();
-  const point = { t: now, snr: reading?.locked ? reading.snr : null, agc: reading?.available ? reading.agc : null };
+  const point = { t: now, snr: reading?.locked ? reading.snr : null, agc: reading?.available && reading.has_agc ? reading.agc : null };
   sig.history.push(point);
   while (sig.history.length && now - sig.history[0].t > SIG_WINDOW_MS) sig.history.shift();
   if (reading?.locked) {
@@ -223,14 +229,7 @@ async function sigLoop(gen) {
     try {
       const withChannel = sig.polls % 20 === 0 ? "?channel=1" : "";
       sig.polls += 1;
-      const response = await fetch(`/api/v1/profiles/${encodeURIComponent(sig.profileID)}/signal${withChannel}`, { signal: controller.signal, cache: "no-store" });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        if (response.status === 401 && data.code === "auth_required") { window.location.assign("/login"); return; }
-        const error = new Error(data.error || `Request failed (${response.status})`);
-        error.fatal = response.status === 404 || response.status === 409;
-        throw error;
-      }
+      const response = await fetchChecked(profileURL(sig.profileID, `signal${withChannel}`), { signal: controller.signal, cache: "no-store" });
       const reading = await response.json();
       if (gen !== sig.gen) return;
       sig.failures = 0;
@@ -243,6 +242,7 @@ async function sigLoop(gen) {
     } catch (error) {
       if (gen !== sig.gen) return;
       if (error.name === "AbortError") continue;
+      if (error.auth) return;
       sig.failures += 1;
       sigShowError(error.message);
       sigSetLive("error", "No link");

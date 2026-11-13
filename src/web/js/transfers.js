@@ -13,7 +13,7 @@ async function transferSelection(direction, given = null, destPath = null) {
   let existing;
   try {
     const listing = direction === "upload"
-      ? await api(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/list?path=${encodeURIComponent(destBase)}`)
+      ? await api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(destBase)}`))
       : await api(`/api/v1/files/local/list?path=${encodeURIComponent(destBase)}`);
     existing = new Set((listing.entries || []).map((e) => e.name));
   } catch (error) { handleOpError(error, direction === "upload" ? "remote" : "local"); return; }
@@ -30,7 +30,7 @@ async function transferSelection(direction, given = null, destPath = null) {
     const payload = direction === "upload"
       ? { direction, local_path: entry.path, remote_path: joinRemote(destBase, entry.name), is_directory: entry.is_dir, overwrite: existing.has(entry.name) && overwrite }
       : { direction, local_path: joinLocal(destBase, entry.name), remote_path: entry.path, is_directory: entry.is_dir, overwrite: existing.has(entry.name) && overwrite };
-    try { await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/transfer`, payload); queued++; }
+    try { await post(sessionURL(files.sessionID, "transfer"), payload); queued++; }
     catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (sessionLost(error)) { handleSessionLost(); break; } }
   }
   if (queued) toast(`${queued} ${direction}${queued === 1 ? "" : "s"} queued`);
@@ -84,7 +84,7 @@ function taskRow(task) {
 }
 async function saveStagedDownload(task) {
   files.fetched.add(task.id); files.autoDone.add(task.id);
-  const link = h("a", { href: `/api/v1/files/transfers/${encodeURIComponent(task.id)}/file`, download: transferName(task), hidden: true });
+  const link = h("a", { href: transferURL(task.id, "file"), download: transferName(task), hidden: true });
   document.body.append(link); link.click(); link.remove();
   window.setTimeout(loadTransfers, 1500);
 }
@@ -132,7 +132,7 @@ function sendPending(item) {
   const xhr = new XMLHttpRequest();
   item.xhr = xhr;
   const query = `path=${encodeURIComponent(item.destPath)}${item.overwrite ? "&overwrite=1" : ""}&mtime=${Math.max(0, item.file.lastModified || 0)}`;
-  xhr.open("POST", `/api/v1/files/sessions/${encodeURIComponent(session)}/upload?${query}`);
+  xhr.open("POST", sessionURL(session, `upload?${query}`));
   xhr.setRequestHeader("Content-Type", "application/octet-stream");
   xhr.upload.onprogress = (event) => {
     const now = performance.now();
@@ -146,8 +146,8 @@ function sendPending(item) {
     if (xhr.status === 202) { files.pending = files.pending.filter((p) => p !== item); loadTransfers(); pumpUploads(); return; }
     let data = {};
     try { data = JSON.parse(xhr.responseText); } catch { }
-    if (xhr.status === 401 && data.code === "auth_required") { window.location.assign("/login"); return; }
-    if (xhr.status === 404) { handleSessionLost(); }
+    if (authExpired(xhr.status, data)) return;
+    if (xhr.status === 404 && /session not found/i.test(data.error || "")) { handleSessionLost(); }
     fail(data.error || `Upload failed (${xhr.status})`);
   };
   xhr.onerror = () => fail("The connection was interrupted. Press Try again.");
@@ -174,7 +174,7 @@ async function uploadFromDevice(items, destPath = null) {
 
   const tops = [...new Set(items.map((it) => (it.dir || it.rel).split("/")[0]))];
   let existing = new Set();
-  try { const listing = await api(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/list?path=${encodeURIComponent(dest)}`); existing = new Set((listing.entries || []).map((e) => e.name)); }
+  try { const listing = await api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(dest)}`)); existing = new Set((listing.entries || []).map((e) => e.name)); }
   catch (error) { handleOpError(error, "remote"); return; }
   const clashes = tops.filter((name) => existing.has(name));
   let overwrite = false;
@@ -191,7 +191,7 @@ async function uploadFromDevice(items, destPath = null) {
     for (let i = 1; i <= parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
   }
   for (const rel of [...dirs].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b))) {
-    try { await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/mkdir`, { path: joinRemote(dest, rel) }); }
+    try { await post(sessionURL(files.sessionID, "mkdir"), { path: joinRemote(dest, rel) }); }
     catch (error) { if (sessionLost(error)) { handleSessionLost(); return; } }
   }
   for (const it of fileItems) {
@@ -215,7 +215,7 @@ async function downloadToDevice(entries) {
   if (wanted.length < entries.length) toast("Folders were skipped. Only files can be saved to this device.");
   let queued = 0;
   for (const entry of wanted) {
-    try { await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/download-prepare`, { remote_path: entry.path }); queued++; }
+    try { await post(sessionURL(files.sessionID, "download-prepare"), { remote_path: entry.path }); queued++; }
     catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (sessionLost(error)) { handleSessionLost(); break; } }
   }
   if (queued) toast(`${queued} file${queued === 1 ? "" : "s"} will be saved to this device when ready`);
@@ -264,15 +264,15 @@ async function droppedItems(dataTransfer) {
 
 async function transferAction(id, action) {
   try {
-    if (action === "cancel") await api(`/api/v1/files/transfers/${encodeURIComponent(id)}`, { method: "DELETE" });
-    else await post(`/api/v1/files/transfers/${encodeURIComponent(id)}/${action}`);
+    if (action === "cancel") await api(transferURL(id), { method: "DELETE" });
+    else await post(transferURL(id, `${action}`));
     loadTransfers();
   } catch (error) { toastError(error); }
 }
 async function retryTransfer(task) {
   if (!files.sessionID) { toast("Connect to the device first"); return; }
   try {
-    await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/transfer`, { direction: task.direction, local_path: task.local_path, remote_path: task.remote_path, is_directory: task.is_directory, overwrite: true });
+    await post(sessionURL(files.sessionID, "transfer"), { direction: task.direction, local_path: task.local_path, remote_path: task.remote_path, is_directory: task.is_directory, overwrite: true });
     loadTransfers();
   } catch (error) { toastError(error); }
 }
@@ -375,11 +375,12 @@ $("#transferClear").addEventListener("click", async () => {
   try { await api("/api/v1/files/transfers", { method: "DELETE" }); loadTransfers(); } catch (error) { toastError(error); }
 });
 
-function openTerminalHere(directory) {
+function openTerminalHere(directory, { split = "" } = {}) {
   if (!requireSession()) return;
   const device = currentDevice();
   if (!device) return;
-  createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: directory || panes.remote.path });
+  const host = split ? activeTab() : null;
+  createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: directory || panes.remote.path, split: host ? { of: host.id, dir: split } : null });
   showView("terminal");
 }
 function defaultRunCommand(entry) {

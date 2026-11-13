@@ -3,10 +3,10 @@ const files = {
   sessionID: "", profileID: "", protocol: "ftp",
   connecting: false, gen: 0, manualOff: false, active: "remote", drag: null,
   transfers: [], queueTimer: 0, queueBusy: false, seenDone: new Set(),
-  browserMode: false, ready: null,
+  browserMode: false, ready: null, sync: store.get("filesSync", false), fresh: false, localLeft: store.get("filesLocalLeft", true),
   pending: [], fetched: new Set(), autoDone: new Set(), transfersSeen: false,
 };
-files.ready = api("/api/v1/system").then((info) => {
+files.ready = systemInfo().then((info) => {
   files.browserMode = info?.remote === "true";
   document.body.classList.toggle("browser-files", files.browserMode);
   $("#deviceBar").hidden = !files.browserMode;
@@ -29,13 +29,11 @@ function makePane(kind) {
 const panes = { remote: makePane("remote"), local: makePane("local") };
 for (const pane of Object.values(panes)) pane.hiddenBox.checked = pane.showHidden;
 
-function sessionLost(error) { return error?.status === 404 || /session not found/i.test(error?.message || ""); }
+function sessionLost(error) { return error?.code === "session_not_found" || /session not found/i.test(error?.message || ""); }
 const requireSession = () => { if (!files.sessionID) { toast("Connect to the device first"); return false; } return true; };
 
 function setFileStatus(state, text) {
   setStatusDot($("#fileStatus"), state, text);
-  setStatusDot($("#listsStatus"), state, text);
-  setStatusDot($("#ipkStatus"), state, text);
   const connect = $("#listsConnect"), ipkConnect = $("#ipkConnect");
   if (connect) { connect.hidden = state === "connected"; connect.disabled = state === "connecting"; }
   if (ipkConnect) { ipkConnect.hidden = state === "connected"; ipkConnect.disabled = state === "connecting"; }
@@ -55,7 +53,8 @@ function updateFileUI() {
   const can = (cmd, value) => { const b = $(`.actionbar [data-cmd="${cmd}"]`); if (b) b.disabled = !value; };
   const paneReady = files.active === "local" || connected;
   can("mkdir", paneReady); can("rename", paneReady && selection.length === 1); can("chmod", paneReady && selection.length > 0);
-  can("delete", paneReady && selection.length > 0); can("copypath", paneReady); can("selectall", paneReady && active.visible.length > 0);
+  can("delete", paneReady && selection.length > 0); can("copypath", paneReady);
+  can("edit", connected && remoteSel.length === 1 && !remoteSel[0].is_dir); can("transfer", connected && selection.length > 0); can("selectall", paneReady && active.visible.length > 0);
   $("#btnDownload").disabled = !(connected && remoteSel.length);
   $("#btnUpload").disabled = !(connected && localSel.length);
   const transferBtn = $("#btnTransferActive");
@@ -94,28 +93,58 @@ function computeVisible(pane) {
   return pane.visible;
 }
 const FILE_TYPES = {
-  image: ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp", "ico", "mvi"],
-  archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "lzma"],
-  code: ["sh", "py", "lua", "pl", "php", "js", "c", "h", "cpp"],
-  box: ["ipk", "deb", "opk", "bin", "img", "nfi"],
-  video: ["ts", "mkv", "mp4", "avi", "mpg", "mpeg", "mov", "m2ts", "m4v", "vob", "wmv"],
-  audio: ["mp3", "ogg", "flac", "wav", "aac", "m4a", "wma"],
-  gear: ["conf", "cfg", "ini", "xml", "json", "yml", "yaml", "tv", "radio"],
-  text: ["txt", "log", "md", "csv", "list", "m3u", "m3u8"],
+  text: ["txt", "md", "markdown", "nfo", "text", "readme"],
+  doc: ["doc", "docx", "odt", "rtf"],
+  pdf: ["pdf"],
+  sheet: ["csv", "tsv", "xls", "xlsx", "ods"],
+  log: ["log", "out", "err", "trace"],
+  config: ["conf", "cfg", "ini", "properties", "rules", "service", "desktop", "env"],
+  data: ["xml", "json", "yml", "yaml", "toml", "dat", "sav", "plist"],
+  db: ["db", "sqlite", "sqlite3"],
+  code: ["c", "h", "cpp", "hpp", "cc", "java", "go", "rs", "js", "mjs", "py", "lua", "pl", "php", "rb", "cs", "jsx", "tsx", "diff", "patch"],
+  script: ["sh", "bash", "zsh", "init", "run", "bat", "cmd", "ps1", "awk", "sed", "mk"],
+  web: ["html", "htm", "xhtml", "css"],
+  image: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "mvi", "svg", "tif", "tiff", "heic"],
+  video: ["ts", "mkv", "mp4", "avi", "mpg", "mpeg", "mov", "m2ts", "m4v", "vob", "wmv", "flv", "webm", "3gp", "divx"],
+  audio: ["mp3", "ogg", "flac", "wav", "aac", "m4a", "wma", "opus", "ac3", "dts", "mka"],
+  sub: ["srt", "sub", "ass", "ssa", "vtt", "idx"],
+  archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "lzma", "z", "zst", "lz4", "cpio", "jar"],
+  box: ["ipk", "deb", "opk", "rpm", "apk"],
+  chip: ["bin", "img", "nfi", "ubi", "ubifs", "jffs2", "rootfs", "fw"],
+  key: ["pem", "crt", "cer", "key", "pub", "pfx", "p12", "gpg", "asc"],
+  font: ["ttf", "otf", "woff", "woff2", "pcf"],
+  bouquet: ["tv", "radio"],
+  disc: ["iso", "dmg"],
+  epg: ["eit"],
+  meta: ["meta", "cuts", "ap", "sc"],
+  lock: ["lock", "pid", "lck"],
+  bak: ["bak", "old", "orig", "tmp", "swp", "bk", "backup"],
 };
 const FILE_TYPE_BY_EXT = Object.fromEntries(Object.entries(FILE_TYPES).flatMap(([type, list]) => list.map((ext) => [ext, type])));
-const FILE_TYPE_BY_NAME = /^(settings|lamedb5?|satellites\.xml|cables\.xml|terrestrial\.xml|bouquets\.(tv|radio)|userbouquet\..*|blacklist|whitelist|profile|fstab|passwd|hosts)$/;
-function fileType(name) {
+const FILE_TYPE_BY_NAME = [
+  [/^(lamedb5?)$/, "db"],
+  [/^(userbouquet\..*|bouquets\.(tv|radio))$/, "bouquet"],
+  [/^(satellites|cables|terrestrial|atsc)\.xml$/, "tuner"],
+  [/^epg\.(dat|db)$/, "epg"],
+  [/^(settings|blacklist|whitelist|profile|fstab|passwd|shadow|group|hosts|inittab|resolv\.conf)$/, "config"],
+  [/^(makefile|dockerfile|rcs|rc\.local)$/, "script"],
+  [/^(readme|license|copying|changelog|authors)$/, "text"],
+];
+function fileType(name, mode = "") {
   const lower = String(name).toLowerCase();
-  if (FILE_TYPE_BY_NAME.test(lower)) return "gear";
+  for (const [re, type] of FILE_TYPE_BY_NAME) if (re.test(lower)) return type;
+  if (lower.endsWith("~")) return "bak";
   const dot = lower.lastIndexOf(".");
-  return dot > 0 ? FILE_TYPE_BY_EXT[lower.slice(dot + 1)] || "" : "";
+  const byExt = dot > 0 ? FILE_TYPE_BY_EXT[lower.slice(dot + 1)] || "" : "";
+  if (byExt) return byExt;
+  return /^-..x|^-.{5}x|^-.{8}x/.test(String(mode)) ? "script" : "";
 }
 function entryIcon(entry) {
-  if (entry.is_dir) return icon("folder", "dir-ic");
+  const hidden = String(entry.name).startsWith(".") ? " is-hidden" : "";
+  if (entry.is_dir) return icon("folder", `dir-ic${hidden}`);
   if (String(entry.mode || "").startsWith("l")) return icon("link", "link-ic");
-  const type = fileType(entry.name);
-  return type ? icon(type, `file-ic ft-${type}`) : icon("file", "file-ic");
+  const type = fileType(entry.name, entry.mode);
+  return type ? icon(`ft-${type}`, `file-ic fi-${type}${hidden}`) : icon("file", `file-ic${hidden}`);
 }
 function renderPane(pane) {
   const visible = computeVisible(pane);
@@ -199,7 +228,7 @@ async function loadPane(kind, path, { keepSelection = false, quiet = false } = {
   try {
     const result = kind === "local"
       ? await api(`/api/v1/files/local/list?path=${encodeURIComponent(path)}`)
-      : await api(`/api/v1/files/sessions/${encodeURIComponent(sessionAtStart)}/list?path=${encodeURIComponent(path)}`);
+      : await api(sessionURL(sessionAtStart, `list?path=${encodeURIComponent(path)}`));
     if (kind === "remote" && (gen !== files.gen || sessionAtStart !== files.sessionID)) return false;
     const previous = keepSelection && pane.path === result.path ? new Set(pane.selected) : new Set();
     pane.path = result.path; pane.parent = result.parent; pane.entries = result.entries || [];
@@ -229,7 +258,12 @@ function handleSessionLost() {
     window.setTimeout(() => { if (!files.sessionID && !files.connecting && !files.manualOff && (view.current === "files" || view.current === "lists" || view.current === "ipk")) fileConnect().then(() => { if (view.current === "lists") listsEnterNow(); }); }, 600);
   } else toast("The file connection was closed. Press Connect to reconnect.", "error");
 }
-const goUp = (kind) => loadPane(kind, panes[kind].parent || (kind === "remote" ? "/" : "."));
+const goUp = (kind, mirrored = false) => {
+  const other = panes[kind === "remote" ? "local" : "remote"];
+  const result = loadPane(kind, panes[kind].parent || (kind === "remote" ? "/" : "."));
+  if (files.sync && !mirrored && other.loaded && other.parent && other.parent !== other.path) goUp(other.kind, true);
+  return result;
+};
 const goRoot = (kind) => loadPane(kind, kind === "remote" ? "/" : ".");
 const refreshPane = (kind) => loadPane(kind, panes[kind].path, { keepSelection: true });
 async function refreshBoth() { await Promise.all([refreshPane("local"), files.sessionID ? refreshPane("remote") : null]); }
@@ -254,10 +288,11 @@ async function fileConnect() {
     const payload = { profile_id: device.id, protocol, port };
     const result = await post("/api/v1/files/sessions", payload);
     opened = result.session.id;
-    if (gen !== files.gen) { api(`/api/v1/files/sessions/${encodeURIComponent(opened)}`, { method: "DELETE" }).catch(() => {}); return; }
+    if (gen !== files.gen) { api(sessionURL(opened), { method: "DELETE" }).catch(() => {}); return; }
     files.sessionID = opened; files.profileID = device.id;
-    setFileStatus("connected", `${protocol.toUpperCase()} · ${device.host}`);
-    const remembered = store.get(`remotePath.${device.id}.${protocol}`, "/");
+    setFileStatus("connected", `${protoName(protocol)} · ${device.host}`);
+    const remembered = files.fresh && device.start_dir ? device.start_dir : store.get(`remotePath.${device.id}.${protocol}`, device.start_dir || "/");
+    files.fresh = false;
     let ok = await loadPane("remote", remembered, { quiet: true });
     if (!ok && remembered !== "/") ok = await loadPane("remote", "/", { quiet: true });
     if (!ok) ok = await loadPane("remote", ".", { quiet: true });
@@ -265,7 +300,7 @@ async function fileConnect() {
     if (!ok) toast("Connected, but the folder could not be listed.", "error");
     loadTransfers();
   } catch (error) {
-    if (opened) api(`/api/v1/files/sessions/${encodeURIComponent(opened)}`, { method: "DELETE" }).catch(() => {});
+    if (opened) api(sessionURL(opened), { method: "DELETE" }).catch(() => {});
     if (gen === files.gen) {
       files.sessionID = "";
       setFileStatus("error", error.message);
@@ -277,13 +312,13 @@ async function fileConnect() {
   }
 }
 window.addEventListener("pagehide", () => {
-  if (files.sessionID) fetch(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}`, { method: "DELETE", keepalive: true }).catch(() => {});
+  if (files.sessionID) fetch(sessionURL(files.sessionID), { method: "DELETE", keepalive: true }).catch(() => {});
 });
 async function fileDisconnect(silent = false) {
   files.gen++;
   const id = files.sessionID;
   files.sessionID = ""; files.connecting = false; files.manualOff = !silent;
-  if (id) await api(`/api/v1/files/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+  if (id) await api(sessionURL(id), { method: "DELETE" }).catch(() => {});
   const remote = panes.remote;
   remote.entries = []; remote.selected.clear(); remote.loaded = false; remote.path = "/"; remote.parent = "/"; remote.pathInput.value = "/";
   setFileStatus("idle", "Not connected");
@@ -327,7 +362,12 @@ $$("#paneSwitch button").forEach((button) => button.addEventListener("click", ()
 function rowEntry(pane, row) { return row && row.dataset.index !== undefined ? pane.visible[Number(row.dataset.index)] : null; }
 function openEntry(pane, entry) {
   if (!entry) return;
-  if (entry.is_dir) loadPane(pane.kind, entry.path);
+  if (entry.is_dir) {
+    loadPane(pane.kind, entry.path);
+    const other = panes[pane.kind === "remote" ? "local" : "remote"];
+    const twin = files.sync && other.loaded ? other.entries.find((e) => e.is_dir && e.name === entry.name) : null;
+    if (twin) loadPane(other.kind, twin.path);
+  }
   else if (pane.kind === "remote") transferSelection("download", [entry]);
   else transferSelection("upload", [entry]);
 }
@@ -421,7 +461,7 @@ async function moveIntoFolder(kind, entries, folderPath) {
   try {
     const listing = kind === "local"
       ? await api(`/api/v1/files/local/list?path=${encodeURIComponent(folderPath)}`)
-      : await api(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/list?path=${encodeURIComponent(folderPath)}`);
+      : await api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(folderPath)}`));
     existing = new Set((listing.entries || []).map((e) => e.name));
   } catch (error) { handleOpError(error, kind); return; }
   let moved = 0, skipped = 0;
@@ -430,7 +470,7 @@ async function moveIntoFolder(kind, entries, folderPath) {
     const body = { old_path: entry.path, new_path: join(folderPath, entry.name) };
     try {
       if (kind === "local") await post("/api/v1/files/local/rename", body);
-      else await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/rename`, body);
+      else await post(sessionURL(files.sessionID, "rename"), body);
       moved++;
     } catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (kind === "remote" && sessionLost(error)) { handleSessionLost(); return; } }
   }
@@ -456,6 +496,7 @@ function contextItems(pane, onEntry) {
     if (kind === "remote") {
       items.push("-");
       items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path) });
+      items.push({ label: "Terminal here, split beside current", icon: "split-h", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path, { split: "row" }) });
       if (single && !single.is_dir) items.push({ label: "Run in terminal…", icon: "play", run: () => runRemoteFile() });
     }
     items.push("-");
@@ -511,7 +552,7 @@ async function cmdMkdir() {
   if (!name) return;
   try {
     if (kind === "local") await post("/api/v1/files/local/mkdir", { path: joinLocal(panes.local.path, name) });
-    else await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/mkdir`, { path: joinRemote(panes.remote.path, name) });
+    else await post(sessionURL(files.sessionID, "mkdir"), { path: joinRemote(panes.remote.path, name) });
     await refreshPane(kind);
     toast(`Folder “${name}” created`);
   } catch (error) { handleOpError(error, kind); }
@@ -527,7 +568,7 @@ async function cmdRename() {
   const target = kind === "local" ? joinLocal(parentPath, name) : joinRemote(parentPath, name);
   try {
     if (kind === "local") await post("/api/v1/files/local/rename", { old_path: entry.path, new_path: target });
-    else await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/rename`, { old_path: entry.path, new_path: target });
+    else await post(sessionURL(files.sessionID, "rename"), { old_path: entry.path, new_path: target });
     panes[kind].selected = new Set([target]);
     await loadPane(kind, panes[kind].path, { keepSelection: true });
     toast("Renamed");
@@ -545,7 +586,7 @@ async function cmdDelete() {
   for (const entry of sel) {
     try {
       if (kind === "local") await post("/api/v1/files/local/remove", { path: entry.path });
-      else await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/remove`, { path: entry.path, directory: entry.is_dir });
+      else await post(sessionURL(files.sessionID, "remove"), { path: entry.path, directory: entry.is_dir });
     } catch (error) { failed++; last = error; if (sessionLost(error)) break; }
   }
   await refreshPane(kind);
@@ -562,14 +603,14 @@ async function cmdChmod() {
   for (const entry of sel) {
     try {
       if (kind === "local") await post("/api/v1/files/local/chmod", { path: entry.path, mode });
-      else await post(`/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/chmod`, { path: entry.path, mode });
+      else await post(sessionURL(files.sessionID, "chmod"), { path: entry.path, mode });
     } catch (error) { failed++; last = error; }
   }
   await loadPane(kind, panes[kind].path, { keepSelection: true });
   if (failed) toast(`Permissions failed for ${failed} item(s): ${last.message}`, "error"); else toast(`Permissions set to ${mode}`);
 }
 const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false };
-const editorURL = () => `/api/v1/files/sessions/${encodeURIComponent(files.sessionID)}/content`;
+const editorURL = () => sessionURL(files.sessionID, "content");
 const editorDirty = () => $("#editorText").value !== editor.original;
 function editorStatus(message, kind = "") { const node = $("#editorStatus"); node.textContent = message; node.dataset.kind = kind; }
 function editorRender() {
@@ -660,7 +701,7 @@ async function editorSave(force = false) {
     } else if (error.code === "exists") {
       editor.create = false;
       editorRender();
-    } else if (sessionLost(error) && error.code !== "file_not_found") {
+    } else if (sessionLost(error)) {
       handleSessionLost();
     }
   }
@@ -699,3 +740,47 @@ async function editorReload() {
   $("#editorWrap").addEventListener("change", (event) => { store.set("editorWrap", event.target.checked); text.setAttribute("wrap", event.target.checked ? "soft" : "off"); });
   window.addEventListener("beforeunload", (event) => { if (dialog.open && editorDirty()) { event.preventDefault(); event.returnValue = ""; } });
 }
+
+
+/* ── WinSCP-style layout helpers: swap panels, synchronised browsing; Cyberduck-style saved-site drawer ── */
+function applyFilesLayout() {
+  $("#commander").dataset.localLeft = files.localLeft ? "1" : "0";
+  const sync = $("#fileSync");
+  sync.setAttribute("aria-pressed", String(files.sync)); sync.classList.toggle("on", files.sync);
+  const sites = $("#fileSites"), open = !$("#sitesSide").hidden;
+  sites.setAttribute("aria-pressed", String(open)); sites.classList.toggle("on", open);
+}
+$("#fileSwap").addEventListener("click", () => { files.localLeft = !files.localLeft; store.set("filesLocalLeft", files.localLeft); applyFilesLayout(); });
+$("#fileSync").addEventListener("click", () => {
+  files.sync = !files.sync; store.set("filesSync", files.sync); applyFilesLayout();
+  toast(files.sync ? "Synchronised browsing on: folders open in both panels" : "Synchronised browsing off");
+});
+function renderSitesSide() {
+  const side = $("#sitesSide");
+  if (side.hidden) return;
+  const q = $("#sitesSideFilter").value.trim().toLowerCase(), list = $("#sitesSideList");
+  list.replaceChildren();
+  let group = null;
+  const shown = sortedSites().filter((site) => siteMatches(site, q));
+  if (!shown.length) list.append(h("p", { class: "muted small", text: devices.list.length ? "No match." : "No saved devices yet." }));
+  for (const site of shown) {
+    const title = site.favorite ? "Pinned" : (site.group || "");
+    if (title !== group && title) list.append(h("div", { class: "side-heading", text: title }));
+    group = title;
+    const status = devices.status.get(site.id);
+    list.append(h("button", { type: "button", role: "option", class: `side-site${site.id === devices.currentID ? " current" : ""}`, "aria-selected": String(site.id === devices.currentID), dataset: { color: site.color || "" },
+      title: `${site.host}${site.start_dir ? ` · opens ${site.start_dir}` : ""}`, onClick: () => { files.fresh = true; openDevice(site.id, "files"); } },
+      h("span", { class: "dot", dataset: { state: status?.state || "unknown" } }),
+      h("span", { class: "side-name ellipsis", text: site.name }),
+      h("span", { class: "side-host ellipsis muted", text: site.host })));
+  }
+}
+$("#fileSites").addEventListener("click", () => {
+  const side = $("#sitesSide"); side.hidden = !side.hidden; store.set("filesSitesOpen", !side.hidden);
+  applyFilesLayout(); renderSitesSide();
+  if (!side.hidden) { devices.list.forEach((d) => { if (!devices.status.has(d.id)) testDevice(d.id); }); $("#sitesSideFilter").focus(); }
+});
+$("#sitesSideFilter").addEventListener("input", renderSitesSide);
+$("#sitesSideAdd").addEventListener("click", () => openDeviceDialog());
+$("#sitesSide").hidden = !store.get("filesSitesOpen", false);
+applyFilesLayout();

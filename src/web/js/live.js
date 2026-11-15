@@ -2,6 +2,8 @@
 // Live TV (Windows app only): VLC draws in a native window laid over #liveVideo; window.dccLive(op, json) talks to it.
 
 const liveNative = typeof window.dccLive === "function";
+const liveGui = typeof window.__dccGui === "string"; // running inside the DCC Lite window, bridge or not
+const liveChoice = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
 const live = {
   on: false, ref: "", name: "", state: "idle", hasPicture: false, paused: false,
   volume: Math.min(100, Math.max(0, Number(store.get("live.volume", 100)))), muted: store.get("live.muted", false) === true,
@@ -9,6 +11,10 @@ const live = {
   retries: 0, timer: 0, pingTimer: 0, ecmTimer: 0, ecmGen: 0, retryTimer: 0, stableTimer: 0, followSince: 0, polling: false,
   popup: false, boundsKey: "", ticks: 0, syncBusy: false, syncDirty: false,
   cw: [], cwKey: "", cwHistory: [], cwChangedAt: 0, cwRenderKey: "", ecmRaw: "", rx: [],
+  // The one place for player settings (the gear menu). They apply from the next start of a channel.
+  deint: liveChoice(store.get("live.deint", "auto"), ["auto", "yadif", "off"], "auto"),
+  caching: liveChoice(Number(store.get("live.caching", 1500)), [500, 1500, 3000], 1500),
+  hw: store.get("live.hw", true) !== false, settingsDirty: false, popKind: "",
 };
 const liveIsOn = () => live.on;
 const liveChannelName = () => $("#nowChannel").textContent || live.name || "channel";
@@ -160,7 +166,7 @@ async function liveBegin() {
   liveSetState("connecting", "Connecting to the receiver…");
   liveSyncNative(true);
   try {
-    await liveCall("play", { profile: id, ref: live.ref, name: live.name, volume: live.volume, muted: live.muted, audioLang: live.audioLang, ...liveBox() });
+    await liveCall("play", { profile: id, ref: live.ref, name: live.name, volume: live.volume, muted: live.muted, audioLang: live.audioLang, deinterlace: live.deint, caching: live.caching, hw: live.hw, ...liveBox() });
     liveRxAudio();
   } catch (error) {
     if (live.on) liveFail(liveMessage(error));
@@ -197,6 +203,9 @@ function liveApply(s) {
     case "ended":
     case "stopped":
       liveReconnect("The stream ended");
+      break;
+    case "stalled":
+      liveReconnect("The picture froze");
       break;
   }
   liveRenderTracks();
@@ -280,10 +289,16 @@ async function liveSelectAudio(id) {
 function livePopClose() {
   const pop = $("#livePop");
   if (pop) pop.remove();
+  live.popKind = "";
   if (live.popup) { live.popup = false; liveSyncNative(); }
+  // Settings that VLC reads when a channel opens take effect once the menu is closed.
+  if (live.settingsDirty) {
+    live.settingsDirty = false;
+    if (live.on) { live.retries = 0; liveBegin(); }
+  }
 }
 function liveAudioMenu() {
-  if ($("#livePop")) { livePopClose(); return; }
+  if ($("#livePop")) { const was = live.popKind; livePopClose(); if (was === "audio") return; }
   if (!live.audio.length) return;
   const pop = h("div", { class: "live-pop", id: "livePop", role: "menu", "aria-label": "Audio track" },
     ...live.audio.map((t) => h("button", {
@@ -291,10 +306,56 @@ function liveAudioMenu() {
       onClick: () => { livePopClose(); liveSelectAudio(t.id); },
     }, h("span", { class: "tick", text: t.id === live.audioCur ? "✓" : "" }), h("span", { class: "grow" }, h("b", { text: t.name })))));
   $("#liveBar").append(pop);
+  live.popKind = "audio";
   live.popup = true;               // the menu would open under VLC's window, so the picture steps aside
   liveSyncNative();
   pop.querySelector('[aria-checked="true"]')?.focus();
 }
+// ---- Player settings: the one menu where they all live ----
+
+const LIVE_DEINT = [["auto", "Auto", "VLC decides (default)"], ["yadif", "Yadif", "Always smooth interlaced channels"], ["off", "Off", "Never deinterlace"]];
+const LIVE_CACHE = [[500, "Low", "500 ms · faster zapping"], [1500, "Normal", "1.5 s"], [3000, "High", "3 s · for a weak network"]];
+
+function liveSettingsRender() {
+  const pop = $("#livePop");
+  if (!pop || live.popKind !== "settings") return;
+  const title = (text) => h("div", { class: "pop-title", text });
+  const item = (checked, label, note, onClick, tip = "") => h("button", {
+    type: "button", role: "menuitemradio", "aria-checked": String(checked), title: tip, onClick,
+  }, h("span", { class: "tick", text: checked ? "✓" : "" }), h("span", { class: "grow" }, h("b", { text: label }), note && h("small", { text: note })));
+  const change = (apply) => { apply(); live.settingsDirty = true; liveSettingsRender(); };
+  const parts = [
+    title("Deinterlace"),
+    ...LIVE_DEINT.map(([value, label, note]) => item(live.deint === value, label, note, () => change(() => { live.deint = value; store.set("live.deint", value); }))),
+    title("Buffering"),
+    ...LIVE_CACHE.map(([value, label, note]) => item(live.caching === value, label, note, () => change(() => { live.caching = value; store.set("live.caching", value); }))),
+    title("Hardware decoding"),
+    item(live.hw, "On", "Uses the graphics card when it can (default)", () => change(() => { live.hw = true; store.set("live.hw", true); })),
+    item(!live.hw, "Off", "Software decoding", () => change(() => { live.hw = false; store.set("live.hw", false); })),
+  ];
+  if (live.rx.length > 1) {
+    parts.push(title("Receiver audio"));
+    for (const t of live.rx) {
+      parts.push(item(!!t.active, t.description || `Track ${t.index + 1}`, "", async () => {
+        try { await post(profileURL(screenView.profileID, "audio"), { index: t.index }); toast("Receiver audio changed"); liveRxAudio(); } catch (error) { toastError(error); }
+      }, "Changes the audio on the receiver / TV, not in this player"));
+    }
+  }
+  const keep = pop.scrollTop;
+  pop.replaceChildren(...parts);
+  pop.scrollTop = keep;
+}
+function liveSettingsMenu() {
+  if ($("#livePop")) { const was = live.popKind; livePopClose(); if (was === "settings") return; }
+  const pop = h("div", { class: "live-pop live-pop-settings", id: "livePop", role: "menu", "aria-label": "Player settings" });
+  $("#liveBar").append(pop);
+  live.popKind = "settings";
+  live.popup = true;               // like the audio menu: the picture steps aside while it is open
+  liveSyncNative();
+  liveSettingsRender();
+  pop.querySelector('[aria-checked="true"]')?.focus();
+}
+
 async function liveRxAudio() {
   const id = screenView.profileID, ref = live.ref;
   try {
@@ -302,14 +363,7 @@ async function liveRxAudio() {
     if (!live.on || ref !== live.ref) return;
     live.rx = data.tracks || [];
   } catch { live.rx = []; }
-  const list = $("#liveRxTracks");
-  $("#liveRxTitle").hidden = list.hidden = live.rx.length < 2;
-  list.replaceChildren(...live.rx.map((t) => h("button", {
-    type: "button", class: "live-track", role: "radio", "aria-checked": String(!!t.active), title: "Changes the audio on the receiver / TV",
-    onClick: async () => {
-      try { await post(profileURL(id, "audio"), { index: t.index }); toast("Receiver audio changed"); liveRxAudio(); } catch (error) { toastError(error); }
-    },
-  }, h("b", { text: t.description || `Track ${t.index + 1}` }))));
+  if (live.popKind === "settings") liveSettingsRender();
 }
 
 // ---- Control words and card details ----
@@ -344,7 +398,7 @@ async function liveEcm() {
     const fields = (data.fields || []).slice().sort((a, b) => liveFieldDim(a.v) - liveFieldDim(b.v));
     const cells = fields.map((p) => liveCell(p.k, p.v, { wide: String(p.v).length > 14, dim: liveFieldDim(p.v) }));
     $("#liveEcm").replaceChildren(...(cells.length ? cells : [h("p", { class: "muted small live-empty", text: data.available ? "No details" : "No card information" })]));
-    $("#liveEcmStamp").textContent = new Date().toLocaleTimeString("en-GB");
+    $("#liveEcmStamp").textContent = new Date().toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB"));
   } catch (error) {
     if (gen !== live.ecmGen) return;
     $("#liveEcmStamp").textContent = "not answering";
@@ -374,7 +428,7 @@ function liveRenderCW() {
   }));
   // The current words are already on screen above: history lists only what came before, and starts folded.
   const rows = live.cwHistory.map((e, i) => h("li", {},
-    h("time", { text: new Date(e.at).toLocaleTimeString("en-GB") }),
+    h("time", { text: new Date(e.at).toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB")) }),
     h("span", { text: `${e.first ? "Seen" : "Changed"} ${e.words.map((w) => w.name.split(" ")[0]).join(" + ")}` }),
     i > 0 && e.words.map((w) => h("code", { text: w.hex }))));
   const times = live.cwHistory.filter((e) => !e.first).map((e) => e.at);
@@ -430,6 +484,7 @@ if (liveNative) {
   $("#liveFull").addEventListener("click", () => $("#screenFull").click());
   $("#liveRetry").addEventListener("click", () => { live.retries = 0; liveBegin(); });
   $("#liveAudioBtn").addEventListener("click", (event) => { event.stopPropagation(); liveAudioMenu(); });
+  $("#liveSettingsBtn").addEventListener("click", (event) => { event.stopPropagation(); liveSettingsMenu(); });
   $("#liveMute").addEventListener("click", () => {
     live.muted = !live.muted;
     if (!live.muted && live.volume === 0) live.volume = 50;
@@ -457,7 +512,7 @@ if (liveNative) {
     $("#liveFull use").setAttribute("href", document.fullscreenElement ? "#i-collapse" : "#i-expand");
     window.setTimeout(() => liveSyncNative(true), 120);
   });
-  document.addEventListener("click", (event) => { if (!event.target.closest("#livePop, #liveAudioBtn")) livePopClose(); });
+  document.addEventListener("click", (event) => { if (!event.target.closest("#livePop, #liveAudioBtn, #liveSettingsBtn")) livePopClose(); });
   document.addEventListener("keydown", (event) => {
     if (view.current !== "screen" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
     if (document.querySelector("dialog[open]")) return;
@@ -467,4 +522,11 @@ if (liveNative) {
     if (event.key.toLowerCase() === "l") { event.preventDefault(); $("#liveToggle").click(); return; }
     if (event.key === " " && live.on && !target.closest?.("button, a")) { event.preventDefault(); liveTogglePlay(); }
   });
+}
+else if (liveGui) {
+  // The window is there but the player bridge did not arrive: say why instead of hiding the button.
+  const why = `The player is not connected to this page (page address ${location.origin}, expected ${window.__dccGui}). Restart DCC Lite; if it stays like this, send the log.`;
+  console.error(why);
+  $("#liveToggle").hidden = false;
+  $("#liveToggle").addEventListener("click", () => toast(why, "error"));
 }

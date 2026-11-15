@@ -161,7 +161,7 @@ async function svcLoad() {
       svcSection("Technical", data.ids || [], "No technical details available."));
     const lines = [...(data.service || []), ...ecm, ...(data.ids || [])].map((p) => `${p.k}: ${p.v}`);
     svc.text = lines.join("\n");
-    $("#svcStamp").textContent = `Updated ${new Date().toLocaleTimeString("en-GB")}`;
+    $("#svcStamp").textContent = `Updated ${new Date().toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB"))}`;
     svcAudio(id, gen);
   } catch (error) {
     if (gen !== svc.gen) return;

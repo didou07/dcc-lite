@@ -48,7 +48,7 @@ function erFill(s) {
   $("#erShutdown").checked = s.shutdown_after;
   $("#erInherit").checked = s.inherit_autotimer;
   $("#erInherit").closest("label").hidden = !s.has_autotimer;
-  $("#erLast").textContent = s.last_scan ? `Last refresh: ${new Date(s.last_scan * 1000).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "The receiver has not reported a refresh yet.";
+  $("#erLast").textContent = s.last_scan ? `Last refresh: ${new Date(s.last_scan * 1000).toLocaleString((window.DCC_I18N?.locale() || "en-GB"), { dateStyle: "medium", timeStyle: "short" })}` : "The receiver has not reported a refresh yet.";
   $("#erFilter").value = "";
   erPaintPick();
 }

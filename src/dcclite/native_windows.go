@@ -148,8 +148,7 @@ func nativeClose() {
 // runNative shows the window and returns when it is closed.
 func runNative(d nativeDeps) error {
 	if !webView2Installed() {
-		messageBox("DCC Lite needs the Microsoft Edge WebView2 Runtime, which is not installed on this computer.\n\n"+
-			"Install it from microsoft.com/edge/webview2, or use the DCCLite.exe version that opens in your browser.", mbIconError)
+		messageBox(msg("webview2"), mbIconError)
 		return errors.New("WebView2 Runtime is not installed")
 	}
 	_, _, _ = procSetDPIAware.Call() // crisp text on scaled displays; must come before the window exists
@@ -162,7 +161,7 @@ func runNative(d nativeDeps) error {
 		},
 	})
 	if view == nil {
-		messageBox("The DCC Lite window could not be created.", mbIconError)
+		messageBox(msg("window"), mbIconError)
 		return errors.New("webview window could not be created")
 	}
 	nativeMu.Lock()
@@ -181,6 +180,9 @@ func runNative(d nativeDeps) error {
 	go live.watchdog()
 	defer live.close()
 
+	// Marks the page as running inside this window (and says which address it is meant to be on), so
+	// the page can explain itself if the player bridge below does not reach it.
+	view.Init(fmt.Sprintf(`window.__dccGui = %q;`, strings.TrimRight(d.URL, "/")))
 	if err := view.Bind("dccLive", live.handle); err != nil {
 		return err
 	}
@@ -209,6 +211,10 @@ type playArgs struct {
 	Volume    int    `json:"volume"`
 	Muted     bool   `json:"muted"`
 	AudioLang string `json:"audioLang"`
+	// Player settings, all from the one settings menu of the page.
+	Deinterlace string `json:"deinterlace"` // auto, yadif or off
+	Caching     int    `json:"caching"`     // buffering in milliseconds
+	Hardware    *bool  `json:"hw"`          // hardware decoding; nil or true = on
 	boxArgs
 }
 
@@ -252,6 +258,7 @@ type nativeLive struct {
 	muted        bool
 	audioLang    string
 	audioApplied bool
+	opts         vlc.PlayOptions // the player settings of the running channel
 	snap         stateOut
 	boxLogs      int
 	closed       atomic.Bool
@@ -419,6 +426,11 @@ func (n *nativeLive) place(force bool) {
 		cur.show = false
 	}
 	if !force && cur == prev {
+		// Nothing moved, but another program may have come to the front: keep the picture just
+		// above the page window and under whatever covers it.
+		if cur.show {
+			n.stack(host)
+		}
 		return
 	}
 	n.mu.Lock()
@@ -427,34 +439,51 @@ func (n *nativeLive) place(force bool) {
 	if cur.show != prev.show {
 		nativeLog.Info("video window", "show", cur.show, "screen", fmt.Sprintf("%d,%d %dx%d", cur.x, cur.y, cur.w, cur.h))
 	}
-	flags := uintptr(swpNoActivate | swpHideWindow | swpAsyncPos)
+	// The stacking order is set in the same call as the move. Raising the window first and fixing the
+	// order afterwards made the picture flash over other programs every time it was repositioned.
+	flags := uintptr(swpNoActivate | swpHideWindow | swpAsyncPos | swpNoZOrder)
+	var after uintptr
 	if cur.show {
 		flags = swpNoActivate | swpShowWindow | swpAsyncPos
+		var change bool
+		if after, change = n.insertAfter(host); !change {
+			flags |= swpNoZOrder
+		}
 	}
-	// HWND_TOP (0); stack() then slots it directly above the page window.
-	_, _, _ = procSetWindowPos.Call(host, 0, uintptr(cur.x), uintptr(cur.y), uintptr(cur.w), uintptr(cur.h), flags)
+	_, _, _ = procSetWindowPos.Call(host, after, uintptr(cur.x), uintptr(cur.y), uintptr(cur.w), uintptr(cur.h), flags)
 	// VLC's own video window lives inside ours on yet another thread. Make it fill ours on every
 	// change rather than relying on VLC to notice.
 	if cur.show {
 		if inner, _, _ := procGetWindow.Call(host, gwChild); inner != 0 {
 			_, _, _ = procSetWindowPos.Call(inner, 0, 0, 0, uintptr(cur.w), uintptr(cur.h), swpNoZOrder|swpNoActivate|swpAsyncPos)
 		}
-		n.stack(host)
 	}
 }
 
-func (n *nativeLive) stack(host uintptr) {
+// insertAfter says which window the picture window has to be placed behind so that it sits directly
+// above the page window. change is false when it already does.
+func (n *nativeLive) insertAfter(host uintptr) (after uintptr, change bool) {
 	above, _, _ := procGetWindow.Call(n.parent, gwHwndPrev)
 	if above == host {
-		return
+		return 0, false
 	}
 	if above == 0 { // the page window is the top one
-		above = 0 // HWND_TOP
 		if ex, _, _ := procGetWindowLong.Call(n.parent, gwlExStyle); ex&wsExTopmost != 0 {
-			above = ^uintptr(0) // HWND_TOPMOST: the page window is always-on-top, so is the picture
+			return ^uintptr(0), true // HWND_TOPMOST: the page window is always-on-top, so is the picture
 		}
+		return 0, true // HWND_TOP
 	}
-	_, _, _ = procSetWindowPos.Call(host, above, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpNoOwnerZ|swpAsyncPos)
+	return above, true
+}
+
+// stack puts the picture window back directly above the page window when something else has been
+// raised between them or above both.
+func (n *nativeLive) stack(host uintptr) {
+	after, change := n.insertAfter(host)
+	if !change {
+		return
+	}
+	_, _, _ = procSetWindowPos.Call(host, after, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpNoOwnerZ|swpAsyncPos)
 }
 
 func (n *nativeLive) follow() {
@@ -538,6 +567,7 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 		gen, child := n.gen, n.child
 		n.started, n.errMsg, n.startedAt = false, "", time.Now()
 		n.volume, n.muted, n.audioLang, n.audioApplied = a.Volume, a.Muted, a.AudioLang, false
+		n.opts = playOptions(a)
 		n.snap = stateOut{State: "opening", AudioCurrent: -1}
 		n.mu.Unlock()
 		go n.startPlayback(gen, a.Profile, ref, child)
@@ -632,6 +662,22 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 	return "", fmt.Errorf("unknown request %q", op)
 }
 
+// playOptions turns what the page asked for into safe player settings.
+func playOptions(a playArgs) vlc.PlayOptions {
+	o := vlc.PlayOptions{CachingMs: a.Caching, Deinterlace: vlc.DeinterlaceAuto}
+	if o.CachingMs < 200 || o.CachingMs > 10000 {
+		o.CachingMs = 1500
+	}
+	switch strings.ToLower(a.Deinterlace) {
+	case vlc.DeinterlaceYadif:
+		o.Deinterlace = vlc.DeinterlaceYadif
+	case vlc.DeinterlaceOff:
+		o.Deinterlace = vlc.DeinterlaceOff
+	}
+	o.NoHardware = a.Hardware != nil && !*a.Hardware
+	return o
+}
+
 func (n *nativeLive) startPlayback(gen int, id, ref string, child uintptr) {
 	fail := func(msg string) {
 		n.mu.Lock()
@@ -642,11 +688,11 @@ func (n *nativeLive) startPlayback(gen int, id, ref string, child uintptr) {
 	}
 	profile, ok := n.app.Profiles.Get(id)
 	if !ok {
-		fail("The device was not found.")
+		fail(msg("nodevice"))
 		return
 	}
 	if !profile.Enabled {
-		fail("This device is disabled.")
+		fail(msg("disabled"))
 		return
 	}
 	p, err := n.vlc()
@@ -658,7 +704,7 @@ func (n *nativeLive) startPlayback(gen int, id, ref string, child uintptr) {
 	defer cancel()
 	mrl, ok := httpapi.PlaybackURL(ctx, profile, ref)
 	if !ok {
-		fail("The channel address is not usable.")
+		fail(msg("badaddr"))
 		return
 	}
 
@@ -669,12 +715,12 @@ func (n *nativeLive) startPlayback(gen int, id, ref string, child uintptr) {
 		n.mu.Unlock()
 		return
 	}
-	vol, muted := n.volume, n.muted
+	vol, muted, opts := n.volume, n.muted, n.opts
 	n.mu.Unlock()
 	p.SetWindow(child)
 	p.SetVolume(vol)
 	p.SetMute(muted)
-	if err := p.Play(mrl); err != nil {
+	if err := p.Play(mrl, opts); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -695,17 +741,26 @@ func trackKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+// stallAfter is how long a "playing" stream may stand still before the page is told to reconnect.
+const stallAfter = 6 * time.Second
+
 // poll refreshes the snapshot the page reads. It is the only place that asks VLC for its state.
 func (n *nativeLive) poll() {
 	tick := time.NewTicker(300 * time.Millisecond)
 	defer tick.Stop()
 	lastState := ""
+	// Freeze detection: VLC keeps saying "playing" while a stuck stream shows the same picture, so the
+	// stream's own clock is watched too. It counts only once it has been seen to move.
+	var trackAt, movedAt time.Time
+	var lastT int64 = -1
+	var moved, deintDone bool
 	for range tick.C {
 		if n.closed.Load() {
 			return
 		}
 		n.mu.Lock()
 		started, since, lang, applied, failed := n.started, time.Since(n.startedAt), n.audioLang, n.audioApplied, n.errMsg != ""
+		at := n.startedAt
 		n.mu.Unlock()
 		if !started || failed || !n.vlcDone.Load() || n.player == nil {
 			continue
@@ -756,6 +811,28 @@ func (n *nativeLive) poll() {
 				}
 			}
 			out.Width, out.Height = p.VideoSize()
+		}
+		now := time.Now()
+		if !at.Equal(trackAt) { // a new channel: start watching afresh
+			trackAt, lastT, moved, movedAt, deintDone = at, -1, false, now, false
+		}
+		if out.State == "playing" {
+			if t := p.Time(); t >= 0 {
+				if t != lastT {
+					moved = moved || lastT >= 0
+					lastT, movedAt = t, now
+				} else if moved && now.Sub(movedAt) > stallAfter {
+					nativeLog.Warn("the picture froze; reconnecting", "still_ms", now.Sub(movedAt).Milliseconds(), "video", fmt.Sprintf("%dx%d", out.Width, out.Height))
+					out.State = "stalled"
+					moved, movedAt = false, now
+				}
+			}
+			if !deintDone && out.Width > 0 { // the first frame exists: now the deinterlace choice can be applied
+				deintDone = true
+				p.ApplyDeinterlace()
+			}
+		} else {
+			movedAt = now // paused, buffering or opening: the clock starts again
 		}
 		if out.State != lastState {
 			lastState = out.State

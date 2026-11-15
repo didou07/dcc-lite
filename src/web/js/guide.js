@@ -16,7 +16,7 @@ function gdDay(ts, long = true) {
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
   if (diff === -1) return "Yesterday";
-  return d.toLocaleDateString("en-GB", long ? { weekday: "long", day: "numeric", month: "long" } : { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString((window.DCC_I18N?.locale() || "en-GB"), long ? { weekday: "long", day: "numeric", month: "long" } : { weekday: "short", day: "numeric", month: "short" });
 }
 function gdDuration(seconds) {
   const minutes = Math.max(1, Math.round(seconds / 60));
@@ -278,7 +278,7 @@ function gdFillTags() {
 }
 const gdParent = (dir) => (dir.replace(/\/+$/, "").replace(/[^/]*$/, "") || "/");
 function gdMovieDate(time) {
-  return time ? new Date(time * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  return time ? new Date(time * 1000).toLocaleString((window.DCC_I18N?.locale() || "en-GB"), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 }
 async function gdDeleteMovie(m) {
   const ok = await ask({ title: "Delete this recording?", message: `${m.title}\n${m.file}\nThe receiver may move it to its trash folder first.`, input: false, ok: "Delete", danger: true });

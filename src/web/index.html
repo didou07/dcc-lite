@@ -12,6 +12,9 @@
   <link rel="stylesheet" href="/app.css">
   <script src="/vendor/xterm.js" defer></script>
   <script src="/js/appearance.js" defer></script>
+  <script src="/js/i18n-data.js" defer></script>
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/i18n-extra.js" defer></script>
   <script src="/js/errors.js" defer></script>
   <script src="/js/dccimport.js" defer></script>
   <script src="/js/core.js" defer></script>
@@ -666,6 +669,7 @@
               <button class="live-btn" id="liveMute" type="button" title="Mute this player" aria-label="Mute"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg></button>
               <input class="live-vol" id="liveVol" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume">
               <button class="live-btn live-audio-btn" id="liveAudioBtn" type="button" title="Audio track" aria-label="Audio track" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><span id="liveAudioLabel"></span></button>
+              <button class="live-btn" id="liveSettingsBtn" type="button" title="Player settings" aria-label="Player settings" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg></button>
               <span class="spacer"></span>
               <button class="live-btn" id="liveSnap" type="button" title="Save a snapshot" aria-label="Save a snapshot"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
               <button class="live-btn" id="liveFull" type="button" title="Full screen (F)" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
@@ -683,8 +687,6 @@
             <header><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><h3>Player</h3></header>
             <div class="live-cells" id="liveStreamInfo"></div>
             <div class="live-tracks" id="liveTracks" role="radiogroup" aria-label="Audio track"></div>
-            <h4 class="live-sub" id="liveRxTitle" hidden>Receiver audio</h4>
-            <div class="live-tracks" id="liveRxTracks" hidden></div>
           </article>
           <article class="live-card" data-card="cw">
             <header><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><h3>Control words</h3><span class="spacer"></span><span class="muted small" id="liveCwAgo"></span>

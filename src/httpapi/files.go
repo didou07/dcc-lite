@@ -24,7 +24,7 @@ func (s *Server) denyHostFiles(w http.ResponseWriter) bool {
 		return false
 	}
 	writeJSON(w, http.StatusForbidden, map[string]any{
-		"error": "The files of the computer that runs DCC Lite are not available in a remote session. Use \"Upload files\" and \"Download to this device\" to move files from and to your own device.",
+		"error": "This computer's files are not available in a remote session.",
 		"code":  "host_files_unavailable",
 	})
 	return true

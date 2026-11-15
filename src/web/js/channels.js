@@ -50,7 +50,7 @@ function channelsStop() {
 function channelsEnter() {
   const id = screenView.profileID;
   if (!id) return;
-  if (ch.profileID !== id) { channelsReset(); ch.profileID = id; }
+  if (ch.profileID !== id) { channelsReset(); ch.profileID = id; ch.bouquetRef = store.get(chBouquetKey(), ch.bouquetRef); }
   for (const button of $$("#channelKind button")) button.setAttribute("aria-checked", String(button.dataset.kind === ch.kind));
   if (!ch.bouquets.length) loadChannels(); else renderBouquets();
   channelsStop();
@@ -59,6 +59,8 @@ function channelsEnter() {
   ch.epgTimer = window.setInterval(() => loadEPG(true), 60000);
 }
 
+// The chosen bouquet is remembered per receiver and per TV / radio list.
+const chBouquetKey = () => `channels.bouquet.${ch.profileID}.${ch.kind}`;
 async function loadChannels(force = false) {
   const id = ch.profileID, kind = ch.kind;
   if (!id) return;
@@ -257,14 +259,14 @@ $("#channelKind").addEventListener("click", (event) => {
   if (!button || button.dataset.kind === ch.kind) return;
   ch.kind = button.dataset.kind;
   store.set("channels.kind", ch.kind);
-  ch.bouquetRef = "";
+  ch.bouquetRef = store.get(chBouquetKey(), "");
   ch.limit = 300;
   for (const b of $$("#channelKind button")) b.setAttribute("aria-checked", String(b === button));
   loadChannels();
 });
 $("#channelBouquet").addEventListener("change", () => {
   ch.bouquetRef = $("#channelBouquet").value;
-  store.set("channels.bouquet", ch.bouquetRef);
+  store.set(chBouquetKey(), ch.bouquetRef);
   ch.limit = 300;
   $("#channelList").scrollTop = 0;
   renderChannels();

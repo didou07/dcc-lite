@@ -88,15 +88,15 @@ function remoteBind() {
     openPowerDialog();
   });
   $("#remoteMessage").addEventListener("click", async () => {
-    const text = await ask({ title: "Message on the TV", message: "The text is shown on the TV connected to the receiver for 10 seconds.", label: "Message", ok: "Send",
+    const text = await ask({ title: "Message on the TV", message: "Shown on the TV for 10 seconds.", label: "Message", ok: "Send",
       validate: (value) => (value.length > 300 ? "Use at most 300 characters." : "") });
     if (!text) return;
     try { await post(profileURL(screenView.profileID, "message"), { text, seconds: 10 }); toast("Message sent to the TV"); }
     catch (error) { remoteError(error.message); }
   });
   $("#remoteText").addEventListener("click", async () => {
-    const text = await ask({ title: "Type on the receiver", message: "Open a search box or keyboard on the receiver first. Plain letters, digits and symbols only.", label: "Text", ok: "Type",
-      validate: (value) => (!value ? "Type something." : value.length > 200 ? "Use at most 200 characters." : /[^\x20-\x7e]/.test(value) ? "Only plain letters, digits and symbols can be typed on the receiver." : "") });
+    const text = await ask({ title: "Type on the receiver", message: "Plain letters, digits and symbols only.", label: "Text", ok: "Type",
+      validate: (value) => (!value ? "Type something." : value.length > 200 ? "Use at most 200 characters." : /[^\x20-\x7e]/.test(value) ? "Plain letters, digits and symbols only." : "") });
     if (!text) return;
     try { await post(profileURL(screenView.profileID, "remote-text"), { text }); toast("Text sent to the receiver"); }
     catch (error) { remoteError(error.message); }

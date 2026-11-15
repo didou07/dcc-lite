@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -63,11 +65,7 @@ func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
 	if input.Long {
 		suffix += "&type=long"
 	}
-	status, body, err := web.press(ctx, "/api/remotecontrol"+suffix)
-	if err == nil && status == http.StatusNotFound {
-
-		status, body, err = web.press(ctx, "/web/remotecontrol"+suffix)
-	}
+	status, body, err := web.pressFallback(ctx, "/api/remotecontrol"+suffix)
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}
@@ -105,10 +103,7 @@ func (s *Server) deviceRemoteText(w http.ResponseWriter, r *http.Request) {
 
 	query := url.Values{}
 	query.Set("text", strings.ReplaceAll(text, "%", "%25"))
-	status, body, err := web.press(ctx, "/api/remotecontrol?"+query.Encode())
-	if err == nil && status == http.StatusNotFound {
-		status, body, err = web.press(ctx, "/web/remotecontrol?"+query.Encode())
-	}
+	status, body, err := web.pressFallback(ctx, "/api/remotecontrol?"+query.Encode())
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}
@@ -151,10 +146,7 @@ func (s *Server) deviceMessage(w http.ResponseWriter, r *http.Request) {
 	query.Set("text", text)
 	query.Set("type", "1")
 	query.Set("timeout", strconv.Itoa(seconds))
-	status, body, err := web.press(ctx, "/api/message?"+query.Encode())
-	if err == nil && status == http.StatusNotFound {
-		status, body, err = web.press(ctx, "/web/message?"+query.Encode())
-	}
+	status, body, err := web.pressFallback(ctx, "/api/message?"+query.Encode())
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}
@@ -169,11 +161,21 @@ func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []by
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver's web interface rejected the saved user name or password.", "code": "web_auth"})
 		return true
+	case webUnsupported(status):
+		writeWebUnsupported(w)
+		return true
 	case status != http.StatusOK:
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("The web interface answered HTTP %d.", status), "code": "web_error"})
 		return true
 	}
 
+	if state, text, ok := xmlResult(body); ok && !state {
+		if text == "" {
+			text = "The receiver did not accept the request."
+		}
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": text, "code": "web_error"})
+		return true
+	}
 	var reply struct {
 		Result  *bool  `json:"result"`
 		Message string `json:"message"`
@@ -189,8 +191,60 @@ func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []by
 	return false
 }
 
+// press sends a command. For an /api/ address a missing one (404/405/501, or a page that is not JSON) is
+// always reported as 404. A receiver set to WebInterface is never asked for an /api/ address: viaLegacy
+// translates it to the /web/ twin, or reports that the feature needs OpenWebif.
 func (d deviceWeb) press(ctx context.Context, pathAndQuery string) (int, []byte, error) {
-	return d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.pressRaw(ctx, pathAndQuery) })
+	api := strings.HasPrefix(pathAndQuery, "/api/")
+	status, body, err := d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.pressRaw(ctx, pathAndQuery) })
+	if err != nil || !api {
+		return status, body, err
+	}
+	switch status {
+	case http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		status = http.StatusNotFound
+	case http.StatusOK:
+		if t := bytes.TrimSpace(body); len(t) > 0 && !looksJSON(t) {
+			status = http.StatusNotFound
+		}
+	}
+	return status, body, nil
+}
+
+// pressFallback sends an /api/ command in the receiver's own dialect: OpenWebif gets /api/..., a receiver
+// set to WebInterface gets the same command at /web/... (remote control, message, zap and the like are
+// the same names there). Never both.
+func (d deviceWeb) pressFallback(ctx context.Context, apiPath string) (int, []byte, error) {
+	if d.kind == "webinterface" {
+		return d.press(ctx, "/web/"+strings.TrimPrefix(apiPath, "/api/"))
+	}
+	return d.press(ctx, apiPath)
+}
+
+// webUnsupported reports that the receiver's web interface has no such address.
+func webUnsupported(status int) bool {
+	return status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented
+}
+
+func writeWebUnsupported(w http.ResponseWriter) {
+	writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "This receiver's web interface does not offer this action.", "code": "web_unsupported"})
+}
+
+var (
+	xmlStatePattern = regexp.MustCompile(`(?is)<e2state>\s*([^<\s]*)\s*</e2state>`)
+	xmlTextPattern  = regexp.MustCompile(`(?is)<e2statetext>(.*?)</e2statetext>`)
+)
+
+// xmlResult reads the <e2simplexmlresult> answer of the older web interface.
+func xmlResult(body []byte) (state bool, text string, ok bool) {
+	m := xmlStatePattern.FindSubmatch(body)
+	if m == nil {
+		return false, "", false
+	}
+	if t := xmlTextPattern.FindSubmatch(body); t != nil {
+		text = strings.TrimSpace(string(t[1]))
+	}
+	return xmlBool(string(m[1])), text, true
 }
 
 func (d deviceWeb) pressRaw(ctx context.Context, pathAndQuery string) (int, []byte, error) {

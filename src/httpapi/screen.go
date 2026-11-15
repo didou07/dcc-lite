@@ -95,7 +95,7 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 	st := grabStateFor(web.base)
 	key := fmt.Sprintf("%s/%d", mode, width)
 	if msg, left := st.coolingDown(); left > 0 {
-		return nil, &grabError{"web_error", fmt.Sprintf("%s Pausing screen requests for %d s so the receiver can recover.", msg, int(left.Seconds())+1)}
+		return nil, &grabError{"web_error", fmt.Sprintf("%s Pausing for %d s.", msg, int(left.Seconds())+1)}
 	}
 	select {
 	case st.gate <- struct{}{}:
@@ -122,7 +122,7 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 		return body, nil
 	}
 	if msg, left := st.coolingDown(); left > 0 {
-		return nil, &grabError{"web_error", fmt.Sprintf("%s Pausing screen requests for %d s so the receiver can recover.", msg, int(left.Seconds())+1)}
+		return nil, &grabError{"web_error", fmt.Sprintf("%s Pausing for %d s.", msg, int(left.Seconds())+1)}
 	}
 	upstream, cancel := context.WithTimeout(context.WithoutCancel(ctx), grabTimeout)
 	defer cancel()
@@ -136,19 +136,25 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 
 const maxScreenBytes = 16 << 20
 
-// grabAddresses are the screenshot addresses known to exist. OpenWebif and the WebInterface plugin
-// both answer /grab; some images only have /web/screenshot or a fixed /video.png.
+// grabAddresses are the screenshot addresses for the receiver's own web interface (chosen by the owner).
+// OpenWebif: /grab only. WebInterface: its own /screenshot address first (osd and
+// video switches, as the receiver page itself uses), then the older /grab.
 func grabAddresses(mode string, width int, kind string) []string {
-	addrs := []string{
+	if kind != "webinterface" {
+		return []string{fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width)}
+	}
+	layers := "osd=1&video=1"
+	switch mode {
+	case "video":
+		layers = "video=1"
+	case "osd":
+		layers = "osd=1"
+	}
+	return []string{
+		"/screenshot?format=jpg&" + layers,
+		fmt.Sprintf("/grab?format=jpg&r=%d", width),
 		fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width),
-		fmt.Sprintf("/web/screenshot?format=jpg&mode=%s&r=%d", mode, width),
-		"/video.png",
 	}
-	if kind == "webinterface" {
-		// the older WebInterface (DreamOS) may refuse the mode argument: the same address without it
-		addrs = append(addrs[:1], append([]string{fmt.Sprintf("/grab?format=jpg&r=%d", width)}, addrs[1:]...)...)
-	}
-	return addrs
 }
 
 func isPicture(body []byte) bool {
@@ -158,11 +164,8 @@ func isPicture(body []byte) bool {
 	return len(body) >= 8 && string(body[1:4]) == "PNG"
 }
 
-// grabOnce asks the receiver for one picture.
-//   - A receiver that works with /grab costs exactly one request, as always.
-//   - Other addresses are tried only when an address does not exist (404/405), never after a real
-//     failure, so a struggling receiver is not hit again. The address that worked is remembered.
-//   - If the owner chose OpenWebif for the device, only /grab is ever asked.
+// grabOnce asks the receiver for one picture: /grab first; other addresses only on 404/405,
+// never after a real failure. The working address is remembered; OpenWebif devices use /grab only.
 func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, width int) ([]byte, *grabError) {
 	all := grabAddresses(mode, width, web.kind)
 	st.mu.Lock()
@@ -173,10 +176,10 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 	st.mu.Unlock()
 	order := []int{0} // OpenWebif: /grab and nothing else
 	switch {
-	case found:
+	case found && idx < len(all):
 		order = []int{idx}
-	case web.kind != "openwebif":
-		// The others are asked only while an address is missing (404) or refuses the request (400/412/415/501).
+	case web.kind == "webinterface":
+		// WebInterface: its own addresses in turn, moving on only after 404 or 400/412/415/501.
 		order = make([]int, len(all))
 		for i := range order {
 			order[i] = i
@@ -199,7 +202,7 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 			return nil, &grabError{"web_auth", "The receiver's web interface rejected the saved user name or password."}
 		case missing:
-			lastMsg = "This receiver has no screenshot address (grab). Install a screenshot plugin for its web interface."
+			lastMsg = "This receiver has no screenshot address (grab)."
 			if found {
 				st.mu.Lock()
 				st.found = false
@@ -207,7 +210,7 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 			}
 			continue // only a missing address moves on to the next one
 		case resp.StatusCode != http.StatusOK:
-			lastMsg = fmt.Sprintf("The receiver's screenshot tool (grab) failed (HTTP %d). On some images this can crash Enigma2.", resp.StatusCode)
+			lastMsg = fmt.Sprintf("The receiver's screenshot address failed (HTTP %d).", resp.StatusCode)
 			devLog.Warn("screenshot address refused", "base", web.base, "path", pathOnly(all[i]), "status", resp.StatusCode)
 			switch resp.StatusCode {
 			case http.StatusBadRequest, http.StatusPreconditionFailed, http.StatusUnsupportedMediaType, http.StatusNotImplemented:
@@ -218,7 +221,7 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 		case rerr != nil || len(body) > maxScreenBytes:
 			lastMsg = "The receiver sent an unusable picture."
 		case !isPicture(body):
-			lastMsg = "The receiver did not return a picture (is the grab feature available on this image?)."
+			lastMsg = "The receiver did not return a picture."
 			if web.kind == "webinterface" && n < len(order)-1 {
 				continue // the owner said it is the older interface: its pages may answer with text instead
 			}

@@ -17,7 +17,7 @@ function raRender(status) {
   for (const id of ["#raEnabled", "#raListen", "#raHosts", "#raEmail", "#raSave"]) $(id).disabled = !managed;
   const state = $("#raState");
   state.dataset.state = status.running ? "on" : "off";
-  state.textContent = !managed ? "Started from the command line (--remote-listen). Restart without it to manage this here."
+  state.textContent = !managed ? "Started with --remote-listen."
     : status.running ? `On · HTTPS · ${status.listen}` : "";
   $("#raInfo").hidden = !status.running;
   const automatic = status.certificate === "letsencrypt-auto";

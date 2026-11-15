@@ -46,7 +46,7 @@
   const DIALOG_ICONS = {
     deviceDialog: "tv", histDialog: "history", termCfgDialog: "sliders", pasteDialog: "paste", raDialog: "lock",
     scanDialog: "search", bqAddDialog: "plus", bqStreamDialog: "link", editorDialog: "edit", powerDialog: "power",
-    guideDialog: "calendar", timerDialog: "bell", atDialog: "bolt", erDialog: "calendar", svcDialog: "info", askDialog: "info", themeDialog: "palette",
+    guideDialog: "calendar", timerDialog: "bell", atDialog: "bolt", erDialog: "calendar", svcDialog: "info", askDialog: "info", themeDialog: "palette", diagDialog: "plug", keysDialog: "keyboard",
   };
   for (const dialog of document.querySelectorAll("dialog[id]")) {
     const heading = dialog.querySelector(".dialog-card h2");

@@ -151,7 +151,7 @@ async function bqOpenBouquet(file) {
     $("#bqName").value = data.name; $("#bqFilter").value = "";
     bq.original = bqSnapshot();
     bqRenderLists(); bqRenderEntries();
-    bqStatus(data.names_available ? "" : "Channel names were not found (no lamedb in this folder), so only references are shown.");
+    bqStatus(data.names_available ? "" : "Channel names not found.");
   } catch (error) { bqError(error); }
 }
 
@@ -186,7 +186,7 @@ function bqDeleteSelected() {
   bq.entries = bq.entries.filter((_, i) => !bq.sel.has(i));
   bq.sel = new Set(bq.entries.length ? [Math.min(first, bq.entries.length - 1)] : []);
   bqRenderEntries();
-  bqStatus(`${bqPlural(count, "entry", "entries")} removed. Undo with Ctrl+Z, or press Save to keep the change.`);
+  bqStatus(`${bqPlural(count, "entry", "entries")} removed (Ctrl+Z to undo).`);
 }
 function bqInsert(newEntries, at = bq.sel.size ? Math.max(...bq.sel) + 1 : bq.entries.length) {
   bqRemember();
@@ -211,7 +211,7 @@ async function bqRename() {
   const stream = bqIsStream(entry);
   const value = await ask({
     title: entry.marker ? "Edit marker" : stream ? "Rename stream" : "Rename channel",
-    message: entry.marker || stream ? "" : `This only changes the name inside this bouquet${entry.base ? ` (the receiver's list calls it “${entry.base}”)` : ""}. Leave it empty to go back to the original name.`,
+    message: entry.marker || stream ? "" : `Name inside this bouquet only${entry.base ? ` (original: “${entry.base}”)` : ""}.`,
     label: "Name", value: bqText(entry), ok: "Rename",
     validate: (v) => ((entry.marker || stream) && !v ? "Enter some text." : v.length > 100 ? "Use at most 100 characters." : /[\r\n]/.test(v) ? "Use one line." : ""),
   });
@@ -254,17 +254,17 @@ function bqRemoveDuplicates() {
   bqRemember();
   bq.entries = keep; bq.sel.clear(); bq.anchor = -1;
   bqRenderEntries();
-  bqStatus(`${bqPlural(removed, "duplicate", "duplicates")} removed. Press Save to keep the change.`, "ok");
+  bqStatus(`${bqPlural(removed, "duplicate", "duplicates")} removed.`, "ok");
 }
 async function bqRemoveMissing() {
-  if (!bq.namesKnown) { bqStatus("The receiver's channel list (lamedb) was not found, so missing channels cannot be detected.", "error"); return; }
+  if (!bq.namesKnown) { bqStatus("Channel list not found.", "error"); return; }
   const missing = bq.entries.filter((e) => !e.marker && !bqIsStream(e) && !e.name);
-  if (!missing.length) { bqStatus("Every channel in this bouquet exists in the receiver's channel list.", "ok"); return; }
-  if (!(await ask({ title: "Remove missing channels", message: `${bqPlural(missing.length, "channel is", "channels are")} not in the receiver's channel list any more (for example after a new scan). Remove them from this bouquet?`, input: false, ok: "Remove", danger: true }))) return;
+  if (!missing.length) { bqStatus("No missing channels.", "ok"); return; }
+  if (!(await ask({ title: "Remove missing channels", message: `${bqPlural(missing.length, "channel is", "channels are")} not in the channel list. Remove from this bouquet?`, input: false, ok: "Remove", danger: true }))) return;
   bqRemember();
   bq.entries = bq.entries.filter((e) => !missing.includes(e)); bq.sel.clear(); bq.anchor = -1;
   bqRenderEntries();
-  bqStatus(`${bqPlural(missing.length, "missing channel", "missing channels")} removed. Press Save to keep the change.`, "ok");
+  bqStatus(`${bqPlural(missing.length, "missing channel", "missing channels")} removed.`, "ok");
 }
 function bqSelectAll() { bq.sel = new Set(bq.entries.keys()); bqSyncSelection(); }
 function bqInvertSelection() { bq.sel = new Set([...bq.entries.keys()].filter((i) => !bq.sel.has(i))); bqSyncSelection(); }
@@ -273,10 +273,10 @@ function bqCopySelected(announce = true) {
   if (!bq.sel.size) return false;
   bqClip.entries = [...bq.sel].sort((a, b) => a - b).map((i) => ({ ...bq.entries[i] }));
   bqButtons();
-  if (announce) bqStatus(`${bqPlural(bqClip.entries.length, "entry", "entries")} copied. Open any bouquet and press Paste (Ctrl+V).`, "ok");
+  if (announce) bqStatus(`${bqPlural(bqClip.entries.length, "entry", "entries")} copied.`, "ok");
   return true;
 }
-function bqCutSelected() { if (bqCopySelected(false)) { bqDeleteSelected(); bqStatus(`${bqPlural(bqClip.entries.length, "entry", "entries")} cut. Open any bouquet and press Paste (Ctrl+V).`, "ok"); } }
+function bqCutSelected() { if (bqCopySelected(false)) { bqDeleteSelected(); bqStatus(`${bqPlural(bqClip.entries.length, "entry", "entries")} cut.`, "ok"); } }
 function bqPasteClipboard() {
   if (!bq.file || !bqClip.entries.length) return;
   const have = new Set(bq.entries.filter((e) => !e.marker).map((e) => bqNormRef(e.ref)));
@@ -284,7 +284,7 @@ function bqPasteClipboard() {
   const skipped = bqClip.entries.length - fresh.length;
   if (!fresh.length) { bqStatus("Those channels are already in this bouquet.", "error"); return; }
   bqInsert(fresh);
-  bqStatus(`${bqPlural(fresh.length, "entry", "entries")} pasted${skipped ? `, ${skipped} already in the bouquet` : ""}. Press Save to keep the change.`, "ok");
+  bqStatus(`${bqPlural(fresh.length, "entry", "entries")} pasted${skipped ? `, ${skipped} already in the bouquet` : ""}.`, "ok");
 }
 
 async function bqSendEntries(file, indices, move) {
@@ -306,7 +306,7 @@ async function bqSendEntries(file, indices, move) {
     bq.busy = false;
     if (move) { bq.sel = new Set(indices); bqDeleteSelected(); }
     else bqButtons();
-    bqStatus(`${bqPlural(fresh.length, "entry", "entries")} ${move ? "moved" : "copied"} to “${target.name}”${skipped ? ` (${skipped} already there)` : ""}.${move ? " Press Save to finish removing them here." : ""}`, "ok");
+    bqStatus(`${bqPlural(fresh.length, "entry", "entries")} ${move ? "moved" : "copied"} to “${target.name}”${skipped ? ` (${skipped} already there)` : ""}.`, "ok");
   } catch (error) { bq.busy = false; bqButtons(); bqError(error); }
 }
 
@@ -325,12 +325,12 @@ async function bqSave(force = false) {
     const item = bq.lists[bq.kind].find((entry) => entry.file === bq.file);
     if (item) item.name = name;
     bq.busy = false; bqRenderLists(); bqRenderEntries();
-    bqStatus(`Saved ${new Date().toLocaleTimeString()} — use “Reload on receiver” to apply it.`, "ok");
+    bqStatus(`Saved ${new Date().toLocaleTimeString()}.`, "ok");
   } catch (error) {
     bq.busy = false; bqButtons();
     if (error.code === "conflict") {
       bqStatus(error.message, "error");
-      if (await ask({ title: "Bouquet changed on the receiver", message: "This bouquet was changed on the receiver after you opened it (Enigma2 rewrites bouquets itself). Overwrite it with your version?", input: false, ok: "Overwrite", danger: true })) await bqSave(true);
+      if (await ask({ title: "Bouquet changed on the receiver", message: "Changed on the receiver since you opened it. Overwrite?", input: false, ok: "Overwrite", danger: true })) await bqSave(true);
     } else bqError(error);
   }
 }
@@ -339,8 +339,8 @@ async function bqListAction(action) {
   const file = bq.file;
   if (!file) return;
   if (!(await bqDiscardOK())) return;
-  if (action === "remove" && !(await ask({ title: "Remove from the list", message: `Remove “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list? The file ${file} stays on the receiver.`, input: false, ok: "Remove", danger: true }))) return;
-  if (action === "delete" && !(await ask({ title: "Delete the bouquet", message: `Delete “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list and erase the file ${file} from the receiver? This cannot be undone.`, input: false, ok: "Delete", danger: true }))) return;
+  if (action === "remove" && !(await ask({ title: "Remove from the list", message: `Remove “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list? The file stays.`, input: false, ok: "Remove", danger: true }))) return;
+  if (action === "delete" && !(await ask({ title: "Delete the bouquet", message: `Delete “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet and its file ${file}? This cannot be undone.`, input: false, ok: "Delete", danger: true }))) return;
   try {
     const answer = await api(bqURL("bouquet/list-change"), { method: "POST", body: JSON.stringify({ dir: bq.dir, file, action }) });
     if (answer?.note) toast(answer.note, "error");
@@ -374,7 +374,7 @@ async function bqDuplicate() {
     await bqLoadLists(true);
     bq.file = keep;
     await bqOpenBouquet(made.file);
-    bqStatus(`Created “${name.trim()}” with ${bqPlural(entries.length, "entry", "entries")}. Use “Reload on receiver” to apply it.`, "ok");
+    bqStatus(`Created “${name.trim()}” with ${bqPlural(entries.length, "entry", "entries")}.`, "ok");
   } catch (error) { bq.busy = false; bqButtons(); bqError(error); }
 }
 async function bqReloadReceiver() {
@@ -440,11 +440,11 @@ function bqStreamConfirm(event) {
   if (bqStream.mode === "one") {
     const url = $("#bqStreamUrl").value.trim(), name = $("#bqStreamName").value.trim();
     if (!name) { bqStreamFail("Enter a name for the channel."); $("#bqStreamName").focus(); return; }
-    if (!bqStreamURLOK(url)) { bqStreamFail("Enter a full stream address, for example http://server:8000/live/stream.ts"); $("#bqStreamUrl").focus(); return; }
+    if (!bqStreamURLOK(url)) { bqStreamFail("Enter a full stream address."); $("#bqStreamUrl").focus(); return; }
     fresh = [{ ref: bqStreamRef(type, url, name), description: name, name, marker: false }];
   } else {
     const items = bqStream.parsed;
-    if (!items.length) { bqStreamFail("No streams found. A playlist has lines like #EXTINF:-1,Name followed by the address."); return; }
+    if (!items.length) { bqStreamFail("No streams found."); return; }
     if (bq.entries.length + items.length > 19000) { bqStreamFail("That would make the bouquet too large."); return; }
     const groups = $("#bqM3uGroups").checked;
     let markerNo = 1;
@@ -462,7 +462,7 @@ function bqStreamConfirm(event) {
   $("#bqStreamDialog").close();
   bqInsert(fresh);
   const n = fresh.filter((e) => !e.marker).length;
-  bqStatus(`${bqPlural(n, "stream", "streams")} added. Press Save to keep the change.`, "ok");
+  bqStatus(`${bqPlural(n, "stream", "streams")} added.`, "ok");
 }
 function bqLoadM3UFile(file) {
   if (!file) return;
@@ -585,7 +585,7 @@ async function bqAddSearch() {
     bqAdd.have = new Set(bq.entries.filter((e) => !e.marker).map((e) => bqNormRef(e.ref)));
     bqAddProviders(data.providers, provider);
     bqAddRender();
-    $("#bqAddStatus").textContent = !data.total ? "No channel matches." : data.truncated ? `Showing the first ${bqAdd.items.length} of ${data.total}. Pick a provider or type more of the name to narrow it down.` : `${bqPlural(data.total, "channel", "channels")}. Click to select, Shift+click for a range, double-click to add one.`;
+    $("#bqAddStatus").textContent = !data.total ? "No channel matches." : data.truncated ? `Showing the first ${bqAdd.items.length} of ${data.total}.` : `${bqPlural(data.total, "channel", "channels")}.`;
   } catch (error) {
     if (seq !== bqAdd.seq) return;
     bqAdd.items = []; bqAdd.sel.clear(); bqAddRender();
@@ -612,7 +612,7 @@ function bqAddConfirm() {
   $("#bqAddDialog").close();
   if (!fresh.length) { bqStatus("Those channels are already in the bouquet.", "error"); return; }
   bqInsert(fresh.map((svc) => ({ ref: svc.ref, description: "", name: svc.name, base: svc.name, marker: false })));
-  bqStatus(`${bqPlural(fresh.length, "channel", "channels")} added${skipped ? `, ${skipped} already in the bouquet` : ""}. Press Save to keep the change.`, "ok");
+  bqStatus(`${bqPlural(fresh.length, "channel", "channels")} added${skipped ? `, ${skipped} already in the bouquet` : ""}.`, "ok");
 }
 {
   const list = $("#bqAddList");
@@ -658,13 +658,14 @@ function bqReset() {
 function listsMode(mode) {
   $("#listsEdit").hidden = mode !== "edit";
   $("#listsBackup").hidden = mode !== "backup";
+  if (mode === "backup" && typeof rpRefresh === "function") rpRefresh();
   const id = mode === "backup" ? "backup" : "editor";
-  if (typeof tools !== "undefined") { tools.current = id; store.set("tool", id); if (typeof updateToolsNav === "function") updateToolsNav(); }
+  if (typeof tools !== "undefined") { tools.current = id; if (typeof rememberTool === "function") rememberTool(); if (typeof updateToolsNav === "function") updateToolsNav(); }
   const title = $("#listsTitle"); if (title) title.firstChild.textContent = mode === "backup" ? "Backup & restore " : "Channel editor ";
   const lead = $("#listsLead");
   if (lead) lead.innerHTML = mode === "backup"
-    ? "Save the channel list of the receiver as a <b>.zip</b> file on this device, or put a saved copy back. Make a backup before you change the lists."
-    : "Your receiver keeps its channels in <b>bouquets</b> (the favourite lists you zap through). Reorder, rename, add or remove channels and whole bouquets.";
+    ? "Back up the channel list as a <b>.zip</b>, or restore one."
+    : "Edit your <b>bouquets</b>: reorder, rename, add, remove.";
 }
 function listsEnter() { files.ready.then(listsEnterNow); }
 async function listsEnterNow() {
@@ -673,7 +674,7 @@ async function listsEnterNow() {
   if (!device) { bqReset(); bqStatus("Add or choose a device first (Devices tab)."); return; }
   syncFilePort();
   if (!files.sessionID && !files.connecting && !files.manualOff) await fileConnect();
-  if (!files.sessionID) { bqStatus(files.connecting ? "Connecting…" : "Not connected. Press Connect to read the channel lists."); return; }
+  if (!files.sessionID) { bqStatus(files.connecting ? "Connecting…" : "Not connected. Press Connect."); return; }
   if (bq.profileID !== files.profileID) {
     if (bqDirty()) toast("Unsaved changes of the previous device were discarded", "error");
     bqReset();
@@ -681,6 +682,7 @@ async function listsEnterNow() {
     $("#bqDir").value = bq.dir;
     await bqLoadLists();
   }
+  if (typeof rpRefresh === "function") rpRefresh();
 }
 {
   const entries = $("#bqEntries");

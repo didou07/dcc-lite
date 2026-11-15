@@ -25,7 +25,7 @@ type deviceWeb struct {
 	user   string
 	pass   string
 	client *http.Client
-	kind   string // "", "openwebif" or "webinterface": what the owner said the receiver runs
+	kind   string // "openwebif" or "webinterface": what the owner said the receiver runs (never guessed)
 }
 
 func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
@@ -50,7 +50,7 @@ func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
 	}
 	return deviceWeb{
 		base: scheme + "://" + net.JoinHostPort(strings.Trim(profile.Host, "[]"), strconv.Itoa(port)),
-		port: port, user: user, pass: profile.Password, client: client, kind: profile.WebKind,
+		port: port, user: user, pass: profile.Password, client: client, kind: profile.EffectiveWebKind(),
 	}
 }
 
@@ -244,32 +244,36 @@ func (d deviceWeb) probe() probeResult {
 }
 
 func (d deviceWeb) unreachable(err error) string {
+	var lacks *webUnsupportedError
+	if errors.As(err, &lacks) {
+		return "This receiver is set to WebInterface, which has no " + lacks.feature + "."
+	}
 	var bad *legacyBadReply
 	if errors.As(err, &bad) {
-		return "The receiver's WebInterface could not answer: " + bad.msg + ". Check that the web interface plugin is installed and the web port is right."
+		return "The receiver's WebInterface could not answer: " + bad.msg + "."
 	}
 	at := strings.TrimPrefix(strings.TrimPrefix(d.base, "http://"), "https://")
 	switch errKind(err) {
 	case "plainhttp":
-		return "Port " + strconv.Itoa(d.port) + " speaks plain HTTP: untick the HTTPS box in the device settings, or use the receiver's HTTPS port (https://)."
+		return "Port " + strconv.Itoa(d.port) + " speaks plain HTTP: untick the HTTPS box."
 	case "tls":
-		return "The secure connection to " + at + " failed. Check the web port, or untick the HTTPS box if the receiver also answers on plain HTTP."
+		return "The secure connection to " + at + " failed. Check the web port and the HTTPS box."
 	case "noroute":
-		return "Cannot reach " + at + ". Check that the receiver is on and on the same network."
+		return "Cannot reach " + at + "."
 	case "timeout":
-		return "The receiver at " + at + " did not reply in time. It may be busy, or the HTTPS box does not match the port (usually 80 for HTTP, 443 for HTTPS)."
+		return "The receiver at " + at + " did not reply in time."
 	case "refused", "reset":
 		p := d.probe()
 		if len(p.webPorts) > 0 {
-			return "Nothing answers on port " + strconv.Itoa(d.port) + ", but the web interface seems to be on port " + strconv.Itoa(p.webPorts[0]) + ". Change the web port in the device settings."
+			return "Nothing answers on port " + strconv.Itoa(d.port) + ", but the web interface seems to be on port " + strconv.Itoa(p.webPorts[0]) + ". Change the web port."
 		}
 		if p.telnet || p.ftp {
 			if errKind(err) == "reset" {
-				return "The receiver is on, but Enigma2's web interface is busy or restarting. Wait a few seconds and try again."
+				return "The web interface is busy or restarting."
 			}
-			return "The receiver is on, but Enigma2's web interface is not answering (Enigma2 is probably restarting or crashed). Wait a minute and try again, or restart Enigma2."
+			return "The web interface is not answering."
 		}
-		return "The receiver at " + at + " is not answering. Check that it is on and on the same network."
+		return "The receiver at " + at + " is not answering."
 	}
-	return "The receiver's web interface at " + at + " did not answer. Check the web port and the HTTPS box in the device settings."
+	return "The receiver's web interface at " + at + " did not answer. Check the web port and the HTTPS box."
 }

@@ -449,8 +449,7 @@ func (u *Updater) download(ctx context.Context, rawURL, dest, wantSum string) er
 	return nil
 }
 
-// binaryName is the executable inside a release package: the Windows app has its own file name so both
-// programs can sit in the same folder.
+// binaryName is the executable inside a release package (the Windows app has its own file name).
 func binaryName(variant string) string {
 	name := "DCCLite"
 	if variant == "gui" {

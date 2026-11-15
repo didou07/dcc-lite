@@ -21,7 +21,7 @@ async function transferSelection(direction, given = null, destPath = null) {
   let overwrite = false;
   if (clashes.length) {
     const list = clashes.slice(0, 5).map((e) => `• ${e.name}`).join("\n") + (clashes.length > 5 ? `\n… and ${clashes.length - 5} more` : "");
-    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} ${direction === "upload" ? "on the device" : "on this computer"}. Folders are merged and matching files replaced.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
+    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} ${direction === "upload" ? "on the device" : "on this computer"}.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
     if (!answer) return;
     if (answer === "alt") {
       entries = entries.filter((e) => !existing.has(e.name));
@@ -183,7 +183,7 @@ async function uploadFromDevice(items, destPath = null) {
   let overwrite = false;
   if (clashes.length) {
     const list = clashes.slice(0, 5).map((n) => `• ${n}`).join("\n") + (clashes.length > 5 ? `\n… and ${clashes.length - 5} more` : "");
-    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} on the device. Folders are merged and matching files replaced.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
+    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} on the device.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
     if (!answer) return;
     if (answer === "alt") {
       const skip = new Set(clashes);
@@ -219,8 +219,8 @@ $("#deviceDownload").addEventListener("click", () => downloadToDevice(selectedEn
 async function downloadToDevice(entries) {
   if (!requireSession()) return;
   const wanted = (entries || []).filter((e) => !e.is_dir);
-  if (!wanted.length) { toast((entries || []).length ? "Folders cannot be saved to this device yet. Select files." : "Select remote files to download"); return; }
-  if (wanted.length < entries.length) toast("Folders were skipped. Only files can be saved to this device.");
+  if (!wanted.length) { toast((entries || []).length ? "Folders cannot be saved here yet." : "Select remote files to download"); return; }
+  if (wanted.length < entries.length) toast("Folders were skipped.");
   let queued = 0;
   for (const entry of wanted) {
     try { await post(sessionURL(files.sessionID, "download-prepare"), { remote_path: entry.path }); queued++; }
@@ -302,6 +302,31 @@ function syncQueueList(list, wanted) {
   });
   list.scrollTop = scroll;
 }
+// Top-bar badge: overall progress of everything still running, visible on every page.
+function syncTransferBadge(active) {
+  const badge = $("#xferBadge");
+  if (!badge) return;
+  badge.hidden = !active;
+  if (!active) return;
+  let done = 0, total = 0;
+  for (const t of files.transfers) {
+    if (t.state !== "running" && t.state !== "queued") continue;
+    done += t.progress?.bytes_done || 0; total += t.progress?.bytes_total || 0;
+  }
+  for (const p of files.pending) {
+    if (p.state === "failed") continue;
+    done += Math.min(p.loaded || 0, p.total || 0); total += p.total || 0;
+  }
+  const known = total > 0;
+  const percent = known ? Math.max(0, Math.min(100, Math.floor((done / total) * 100))) : 0;
+  $("#xferBadgeText").textContent = known ? `${percent}%${active > 1 ? ` · ${active}` : ""}` : String(active);
+  badge.classList.toggle("indeterminate", !known);
+  badge.querySelector(".xfer-bar b").style.width = `${percent}%`;
+  badge.title = `${active} transfer${active === 1 ? "" : "s"} in progress${known ? ` · ${percent}%` : ""}`;
+  badge.setAttribute("aria-label", badge.title);
+}
+$("#xferBadge")?.addEventListener("click", () => showView("files"));
+
 function renderQueue() {
   const list = $("#transferList");
   const serverLive = (t) => t.state === "running" || t.state === "queued";
@@ -310,6 +335,7 @@ function renderQueue() {
   const failed = files.transfers.filter((t) => t.state === "failed").length + files.pending.filter((p) => p.state === "failed").length;
   const total = files.transfers.length + files.pending.length;
   $("#transferSummary").textContent = total ? `${active} active · ${total} total${failed ? ` · ${failed} failed` : ""}` : "No transfers yet";
+  syncTransferBadge(active);
   $("#transferClear").disabled = !(files.transfers.some((t) => !serverLive(t)) || files.pending.some((p) => p.state === "failed"));
   $("#queuePanel").classList.toggle("empty", !total);
   const recent = files.transfers.slice(-60).reverse();
@@ -405,7 +431,7 @@ async function runRemoteFile() {
   const sel = selectedEntries(panes.remote);
   if (!requireSession() || sel.length !== 1 || sel[0].is_dir) { toast("Select one remote file to run"); return; }
   const device = currentDevice();
-  const command = await ask({ title: `Run ${sel[0].name}`, message: `The command runs on ${device.name} with the saved account. Review it first.`, label: "Command", value: defaultRunCommand(sel[0]), ok: "Run in terminal", validate: (v) => (!v ? "Enter a command." : /[\r\n\0]/.test(v) ? "Use a single line." : "") });
+  const command = await ask({ title: `Run ${sel[0].name}`, message: `Runs on ${device.name}. Review it first.`, label: "Command", value: defaultRunCommand(sel[0]), ok: "Run in terminal", validate: (v) => (!v ? "Enter a command." : /[\r\n\0]/.test(v) ? "Use a single line." : "") });
   if (!command) return;
   createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: panes.remote.path, initialCommand: command });
   showView("terminal");
@@ -429,14 +455,14 @@ async function cmdSymlink() {
   const linkPath = await ask({ title: "New symbolic link", message: `Target: ${target}`, label: "Link path (the new file)", value: joinRemote(panes.remote.path, `${base}-link`), ok: "Create in terminal", validate: remoteAbsolute });
   if (!linkPath) return;
   runOnDevice(`ln -s ${shellQuote(target)} ${shellQuote(linkPath)} && ls -l ${shellQuote(linkPath)}`);
-  toast("The link is created in the terminal. Refresh the folder afterwards.");
+  toast("Created in the terminal.");
 }
 const copyName = (name) => { const dot = name.lastIndexOf("."); return dot > 0 ? `${name.slice(0, dot)}-copy${name.slice(dot)}` : `${name}-copy`; };
 async function cmdCopyOnDevice() {
   if (!requireSession()) return;
   const sel = selectedEntries(panes.remote);
   if (!sel.length) { toast("Select the items to copy on the device"); return; }
-  const dest = await ask({ title: sel.length === 1 ? `Copy ${sel[0].name}` : `Copy ${sel.length} items`, message: "The copy is made on the device itself and does not pass through this computer.", label: "Destination folder on the device", value: panes.remote.path, ok: "Copy in terminal", validate: remoteAbsolute });
+  const dest = await ask({ title: sel.length === 1 ? `Copy ${sel[0].name}` : `Copy ${sel.length} items`, message: "Copied on the device itself.", label: "Destination folder on the device", value: panes.remote.path, ok: "Copy in terminal", validate: remoteAbsolute });
   if (!dest) return;
   const clean = dest.replace(/\/+$/, "") || "/";
   if (sel.length > 1 || sel[0].is_dir || clean !== panes.remote.path) {
@@ -444,7 +470,7 @@ async function cmdCopyOnDevice() {
   } else {
     runOnDevice(`cp -a ${shellQuote(sel[0].path)} ${shellQuote(joinRemote(clean, copyName(sel[0].name)))} && echo Done`);
   }
-  toast("The copy runs in the terminal. Refresh the folder afterwards.");
+  toast("The copy runs in the terminal.");
 }
 $("#fileTerminalHere").addEventListener("click", () => openTerminalHere());
 $("#fileRun").addEventListener("click", runRemoteFile);

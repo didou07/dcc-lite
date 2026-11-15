@@ -399,8 +399,7 @@ func (n *nativeLive) applyBox(b boxArgs, show bool) {
 	n.place(true)
 }
 
-// place moves the picture window to the last requested box, in screen coordinates. Requests are
-// posted (SWP_ASYNCWINDOWPOS) because the window belongs to another thread, and this one never waits.
+// place moves the picture window to the last requested box; posted asynchronously (another thread owns it).
 func (n *nativeLive) place(force bool) {
 	n.mu.Lock()
 	host, l, prev := n.child, n.last, n.applied

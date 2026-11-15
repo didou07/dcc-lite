@@ -14,13 +14,13 @@ async function powerAction(action, doing, confirm = null, report = remoteError) 
   } catch (error) { report(error.message); return false; }
 }
 
-// Wake-on-LAN: the receiver's hardware address is learned while it is on, so this also works after deep standby.
+// Wake-on-LAN: the MAC is learned while the receiver is on, so it works after deep standby.
 async function wakeOnLan(id, report = remoteError) {
   if (!id) return false;
   report("");
   try {
     await post(profileURL(id, "wake"), {});
-    toast("Wake-up signal sent. The receiver needs about a minute to start.");
+    toast("Wake-up signal sent.");
     return true;
   } catch (error) { report(error.message); return false; }
 }
@@ -59,10 +59,10 @@ function openPowerDialog() {
     { label: "Toggle standby", run: () => act("toggle", "Standby toggled") },
     standby ? { label: "Wake up", run: () => act("wakeup", "Waking the receiver up…") }
       : { label: "Standby", run: () => act("standby", "Receiver goes to standby") },
-    { label: "Restart interface (GUI)", run: () => act("restart_gui", "Restarting the interface…", { title: "Restart the interface?", message: "Enigma2 restarts on the receiver. The picture is gone for about a minute; recordings in progress may be interrupted.", ok: "Restart GUI" }) },
-    { label: "Reboot", run: () => act("reboot", "Rebooting the receiver…", { title: "Reboot the receiver?", message: "The whole receiver restarts and will be unreachable for a couple of minutes.", ok: "Reboot" }) },
+    { label: "Restart interface (GUI)", run: () => act("restart_gui", "Restarting the interface…", { title: "Restart the interface?", message: "Enigma2 restarts. Recordings in progress may stop.", ok: "Restart GUI" }) },
+    { label: "Reboot", run: () => act("reboot", "Rebooting the receiver…", { title: "Reboot the receiver?", message: "The receiver restarts.", ok: "Reboot" }) },
     { label: "Wake over the network (WOL)", run: () => wakeOnLan(id, powerDialogError) },
-    { label: "Deep standby", danger: true, run: () => act("deep", "Shutting the receiver down…", { title: "Shut the receiver down?", message: "The receiver switches off completely. You can start it again with “Wake over the network” if its network wake-up is enabled, or with its own button or a timer.", ok: "Shut down" }) },
+    { label: "Deep standby", danger: true, run: () => act("deep", "Shutting the receiver down…", { title: "Shut the receiver down?", message: "The receiver switches off completely.", ok: "Shut down" }) },
   ];
   $("#powerActions").replaceChildren(...actions.map((item) => h("button", {
     type: "button", class: `power-btn${item.danger ? " danger" : ""}`, text: item.label, onClick: () => powerRun(item.run),
@@ -103,7 +103,7 @@ async function powerLoadSlots(id) {
 async function powerBoot(id, slot) {
   const ok = await ask({
     title: "Restart into this slot?",
-    message: `The receiver restarts into “${slot.label}”. It will be unreachable for a couple of minutes.`,
+    message: `The receiver restarts into “${slot.label}”.`,
     input: false, ok: "Restart", danger: true,
   });
   if (!ok) return false;
@@ -117,7 +117,7 @@ function setStandby(value) {
   ch.standby = value === true ? true : value === false ? false : null;
   $("#nowBar").classList.toggle("standby", ch.standby === true);
   $("#nowStandby").hidden = ch.standby !== true;
-  if (ch.standby === true) $("#screenWait").textContent = "The receiver is in standby. Use the power button to wake it up.";
+  if (ch.standby === true) $("#screenWait").textContent = "The receiver is in standby.";
 }
 
 const sleepURL = (id) => profileURL(id, "sleeptimer");

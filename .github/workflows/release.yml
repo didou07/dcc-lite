@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -116,9 +116,9 @@ jobs:
           retention-days: 14
 
   publish:
-    needs: build-and-test
+    needs: build
     if: >-
-      needs.build-and-test.outputs.exists != 'true' &&
+      needs.build.outputs.exists != 'true' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
     runs-on: ubuntu-latest
     permissions:
@@ -134,7 +134,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ needs.build-and-test.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail

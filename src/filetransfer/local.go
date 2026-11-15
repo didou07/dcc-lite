@@ -269,12 +269,8 @@ func (f *LocalFS) ReplaceTemp(tempPath, targetRelative string, overwrite bool) e
 	return os.Rename(tempPath, target)
 }
 
-// Copy duplicates srcRelative onto dstRelative within the local root. Files are
-// copied byte-for-byte (preserving permissions); directories are copied
-// recursively. Symbolic links are rejected, matching the folder-transfer rules
-// used for FTP uploads and downloads. ctx is checked between entries so a
-// cancelled or disconnected request stops a large folder copy instead of
-// letting it run unbounded in the background.
+// Copy duplicates srcRelative onto dstRelative in the local root; directories are copied recursively,
+// symbolic links are rejected, and ctx is checked between entries so a cancelled request stops.
 func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, overwrite bool) error {
 	srcAbsolute, srcClean, err := f.Resolve(srcRelative, false)
 	if err != nil {

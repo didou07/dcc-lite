@@ -1,6 +1,6 @@
 "use strict";
 
-// ---- EPG refresh: the receiver visits channels in the background to keep its guide fresh (needs the EPGRefresh plugin) ----
+// ---- EPG refresh (needs the EPGRefresh plugin on the receiver) ----
 const er = { picks: new Map(), busy: false, retry: 0, settings: null };
 
 function erError(message) { const n = $("#erError"); n.textContent = message || ""; n.hidden = !message; }
@@ -64,7 +64,7 @@ async function openEPGRefresh() {
     $("#erSave").disabled = $("#erNow").disabled = false;
   } catch (error) {
     $("#erLast").textContent = "";
-    erError(error.code === "no_epgrefresh" ? "The EPGRefresh plugin is not installed or not active on this receiver. Install enigma2-plugin-extensions-epgrefresh from the Packages tool." : error.message);
+    erError(error.code === "no_epgrefresh" ? "The EPGRefresh plugin is not installed." : error.message);
   }
 }
 

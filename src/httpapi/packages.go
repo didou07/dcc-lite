@@ -16,7 +16,7 @@ import (
 // Package management goes through OpenWebif's /ipkg endpoint, which runs opkg on the receiver.
 var packageNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+._-]{0,99}$`)
 
-// protectedPackages cannot be removed from here: removing them breaks the receiver or the web interface this program talks to.
+// protectedPackages cannot be removed: doing so breaks the receiver or its web interface.
 func protectedPackage(name string) bool {
 	switch name {
 	case "enigma2", "opkg", "busybox", "base-files", "base-passwd", "libc6", "udev", "systemd", "sysvinit", "initscripts", "enigma2-plugin-extensions-openwebif":
@@ -102,7 +102,7 @@ func (s *Server) devicePackages(w http.ResponseWriter, r *http.Request) {
 		}
 		parsed, perr := parsePackageList(body)
 		if perr != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return its package list. Try “Refresh package lists” first.", "code": "web_error"})
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return its package list.", "code": "web_error"})
 			return
 		}
 		list = parsed
@@ -187,7 +187,7 @@ func (s *Server) devicePackageAction(w http.ResponseWriter, r *http.Request) {
 	delete(packageCaches, profile.ID)
 	packageCachesMu.Unlock()
 	if err != nil && ctx.Err() != nil {
-		writeJSON(w, http.StatusGatewayTimeout, map[string]any{"error": "The receiver is still working on it. Wait a minute, then refresh the list to see the result.", "code": "still_running"})
+		writeJSON(w, http.StatusGatewayTimeout, map[string]any{"error": "The receiver is still working on it.", "code": "still_running"})
 		return
 	}
 	if writeWebStatus(w, web, status, err) {

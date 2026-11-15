@@ -13,8 +13,7 @@ import (
 	"time"
 )
 
-// EPGRefresh keeps the receiver's programme guide fresh by visiting channels in the background.
-// OpenWebif exposes the plugin under /epgrefresh: XML for reading, plain query parameters for changing.
+// EPGRefresh keeps the receiver's guide fresh by visiting channels (OpenWebif /epgrefresh).
 type erSettingsXML struct {
 	Settings []struct {
 		Name  string `xml:"e2settingname"`
@@ -57,7 +56,7 @@ type erSettings struct {
 
 func erBool(v string) bool { return strings.EqualFold(strings.TrimSpace(v), "true") }
 
-// receiverOffset works out the receiver's offset from UTC from its wall-clock time, rounded to 15 minutes.
+// receiverOffset derives the receiver's UTC offset from its clock, rounded to 15 minutes.
 func receiverOffset(local string, now time.Time) (time.Duration, bool) {
 	parts := strings.Split(strings.TrimSpace(local), ":")
 	if len(parts) < 2 {
@@ -91,7 +90,7 @@ func clockText(epoch int64, offset time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", secs/3600, (secs%3600)/60)
 }
 
-// clockEpoch is the opposite: any day's HH:MM in receiver time, which is all the plugin reads from it.
+// clockEpoch maps any day's HH:MM in receiver time to an epoch (all the plugin reads).
 func clockEpoch(text string, offset time.Duration, now time.Time) (int64, bool) {
 	if !hhmmPattern.MatchString(text) {
 		return 0, false
@@ -264,7 +263,7 @@ func (s *Server) deviceEPGRefreshSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(in.Services) == 0 && in.Enabled {
-		writeError(w, http.StatusBadRequest, "choose at least one channel or bouquet to refresh, or turn EPG refresh off")
+		writeError(w, http.StatusBadRequest, "choose at least one channel or bouquet")
 		return
 	}
 	if len(in.Services) > 200 {

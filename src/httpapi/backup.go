@@ -208,6 +208,13 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	sort.SliceStable(files, func(i, j int) bool { return restoreRank(files[i].Name) < restoreRank(files[j].Name) })
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
+	// Keep what is on the receiver now, so a wrong backup can be undone.
+	s.snapshotChannels(ctx, id, profile, dir, "before-restore", true)
+	s.applyChannelFiles(ctx, w, id, profile, dir, files, skipped)
+}
+
+// applyChannelFiles writes the channel files to the receiver and asks it to reload them.
+func (s *Server) applyChannelFiles(ctx context.Context, w http.ResponseWriter, id string, profile config.Profile, dir string, files []filetransfer.RemoteFile, skipped []restoreSkip) {
 	restored := []string{}
 	for _, f := range files {
 		if err := s.app.Files.PutFile(ctx, id, dir+"/"+f.Name, f.Data); err != nil {

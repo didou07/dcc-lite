@@ -17,6 +17,8 @@ import (
 
 type App struct {
 	Version     string
+	// DataDir is the application data folder (restore points are kept under it); empty when unknown.
+	DataDir     string
 	Profiles    *config.ProfileStore
 	Connections *connection.Manager
 	Terminals   *terminal.Manager
@@ -37,8 +39,13 @@ func New(version string, profiles *config.ProfileStore, dirs ...string) *App {
 	localFiles, _ := filetransfer.NewLocalFS()
 	files := filetransfer.NewManager()
 	staging := newStaging(dirs)
+	dataDir := ""
+	if len(dirs) > 0 {
+		dataDir = dirs[0]
+	}
 	a := &App{
 		Version:     version,
+		DataDir:     dataDir,
 		Profiles:    profiles,
 		Connections: connection.NewManager(connection.NewTCPChecker()),
 		Terminals:   terminal.NewManager(),

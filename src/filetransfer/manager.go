@@ -25,7 +25,7 @@ var flog = logx.For("files")
 
 var (
 	ErrSessionNotFound = errors.New("file transfer session not found")
-	ErrSessionLimit    = errors.New("Too many file connections to this receiver are busy with transfers. Cancel a transfer or wait for it to finish, then connect again.")
+	ErrSessionLimit    = errors.New("Too many file connections are busy with transfers.")
 	ErrTaskNotFound    = errors.New("transfer task not found")
 )
 
@@ -248,10 +248,8 @@ func (m *Manager) Chmod(ctx context.Context, sessionID, remotePath string, mode 
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Chmod(ctx, remotePath, mode) })
 }
 
-// Copy duplicates srcPath onto dstPath within the same device, for the
-// in-panel Copy/Paste command. FTP has no server-side copy command, so files
-// are streamed through a local temp file (download, then upload); folders are
-// copied entry by entry the same way directory transfers are.
+// Copy duplicates srcPath onto dstPath on the same device. FTP has no server-side copy,
+// so files are streamed through a local temp file.
 func (m *Manager) Copy(ctx context.Context, sessionID, srcPath, dstPath string, overwrite bool) error {
 	if err := validateRemotePath(srcPath); err != nil {
 		return err
@@ -1509,13 +1507,13 @@ func friendlyConnectError(host string, port int, err error) error {
 	case strings.Contains(lower, "login failed"):
 		return errors.New("The receiver rejected the user name or password for FTP.")
 	case strings.Contains(lower, "refused"):
-		return fmt.Errorf("Nothing answers for FTP at %s. Check the FTP port, and that the receiver is on (its FTP service may be off or restarting).", at)
+		return fmt.Errorf("Nothing answers for FTP at %s.", at)
 	case strings.Contains(lower, "no route to host") || strings.Contains(lower, "network is unreachable") || strings.Contains(lower, "no such host"):
-		return fmt.Errorf("Cannot reach %s. Check that the receiver is on and on the same network.", at)
+		return fmt.Errorf("Cannot reach %s.", at)
 	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded"):
-		return fmt.Errorf("The receiver at %s did not reply in time for FTP. It may be busy; try again in a moment.", at)
+		return fmt.Errorf("The receiver at %s did not reply in time for FTP.", at)
 	case strings.Contains(lower, "reset by peer") || strings.Contains(lower, "eof"):
-		return fmt.Errorf("The receiver closed the FTP connection at %s (busy or restarting). Try again in a moment.", at)
+		return fmt.Errorf("The receiver closed the FTP connection at %s.", at)
 	}
 	return err
 }

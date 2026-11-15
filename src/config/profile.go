@@ -32,7 +32,9 @@ type Profile struct {
 	Password    string `json:"-"`
 	Enabled     bool   `json:"enabled"`
 	InsecureTLS bool   `json:"tls_insecure_skip_verify,omitempty"`
-	// WebKind says which web interface the receiver runs: "" (detect), "openwebif" or "webinterface" (the older plugin).
+	// WebKind is chosen by the owner: "openwebif" (JSON, /api/) or "webinterface" (the older Dreambox
+	// WebInterface: XML, /web/). The app never guesses
+	// or mixes the two. Profiles saved before this choice existed (empty) are treated as OpenWebif.
 	WebKind string `json:"web_kind,omitempty"`
 
 	Group    string `json:"group,omitempty"`     // folder name in the site list
@@ -66,6 +68,14 @@ func portOr(value, fallback int) int {
 		return value
 	}
 	return fallback
+}
+
+// EffectiveWebKind is the web interface the receiver is asked through: always exactly one of the two.
+func (p Profile) EffectiveWebKind() string {
+	if p.WebKind == "webinterface" {
+		return "webinterface"
+	}
+	return "openwebif"
 }
 
 func (p Profile) EffectiveFTPPort() int    { return portOr(p.FTPPort, DefaultFTPPort) }
@@ -129,7 +139,7 @@ func (p Profile) Validate() error {
 		return errors.New("accepting an untrusted TLS certificate requires HTTPS")
 	}
 	if p.WebKind != "" && p.WebKind != "openwebif" && p.WebKind != "webinterface" {
-		return errors.New("web interface must be automatic, OpenWebif or WebInterface")
+		return errors.New("web interface must be OpenWebif or WebInterface")
 	}
 	if len(p.Group) > 40 || hasControl(p.Group) {
 		return errors.New("group must be at most 40 characters without control characters")

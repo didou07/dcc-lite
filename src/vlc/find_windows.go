@@ -14,7 +14,7 @@ import (
 )
 
 // ErrNotFound means no VLC installation was found.
-var ErrNotFound = errors.New("VLC media player was not found. Install VLC from videolan.org (the same 32/64-bit kind as DCC Lite), then try again.")
+var ErrNotFound = errors.New("VLC media player was not found.")
 
 func hasLibs(dir string) bool {
 	for _, name := range []string{"libvlc.dll", "libvlccore.dll"} {
@@ -106,7 +106,7 @@ func FindDir() (string, error) {
 		}
 	}
 	if wrongKind != "" {
-		return "", fmt.Errorf("the installed VLC is %s but DCC Lite is %s: install the matching VLC from videolan.org", wrongKind, runtime.GOARCH)
+		return "", fmt.Errorf("the installed VLC is %s but DCC Lite is %s", wrongKind, runtime.GOARCH)
 	}
 	return "", ErrNotFound
 }

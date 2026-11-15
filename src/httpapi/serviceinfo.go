@@ -214,7 +214,7 @@ func (s *Server) deviceEPGGrid(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"now": now, "from": from, "to": to, "channels": channels})
 }
 
-// learnMAC remembers the receiver's hardware address (reported by OpenWebif) so Wake-on-LAN works after deep standby.
+// learnMAC remembers the receiver's MAC so Wake-on-LAN works after deep standby.
 func (s *Server) learnMAC(profile config.Profile, about map[string]any) {
 	if profile.MAC != "" {
 		return
@@ -240,7 +240,7 @@ func (s *Server) deviceWake(w http.ResponseWriter, r *http.Request) {
 	}
 	hw, err := net.ParseMAC(profile.MAC)
 	if err != nil || len(hw) != 6 {
-		writeError(w, http.StatusConflict, "The receiver's MAC address is not known yet. Open this device once while it is on (Info), then try again.")
+		writeError(w, http.StatusConflict, "The receiver's MAC address is not known yet.")
 		return
 	}
 	packet := make([]byte, 0, 102)

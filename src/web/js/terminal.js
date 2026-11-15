@@ -127,7 +127,7 @@ function tabTitle(tab) {
   return `${device ? device.name : "New tab"}${same.length > 1 ? ` #${index}` : ""}`;
 }
 
-/* ── Panes: every tab-strip entry is a group holding one or more terminal sessions in a split layout ── */
+/* ── Panes: each tab is a group of terminal sessions in a split layout ── */
 const leaf = (tabId) => ({ kind: "leaf", tabId });
 const treeHas = (node, id) => (node.kind === "leaf" ? node.tabId === id : treeHas(node.a, id) || treeHas(node.b, id));
 function treeLeaves(node, out = []) { if (node.kind === "leaf") out.push(node.tabId); else { treeLeaves(node.a, out); treeLeaves(node.b, out); } return out; }
@@ -164,7 +164,7 @@ function renderTabs() {
       onDblclick: (event) => { event.preventDefault(); renameTab(tab); },
       onContextmenu: (event) => { event.preventDefault(); openTabMenu(tab, event.clientX, event.clientY); } },
       h("span", { class: "dot", dataset: { state } }),
-      h("button", { class: "tt-label", type: "button", title: `${tabTitle(tab)} — ${protoName(tab.protocol)} · ${tab.host || "not connected"} (double-click to rename)`, text: tabTitle(tab) }),
+      h("button", { class: "tt-label", type: "button", title: `${tabTitle(tab)} — ${protoName(tab.protocol)} · ${tab.host || "not connected"}`, text: tabTitle(tab) }),
       count > 1 ? h("span", { class: "tt-count", title: `${count} panels in this tab`, text: String(count) }) : null,
       iconButton("x", count > 1 ? `Close this tab and its ${count} panels` : "Close tab", (event) => { event.stopPropagation(); closeGroup(group); })));
   });
@@ -173,7 +173,7 @@ function renderTabs() {
 }
 async function closeGroup(group) { for (const id of treeLeaves(group.root)) await closeTab(id); }
 
-/* Builds the split layout of the active group; only rebuilds the DOM when the shape changes. */
+/* Builds the active group's split layout; the DOM is rebuilt only when the shape changes. */
 function layoutTerminals() {
   const host = $("#terminalScreens");
   let layout = host.querySelector(":scope > .tlayout"), park = host.querySelector(":scope > .tparking");
@@ -522,7 +522,7 @@ async function reconnectTab(tab) {
       if (authExpired(status.status)) return;
       if (status.status === 404) {
         tab.reconnecting = false; tab.sessionID = "";
-        setTabState(tab, "disconnected", "The session no longer exists on the server. Press Connect to start a new one");
+        setTabState(tab, "disconnected", "Session ended. Press Connect.");
         return;
       }
       if (!status.ok) throw new Error(`Status ${status.status}`);
@@ -635,7 +635,7 @@ async function copyTerminal() {
   const selected = tab.terminal.getSelection();
   const ok = await clipboardWrite(selected || bufferText(tab));
   if (ok) { toast(selected ? "Selection copied" : "All output copied"); tab.terminal.clearSelection(); }
-  else toast("Copy was blocked by the browser. Select the text and press Ctrl+C.", "error");
+  else toast("Copy was blocked by the browser.", "error");
   focusTab(tab);
 }
 function openPasteBox(tab) {
@@ -775,7 +775,7 @@ function renderHistory() {
   const list = (filter ? all.filter((c) => c.toLowerCase().includes(filter)) : all).slice(0, 100);
   const box = $("#histList");
   box.replaceChildren();
-  if (!list.length) { box.append(h("div", { class: "hist-empty", text: all.length ? "No command matches." : "No commands yet. Commands you run in this terminal appear here." })); return list; }
+  if (!list.length) { box.append(h("div", { class: "hist-empty", text: all.length ? "No command matches." : "No commands yet." })); return list; }
   for (const command of list) {
     box.append(h("div", { class: "hist-item", role: "listitem" },
       h("button", { class: "hist-cmd", type: "button", title: command, text: command, onClick: () => useHistoryCommand(command, false) }),
@@ -969,7 +969,7 @@ $("#scanForm").addEventListener("submit", async (event) => {
   try {
     const data = await api("/api/v1/network/scan", { method: "POST", body: JSON.stringify({ range: $("#scanRange").value.trim() }) });
     renderScanResults(data.hosts);
-    $("#scanStatus").textContent = `${data.hosts.length} device${data.hosts.length === 1 ? "" : "s"} found among ${data.scanned} addresses in ${(data.duration_ms / 1000).toFixed(1)} s${data.complete ? "" : " (stopped early)"}.`;
+    $("#scanStatus").textContent = `${data.hosts.length} device${data.hosts.length === 1 ? "" : "s"} found in ${(data.duration_ms / 1000).toFixed(1)} s${data.complete ? "" : " (stopped early)"}.`;
   } catch (error) {
     $("#scanStatus").textContent = "";
     $("#scanError").textContent = error.message;
@@ -1021,9 +1021,9 @@ $("#dccScriptFile").addEventListener("change", async (event) => {
   const take = fresh.slice(0, room);
   if (!take.length) { toast(fresh.length ? "You already have 30 saved commands" : "Those scripts are already saved"); return; }
   const note = [`${take.length} script${take.length === 1 ? "" : "s"} will be added to Saved commands:`, ...take.map((script) => `• ${script.name}: ${script.command}`)];
-  if (fresh.length > take.length) note.push(`(${fresh.length - take.length} more do not fit: the limit is 30 saved commands.)`);
+  if (fresh.length > take.length) note.push(`(${fresh.length - take.length} more do not fit: limit 30.)`);
   if (skipped.length) note.push(`Skipped: ${skipped.map((item) => `${item.name} (${item.reason})`).join(", ")}.`);
-  note.push("They are only typed into the terminal; you press Enter to run them.");
+  note.push("They are only typed; press Enter to run.");
   const ok = await ask({ title: "Import DCC scripts", message: note.join("\n"), input: false, ok: "Import" });
   if (!ok) return;
   store.set("snippets", [...custom, ...take.map((script) => ({ id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: script.name, command: script.command }))]);

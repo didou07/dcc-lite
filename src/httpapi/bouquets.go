@@ -229,6 +229,7 @@ func (s *Server) saveBouquet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	s.autoSnapshot(r.Context(), id, dir, "bouquet-edit")
 	remote := dir + "/" + input.File
 
 	current, err := s.app.Files.ReadText(r.Context(), id, remote)
@@ -291,6 +292,7 @@ func (s *Server) newBouquet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	s.autoSnapshot(r.Context(), id, dir, "bouquet-edit")
 	indexPath := dir + "/bouquets." + input.Kind
 	index, err := s.readIndex(r.Context(), id, indexPath)
 	if err != nil {
@@ -355,6 +357,7 @@ func (s *Server) changeIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
+	s.autoSnapshot(r.Context(), id, dir, "bouquet-edit")
 	indexPath := dir + "/bouquets." + enigma2.KindOf(input.File)
 	index, err := s.readIndex(r.Context(), id, indexPath)
 	if err != nil {
@@ -411,7 +414,7 @@ func (s *Server) reloadBouquets(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	resp, err := web.get(ctx, "/web/servicelistreload?mode=2")
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": web.unreachable(err) + " You can also reload from the Terminal (Saved commands → Reload bouquets) or restart Enigma2.", "code": "web_unreachable"})
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": web.unreachable(err), "code": "web_unreachable"})
 		return
 	}
 	defer resp.Body.Close()

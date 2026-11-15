@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # DCC Lite release build (run on Linux).
-#
-#   ./build.sh                 8 standard targets + the Windows app with its own window (windowsgui/amd64)
-#   ./build.sh all             + Windows 7 builds (downloads the patched Go)
-#   ./build.sh linux/arm64 ... only the targets you list
+# Usage: ./build.sh [all | target ...]  (default: 8 standard targets + windowsgui/amd64; all adds Windows 7)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 

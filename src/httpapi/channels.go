@@ -42,8 +42,7 @@ func (s *Server) enabledProfile(w http.ResponseWriter, r *http.Request) (config.
 	return profile, true
 }
 
-// getBounded reads a reply from the receiver. An /api/ address the receiver does not have is answered
-// from the older WebInterface instead where possible (see legacywebif.go).
+// getBounded reads a receiver reply; a missing /api/ address falls back to the older WebInterface (legacywebif.go).
 func (d deviceWeb) getBounded(ctx context.Context, pathAndQuery string, limit int64) (int, []byte, error) {
 	return d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.getBoundedRaw(ctx, pathAndQuery, limit) })
 }
@@ -70,6 +69,8 @@ func writeWebStatus(w http.ResponseWriter, web deviceWeb, status int, err error)
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": web.unreachable(err), "code": "web_unreachable"})
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver's web interface rejected the saved user name or password.", "code": "web_auth"})
+	case webUnsupported(status):
+		writeWebUnsupported(w)
 	case status != http.StatusOK:
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": fmt.Sprintf("The web interface answered HTTP %d.", status), "code": "web_error"})
 	default:
@@ -142,7 +143,7 @@ func (s *Server) deviceChannels(w http.ResponseWriter, r *http.Request) {
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return a channel list (is OpenWebif or the WebInterface plugin installed?).", "code": "web_error"})
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return a channel list.", "code": "web_error"})
 		return
 	}
 	out := make([]channelBouquet, 0, len(raw.Services))
@@ -191,10 +192,7 @@ func (s *Server) deviceZap(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 10*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	status, body, err := web.press(ctx, "/api/zap?sRef="+url.QueryEscape(ref))
-	if err == nil && status == http.StatusNotFound {
-		status, body, err = web.press(ctx, "/web/zap?sRef="+url.QueryEscape(ref))
-	}
+	status, body, err := web.pressFallback(ctx, "/api/zap?sRef="+url.QueryEscape(ref))
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}

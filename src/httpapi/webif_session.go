@@ -1,7 +1,6 @@
 package httpapi
 
-// Older Dreambox WebInterface (DreamOS) only. Nothing in this file runs for a receiver the owner set
-// to OpenWebif, and OpenWebif's own code paths (openwebif.go) are not touched by it.
+// Older WebInterface (DreamOS) only; never runs for receivers set to OpenWebif.
 
 import (
 	"context"
@@ -16,11 +15,8 @@ import (
 	"time"
 )
 
-// ---- DreamOS / WebInterface "extended security" ----
-//
-// The Dreambox WebInterface plugin can require a session id on its /web/ addresses. Without one the
-// receiver answers HTTP 412 "Precondition failed! sessionid is missing, invalid or expired!". The id is
-// handed out by /web/session (which needs none) and is passed as the sessionid= argument.
+// DreamOS WebInterface "extended security": its /web/ addresses may need a sessionid (else HTTP 412),
+// obtained from /web/session and passed as sessionid=.
 
 type sessionEntry struct {
 	id string
@@ -32,17 +28,46 @@ var webSessions sync.Map // device base -> sessionEntry
 var sessionIDPattern = regexp.MustCompile(`(?is)sessionid[^>]*>\s*([^<\s]+)\s*<`)
 var sessionArgPattern = regexp.MustCompile(`([?&])sessionid=[^&]*&?`)
 
+// wantsSession: only a receiver the owner set to WebInterface ever gets a session id.
 func (d deviceWeb) wantsSession(pathAndQuery string) bool {
+	if d.kind != "webinterface" {
+		return false
+	}
 	p := pathOnly(pathAndQuery)
 	switch {
-	case d.kind == "openwebif" || p == "/web/session":
+	case p == "/web/session":
 		return false
 	case strings.HasPrefix(p, "/web/"):
 		return true
-	case d.kind == "webinterface":
-		return strings.HasPrefix(p, "/grab") || strings.HasPrefix(p, "/opkg") || strings.HasPrefix(p, "/ipkg")
 	}
-	return false
+	return strings.HasPrefix(p, "/grab") || strings.HasPrefix(p, "/screenshot") ||
+		strings.HasPrefix(p, "/opkg") || strings.HasPrefix(p, "/ipkg")
+}
+
+// webUnsupportedError: this receiver is set to WebInterface, which has no such feature.
+type webUnsupportedError struct{ feature string }
+
+func (e *webUnsupportedError) Error() string {
+	return e.feature + " needs OpenWebif; this receiver is set to WebInterface"
+}
+
+// webifLacks names what the older WebInterface does not offer, or "" when the address is fine to ask for.
+// Everything under /api/ is OpenWebif's; a WebInterface receiver is only asked for /web/ addresses
+// (the /api/ ones that have a /web/ twin are translated in legacywebif.go before they get here).
+func (d deviceWeb) webifLacks(pathAndQuery string) string {
+	if d.kind != "webinterface" {
+		return ""
+	}
+	p := pathOnly(pathAndQuery)
+	switch {
+	case strings.HasPrefix(p, "/api/"):
+		return strings.TrimPrefix(p, "/api/")
+	case strings.HasPrefix(p, "/autotimer"):
+		return "AutoTimer"
+	case strings.HasPrefix(p, "/epgrefresh"):
+		return "EPG refresh"
+	}
+	return ""
 }
 
 func withSessionID(pathAndQuery, id string) string {
@@ -81,12 +106,12 @@ func (d deviceWeb) fetchSession(ctx context.Context) (string, error) {
 	return id, nil
 }
 
-// get asks the receiver for an address. When the receiver answers 412 (session id missing or expired)
-// a session id is fetched and the request is made once more.
+// get requests an address; on HTTP 412 it fetches a session id and retries once.
 func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response, error) {
-	// OpenWebif receivers never reach this code. With the kind left on automatic only the old /web/
-	// addresses (which OpenWebif does not use) may carry a session id; the owner choosing WebInterface
-	// also allows it on /grab.
+	if what := d.webifLacks(pathAndQuery); what != "" {
+		return nil, &webUnsupportedError{what}
+	}
+	// Only old /web/ addresses may carry a session id (and /grab when the owner chose WebInterface).
 	if !d.wantsSession(pathAndQuery) {
 		return d.getOnce(ctx, pathAndQuery)
 	}

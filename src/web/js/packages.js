@@ -1,6 +1,6 @@
 "use strict";
 
-// ---- Packages: browse, install and remove software from the receiver's own feeds (opkg through OpenWebif) ----
+// ---- Packages: browse, install and remove software (opkg via OpenWebif) ----
 const pk = { profileID: "", mode: "all", q: "", gen: 0, busy: false, timer: 0, upgradable: 0 };
 
 function pkError(message) {
@@ -35,7 +35,7 @@ async function pkLoad(refresh = false) {
   const id = pk.profileID, gen = ++pk.gen;
   if (!id) return;
   pkError("");
-  $("#pkStatus").textContent = "Asking the receiver for its package list. This can take a while the first time…";
+  $("#pkStatus").textContent = "Loading the package list…";
   try {
     const params = new URLSearchParams({ view: pk.mode, q: pk.q });
     if (refresh) params.set("refresh", "1");
@@ -45,9 +45,9 @@ async function pkLoad(refresh = false) {
     $("#pkUpgrade").disabled = pk.busy || !pk.upgradable;
     const list = $("#pkList");
     const rows = (data.packages || []).map(pkRow);
-    list.replaceChildren(...(rows.length ? rows : [h("p", { class: "muted gd-empty", text: pk.mode === "updates" ? "Everything is up to date. Use “Refresh lists” to check the feeds again." : "No package matches." })]));
+    list.replaceChildren(...(rows.length ? rows : [h("p", { class: "muted gd-empty", text: pk.mode === "updates" ? "Everything is up to date." : "No package matches." })]));
     const shown = rows.length;
-    $("#pkStatus").textContent = `${data.installed} installed · ${data.upgradable} update${data.upgradable === 1 ? "" : "s"} available · ${data.total} in the feeds` + (data.matches > shown ? ` · showing the first ${shown} of ${data.matches}: type to narrow the list` : "");
+    $("#pkStatus").textContent = `${data.installed} installed · ${data.upgradable} update${data.upgradable === 1 ? "" : "s"} available · ${data.total} in the feeds` + (data.matches > shown ? ` · showing the first ${shown} of ${data.matches}` : "");
   } catch (error) {
     if (gen !== pk.gen || id !== pk.profileID) return;
     $("#pkList").replaceChildren();
@@ -70,9 +70,9 @@ async function pkRun(command, p) {
   const label = { install: p && p.installed ? `Update ${target}?` : `Install ${target}?`, remove: `Remove ${target}?`, update: "Refresh the package lists?", upgrade: "Upgrade all packages?" }[command];
   const message = {
     install: "The receiver downloads it from its feeds and installs it.",
-    remove: "The receiver removes this package. Its settings may stay behind.",
-    update: "The receiver downloads the newest package lists from the internet.",
-    upgrade: `This installs every available update (${pk.upgradable}) and can take several minutes. Do not switch the receiver off while it runs.`,
+    remove: "The receiver removes this package.",
+    update: "Downloads the newest package lists.",
+    upgrade: `Installs all ${pk.upgradable} updates. This can take several minutes.`,
   }[command];
   if (command !== "update") {
     const ok = await ask({ title: label, message, input: false, ok: command === "remove" ? "Remove" : command === "install" ? (p.installed ? "Update" : "Install") : "Upgrade all", danger: command === "remove" });
@@ -86,7 +86,7 @@ async function pkRun(command, p) {
   try {
     const data = await post(profileURL(pk.profileID, "packages/action"), { command, package: target });
     pkShowLog(data.lines && data.lines.length ? data.lines : ["Done."], !data.ok);
-    if (data.ok) toast(command === "remove" ? "Removed" : "Done. New plugins may need a restart of Enigma2 (Power menu).");
+    if (data.ok) toast(command === "remove" ? "Removed" : "Done. Enigma2 may need a restart.");
     else problem = "The receiver reported a problem. See the log below.";
   } catch (error) {
     pkShowLog([], false);

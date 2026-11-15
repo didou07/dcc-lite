@@ -98,7 +98,7 @@ async function toolsRestore() {
   const file = $("#toolsRestoreFile").files[0];
   if (!file) { toast("Choose a backup .zip file first"); return; }
   const device = currentDevice();
-  const confirmed = await ask({ title: "Restore channel list", message: `The channel list files in “${file.name}” replace the ones on ${device?.name || "the receiver"}, and the receiver reloads them. Other settings stay as they are. Download a backup of the current list first if you may want it back.`, input: false, ok: "Restore", danger: true });
+  const confirmed = await ask({ title: "Restore channel list", message: `The channel list in “${file.name}” replaces the one on ${device?.name || "the receiver"}.`, input: false, ok: "Restore", danger: true });
   if (!confirmed) return;
   const result = $("#toolsRestoreResult"); result.hidden = true;
   toolsBusy(true, "Uploading the backup…");
@@ -107,7 +107,7 @@ async function toolsRestore() {
     const skipped = (data.skipped || []).length;
     let text = `Restored ${data.restored.length} file${data.restored.length === 1 ? "" : "s"}.`;
     if (skipped) text += ` ${skipped} other file${skipped === 1 ? " was" : "s were"} ignored (not part of the channel list).`;
-    text += data.reloaded ? " The receiver reloaded its channel lists." : ` The files are in place, but the receiver could not be told to reload them${data.reload_note ? ` (${data.reload_note})` : ""}. Use Power → Reload channel lists, or restart Enigma2.`;
+    text += data.reloaded ? " The receiver reloaded its channel lists." : ` The receiver could not reload them${data.reload_note ? ` (${data.reload_note})` : ""}.`;
     result.textContent = text; result.hidden = false;
     ch.cache.clear(); ch.epg.clear();
     if (!$("#channelPane").hidden) loadChannels();
@@ -115,6 +115,7 @@ async function toolsRestore() {
     bqReset(); bqLoadLists();
   } catch (error) { toolsError(error.message); }
   toolsBusy(false);
+  rpRefresh();
 }
 async function toolsInstallIPK() {
   toolsState.ui = "ipk";
@@ -125,7 +126,7 @@ async function toolsInstallIPK() {
   if (!requireSession()) return;
   const device = currentDevice();
   const name = ipkSafeName(file.name);
-  const confirmed = await ask({ title: "Install package", message: `“${name}” is sent to /tmp on ${device?.name || "the receiver"} and installed with opkg in a Terminal tab. Only install packages you trust.`, input: false, ok: "Upload and install" });
+  const confirmed = await ask({ title: "Install package", message: `“${name}” is installed on ${device?.name || "the receiver"}. Install only packages you trust.`, input: false, ok: "Upload and install" });
   if (!confirmed) return;
   toolsBusy(true, "Uploading the package…");
   try {
@@ -139,7 +140,7 @@ async function toolsInstallIPK() {
     toast("Package uploaded: the installation runs in the terminal");
     return;
   } catch (error) {
-    if (sessionLost(error)) { files.sessionID = ""; toolsError("The connection to the receiver was lost. Press Connect and try again."); }
+    if (sessionLost(error)) { files.sessionID = ""; toolsError("Connection lost. Press Connect."); }
     else toolsError(error.message);
   }
   toolsBusy(false);
@@ -183,3 +184,48 @@ $("#toolsDrop").addEventListener("drop", (event) => {
   const transfer = new DataTransfer(); transfer.items.add(file);
   $("#toolsRestoreFile").files = transfer.files; bkDropRefresh();
 });
+
+// ---- Restore points: copies the program saved before it changed the receiver ----
+const REASONS = { "bouquet-edit": "Before editing the channel lists", "before-restore": "Before a restore" };
+async function rpRefresh() {
+  const list = $("#rpList"); if (!list) return;
+  if (!files.sessionID) { list.replaceChildren(); $("#rpEmpty").hidden = true; return; }
+  try {
+    const { points } = await api(toolsSessionURL("enigma2/restore-points"));
+    list.replaceChildren(...points.map((p) => h("li", { class: "rp-row" },
+      h("div", { class: "rp-info" },
+        h("strong", { text: new Date(p.created).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) }),
+        h("span", { class: "muted small", text: `${REASONS[p.reason] || p.reason} · ${ipkSize(p.size)}` })),
+      h("span", { class: "spacer" }),
+      h("button", { class: "btn", type: "button", title: "Put this copy of the channel list back on the receiver", onClick: () => rpRestore(p) }, icon("restore"), "Restore"),
+      iconButton("trash", "Delete this restore point", () => rpDelete(p)))));
+    $("#rpEmpty").hidden = points.length > 0;
+  } catch { list.replaceChildren(); $("#rpEmpty").hidden = true; }
+}
+async function rpRestore(point) {
+  if (!requireSession() || toolsState.busy) return;
+  toolsState.ui = "tools"; toolsError("");
+  const device = currentDevice();
+  const when = new Date(point.created).toLocaleString();
+  const confirmed = await ask({ title: "Restore this copy", message: `The list saved on ${when} replaces the one on ${device?.name || "the receiver"}. The current list is saved first.`, input: false, ok: "Restore", danger: true });
+  if (!confirmed) return;
+  const result = $("#toolsRestoreResult"); result.hidden = true;
+  toolsBusy(true, "Putting the saved copy back…");
+  try {
+    const data = await post(toolsSessionURL(`enigma2/restore-points/${encodeURIComponent(point.name)}/restore${toolsDirQuery("?")}`));
+    result.textContent = `Restored ${data.restored.length} file${data.restored.length === 1 ? "" : "s"}.` + (data.reloaded ? " The receiver reloaded its channel lists." : ` The receiver could not reload them${data.reload_note ? ` (${data.reload_note})` : ""}.`);
+    result.hidden = false;
+    ch.cache.clear(); ch.epg.clear();
+    if (!$("#channelPane").hidden) loadChannels();
+    bqReset(); bqLoadLists();
+  } catch (error) { toolsError(error.message); }
+  toolsBusy(false);
+  rpRefresh();
+}
+async function rpDelete(point) {
+  if (!requireSession()) return;
+  const confirmed = await ask({ title: "Delete restore point", message: `Delete the copy saved on ${new Date(point.created).toLocaleString()}? This cannot be undone.`, input: false, ok: "Delete", danger: true });
+  if (!confirmed) return;
+  try { await api(toolsSessionURL(`enigma2/restore-points/${encodeURIComponent(point.name)}`), { method: "DELETE" }); } catch (error) { toast(error.message, "error"); }
+  rpRefresh();
+}

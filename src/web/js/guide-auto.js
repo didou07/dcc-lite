@@ -1,6 +1,6 @@
 "use strict";
 
-// ---- AutoTimer: rules that record matching programmes by themselves (needs the AutoTimer plugin on the receiver) ----
+// ---- AutoTimer rules (needs the AutoTimer plugin on the receiver) ----
 const auto = { kind: null, rules: null, gen: 0, missing: false, preview: null, previewTitle: "", editing: null, keep: {}, where: "all", picks: new Map(), retry: 0, busy: false };
 const AT_TYPES = { partial: "Title contains", exact: "Title is exactly", start: "Title starts with", description: "Description contains" };
 const AT_AFTER = { default: "", nothing: "Do nothing when over", standby: "Standby when over", deepstandby: "Deep standby when over", auto: "Automatic when over" };
@@ -65,7 +65,7 @@ function autoPaint(list) {
   if (auto.rules === null) { list.replaceChildren(gdEmpty("Loading the AutoTimer rules…")); return; }
   $("#autoNew").disabled = $("#autoRun").disabled = $("#autoPreview").disabled = auto.missing;
   if (auto.missing) {
-    list.replaceChildren(gdEmpty("The AutoTimer plugin is not installed or not active on this receiver. Install it from the receiver's plugin list (enigma2-plugin-extensions-autotimer), then press refresh."));
+    list.replaceChildren(gdEmpty("The AutoTimer plugin is not installed."));
     gdStatus("");
     return;
   }
@@ -73,7 +73,7 @@ function autoPaint(list) {
   const on = auto.rules.filter((r) => r.enabled), off = auto.rules.filter((r) => !r.enabled);
   const section = (title, items) => (items.length ? [h("div", { class: "gd-day", role: "presentation", text: title }), ...items.map(autoNode)] : []);
   const nodes = [...section("Active rules", on), ...section("Turned off", off)];
-  list.replaceChildren(...(nodes.length ? nodes : [gdEmpty("No rules yet. A rule records every programme that matches a title or word, for example every episode of a series. Press “New rule”.")]));
+  list.replaceChildren(...(nodes.length ? nodes : [gdEmpty("No rules yet.")]));
   gdStatus(auto.rules.length ? `${on.length} active rule${on.length === 1 ? "" : "s"}${off.length ? ` · ${off.length} off` : ""}` : "");
 }
 
@@ -106,7 +106,7 @@ function autoPaintPreview(list) {
   gdStatus(`${added} programme${added === 1 ? "" : "s"} would be recorded${auto.preview.length > added ? ` · ${auto.preview.length - added} skipped` : ""}`);
 }
 
-// A rule from the receiver back into a save request, so a quick change (on/off) never loses a setting.
+// A receiver rule back into a save request, so quick changes (on/off) keep every setting.
 function autoRequest(r, over = {}) {
   return {
     id: r.id, name: r.name, match: r.match, enabled: r.enabled, search_type: r.search_type, case_sensitive: r.case_sensitive,
@@ -126,7 +126,7 @@ async function autoToggle(r) {
   } catch (error) { gdError(error.message); }
 }
 async function autoDelete(r) {
-  const ok = await ask({ title: "Delete this rule?", message: `${r.name || r.match}\nTimers it already created stay on the receiver.`, input: false, ok: "Delete", danger: true });
+  const ok = await ask({ title: "Delete this rule?", message: `${r.name || r.match}`, input: false, ok: "Delete", danger: true });
   if (!ok) return;
   gdError("");
   try {
@@ -136,7 +136,7 @@ async function autoDelete(r) {
   } catch (error) { gdError(error.message); }
 }
 async function autoRunNow() {
-  const ok = await ask({ title: "Run the rules now?", message: "The receiver searches its guide and creates a timer for every programme that matches an active rule. Use Preview first to see what would be recorded.", input: false, ok: "Run now" });
+  const ok = await ask({ title: "Run the rules now?", message: "Creates timers for every match of an active rule.", input: false, ok: "Run now" });
   if (!ok) return;
   gdError("");
   gdStatus("The receiver is searching its guide…");
@@ -181,7 +181,7 @@ function atPaintPick() {
     const chosen = [...auto.picks].filter(([ref]) => !needle || (auto.picks.get(ref) || "").toLowerCase().includes(needle)).map(([ref, name]) => check(ref, name));
     const matches = all.filter((c) => !auto.picks.has(c.ref) && (!needle || c.name.toLowerCase().includes(needle)));
     nodes = [...chosen, ...matches.slice(0, 120).map((c) => check(c.ref, c.name))];
-    if (matches.length > 120) nodes.push(h("p", { class: "muted small", text: `${matches.length - 120} more: type in the filter to narrow the list.` }));
+    if (matches.length > 120) nodes.push(h("p", { class: "muted small", text: `${matches.length - 120} more: narrow the filter.` }));
   }
   box.replaceChildren(...(nodes.length ? nodes : [h("p", { class: "muted small", text: "Nothing matches." })]));
   atCount();

@@ -1,7 +1,8 @@
 package httpapi
 
-// Compatibility layer: answers OpenWebif /api/ requests from the old WebInterface (/web/, XML)
-// only when the receiver has no such /api/ address. OpenWebif receivers never reach it.
+// WebInterface dialect: answers the app's /api/ requests from the older WebInterface
+// ("WebInterface": /web/, XML). Used only for receivers the owner set to WebInterface;
+// OpenWebif receivers never reach it.
 
 import (
 	"bytes"
@@ -19,35 +20,6 @@ import (
 	"time"
 )
 
-// How long a receiver that lacked an /api/ address is trusted to still lack it. After that the
-// /api/ address is tried once more (a receiver can get OpenWebif installed later).
-const legacyMemory = 10 * time.Minute
-
-var legacySeen sync.Map // device base + "|" + route name -> time.Time
-
-func legacyKnown(base, route string) bool {
-	v, ok := legacySeen.Load(base + "|" + route)
-	if !ok {
-		return false
-	}
-	if time.Since(v.(time.Time)) > legacyMemory {
-		legacySeen.Delete(base + "|" + route)
-		return false
-	}
-	return true
-}
-
-func legacyMark(base, route string, on bool) {
-	if on {
-		if !legacyKnown(base, route) {
-			devLog.Info("receiver has no OpenWebif address, using the older web interface", "base", base, "route", route)
-		}
-		legacySeen.Store(base+"|"+route, time.Now())
-		return
-	}
-	legacySeen.Delete(base + "|" + route)
-}
-
 var legacyWarned sync.Map
 
 // legacyWarnDue limits the same warning to once a minute so polling does not fill the log.
@@ -63,18 +35,6 @@ func legacyWarnDue(base, route string) bool {
 func looksJSON(body []byte) bool {
 	t := bytes.TrimLeft(body, " \t\r\n\xef\xbb\xbf")
 	return len(t) > 0 && (t[0] == '{' || t[0] == '[')
-}
-
-// apiMissing reports whether a reply to an /api/ request means "this receiver does not have that
-// address" (as opposed to an error, a wrong password or a working answer).
-func apiMissing(status int, body []byte) bool {
-	switch status {
-	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
-		return true
-	case http.StatusOK:
-		return !looksJSON(body)
-	}
-	return false
 }
 
 type legacyBadReply struct{ msg string }
@@ -109,6 +69,16 @@ func init() {
 	add("/api/epgbouquet", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 		return legacyEvents(ctx, d, "/web/epgmulti", q)
 	})
+	// Documented WebInterface twins whose name or answer differs only slightly.
+	add("/api/timertogglestatus", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+		return legacyResult(ctx, d, "/web/timeronoff", q)
+	})
+	for _, name := range []string{"timerchange", "selectaudiotrack"} {
+		web := "/web/" + name
+		add("/api/"+name, func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+			return legacyResult(ctx, d, web, q)
+		})
+	}
 	for _, name := range []string{"servicelistreload", "timeradd", "timeraddbyeventid", "timerdelete", "timercleanup", "moviedelete"} {
 		web := "/web/" + name
 		add("/api/"+name, func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
@@ -127,57 +97,29 @@ func legacyRouteFor(pathAndQuery string) (*legacyRoute, url.Values) {
 	return route, q
 }
 
-// viaLegacy is called around a request for an /api/ address. do makes the normal request.
+// viaLegacy is called around a request for an /api/ address. The owner's choice decides, with no probing:
+// OpenWebif receivers get the /api/ address as it is; WebInterface receivers get
+// the matching /web/ address, or a clear "not available" when it has none.
 func (d deviceWeb) viaLegacy(ctx context.Context, pathAndQuery string, do func() (int, []byte, error)) (int, []byte, error) {
+	if d.kind != "webinterface" || !strings.HasPrefix(pathAndQuery, "/api/") {
+		return do()
+	}
 	route, q := legacyRouteFor(pathAndQuery)
-	if route == nil || d.kind == "openwebif" {
-		return do() // chosen by the owner: never ask the older interface
+	if route == nil {
+		return 0, nil, &webUnsupportedError{strings.TrimPrefix(pathOnly(pathAndQuery), "/api/")}
 	}
-	if d.kind == "webinterface" {
-		// chosen by the owner: no /api/ probing at all
-		out, err := route.run(ctx, d, q)
-		if err == nil {
-			return http.StatusOK, out, nil
-		}
-		var bad *legacyBadReply
-		if !errors.As(err, &bad) {
-			return 0, nil, err
-		}
-		// The owner said the receiver has no /api/ addresses, so asking /api/ again would only produce a
-		// misleading 404. Report what the older interface really answered.
-		if legacyWarnDue(d.base, route.name) {
-			devLog.Warn("older web interface could not answer", "base", d.base, "route", route.name, "reason", bad.msg)
-		}
-		return 0, nil, bad
-	}
-	if legacyKnown(d.base, route.name) {
-		out, err := route.run(ctx, d, q)
-		if err == nil {
-			return http.StatusOK, out, nil
-		}
-		var bad *legacyBadReply
-		if !errors.As(err, &bad) {
-			return 0, nil, err
-		}
-		legacyMark(d.base, route.name, false) // it stopped working: ask the /api/ address again
-	}
-	status, body, err := do()
-	if err != nil || !apiMissing(status, body) {
-		return status, body, err
-	}
-	out, lerr := route.run(ctx, d, q)
-	if lerr == nil {
-		legacyMark(d.base, route.name, true)
+	out, err := route.run(ctx, d, q)
+	if err == nil {
 		return http.StatusOK, out, nil
 	}
 	var bad *legacyBadReply
-	if !errors.As(lerr, &bad) {
-		return 0, nil, lerr
+	if !errors.As(err, &bad) {
+		return 0, nil, err
 	}
 	if legacyWarnDue(d.base, route.name) {
-		devLog.Warn("older web interface could not answer either", "base", d.base, "route", route.name, "reason", lerr.Error())
+		devLog.Warn("WebInterface could not answer", "base", d.base, "route", route.name, "reason", bad.msg)
 	}
-	return status, body, nil
+	return 0, nil, bad
 }
 
 // ---- Reading the old interface ----
@@ -229,7 +171,7 @@ func num(s string) int64 {
 
 func xmlBool(s string) bool {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "true", "yes", "on", "1":
+	case "true", "yes", "on", "1", "success":
 		return true
 	}
 	return false
@@ -436,7 +378,7 @@ func legacyCurrent(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, erro
 		if !errors.As(err, &bad) {
 			return nil, err
 		}
-		// Some images (DreamOS among them) have no /web/getcurrent; /web/about names the current channel too.
+		// Some images (e.g. DreamOS) lack /web/getcurrent; /web/about also names the current channel.
 		var about struct {
 			Service struct {
 				Ref      string `xml:"e2servicereference"`
@@ -521,14 +463,28 @@ func legacyPower(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error)
 
 // legacyResult answers the commands that only say whether they worked (<e2simplexmlresult>).
 func legacyResult(ctx context.Context, d deviceWeb, webPath string, q url.Values) ([]byte, error) {
+	// The WebInterface answers in three shapes: <e2simplexmlresult> with e2state/e2statetext, <e2message> with
+	// e2result/e2resulttext, or a bare <e2result>Success</e2result>.
 	var res struct {
-		State string `xml:"e2state"`
-		Text  string `xml:"e2statetext"`
+		State      string `xml:"e2state"`
+		Text       string `xml:"e2statetext"`
+		Result     string `xml:"e2result"`
+		ResultText string `xml:"e2resulttext"`
+		Bare       string `xml:",chardata"`
 	}
 	if err := d.legacyXML(ctx, withQuery(webPath, q), 64<<10, &res); err != nil {
 		return nil, err
 	}
-	return asJSON(map[string]any{"result": xmlBool(res.State), "message": strings.TrimSpace(res.Text)})
+	ok, text := false, strings.TrimSpace(res.Text)
+	switch {
+	case strings.TrimSpace(res.State) != "":
+		ok = xmlBool(res.State)
+	case strings.TrimSpace(res.Result) != "":
+		ok, text = xmlBool(res.Result), strings.TrimSpace(res.ResultText)
+	default:
+		ok = xmlBool(res.Bare)
+	}
+	return asJSON(map[string]any{"result": ok, "message": text})
 }
 
 // legacyAbout answers /api/about with what the old interface knows about the receiver.

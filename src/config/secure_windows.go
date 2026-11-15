@@ -8,11 +8,8 @@ import (
 	"os/user"
 )
 
-// restrictToOwner tightens filesystem permissions so only the current user
-// can read or write path. os.Chmod has no effect on Windows ACLs, so this
-// resets inheritance and grants full control to the current user only via
-// icacls, which ships with every supported Windows release.
-// bestEffortPerms: on Windows a failure (a FAT/exFAT or network drive has no ACLs) must not stop the app.
+// restrictToOwner limits path to the current user via icacls (os.Chmod does not affect Windows ACLs).
+// bestEffortPerms: a failure (FAT/exFAT or network drive) must not stop the app.
 const bestEffortPerms = true
 
 func restrictToOwner(path string, isDir bool) error {

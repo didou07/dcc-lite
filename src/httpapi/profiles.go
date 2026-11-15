@@ -224,5 +224,8 @@ func profileFromRequest(input profileRequest) config.Profile {
 	}
 	p.InsecureTLS = input.TLSInsecureSkipVerify
 	p.WebKind = strings.ToLower(strings.TrimSpace(input.WebKind))
+	if p.WebKind == "" {
+		p.WebKind = "openwebif"
+	}
 	return p
 }

@@ -199,9 +199,8 @@ func (p *Player) SetWindow(hwnd uintptr) {
 	p.lib.call("libvlc_media_player_set_hwnd", p.mp, hwnd)
 }
 
-// Play opens the address and starts playing it. A change of deinterlace mode starts from a fresh
-// libvlc player: a picture pipeline that was told to deinterlace keeps doing so across channels.
-// The window, volume and mute settings are carried over to the fresh player.
+// Play opens the address and starts it. A deinterlace change creates a fresh libvlc player;
+// window, volume and mute settings carry over.
 func (p *Player) Play(mrl string, opt PlayOptions) error {
 	loc, err := cstr(mrl)
 	if err != nil {

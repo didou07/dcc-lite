@@ -1,5 +1,5 @@
 "use strict";
-// Dictionaries: key = exact English UI text. Add more with DCC_I18N.add("fr", { "Some text": "Du texte" }).
+// Dictionaries: key = exact English UI text. Add more with DCC_I18N.add("fr", {...}).
 (() => {
   const EN = ["Devices","Files","Terminal","Screen","Tools","Logs","Update","Sign out","Check all","Remote access","Find devices","Add device","Connect","Disconnect","Download","Upload","Rename","Edit","Copy","Delete","Save","Back up","Restore","Refresh","Clear","Name","Size","Modified","Password","Sign in","Channels","Guide","Live","Pause","Appearance","New folder","Paste","Port","Hidden","Permissions"];
   const L = {

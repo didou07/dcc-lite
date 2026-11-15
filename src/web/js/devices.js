@@ -5,7 +5,7 @@ const deviceByID = (id) => devices.list.find((p) => p.id === id) || null;
 const sites = { query: "", mode: store.get("sitesMode", "grid") === "list" ? "list" : "grid" };
 const lastUsed = () => store.get("siteLastUsed", {});
 function touchSite(id) { if (!id) return; const m = lastUsed(); m[id] = Date.now(); const keep = Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 200); store.set("siteLastUsed", Object.fromEntries(keep)); }
-/* Pinned sites first, then by group, then by name: the same order everywhere (Sites, terminal launcher, Files picker). */
+/* Pinned sites first, then by group, then by name (same order everywhere). */
 function sortedSites(list = devices.list) {
   return [...list].sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)
     || (a.group || "￿").localeCompare(b.group || "￿", undefined, { sensitivity: "base" })
@@ -31,6 +31,7 @@ async function loadDevices() {
   for (const id of devices.status.keys()) if (!liveIDs.has(id)) devices.status.delete(id);
   for (const id of deviceChecks.keys()) if (!liveIDs.has(id)) deviceChecks.delete(id);
   for (const id of deviceInfoState.keys()) if (!liveIDs.has(id)) deviceInfoState.delete(id);
+  for (const id of deviceBrief.keys()) if (!liveIDs.has(id)) deviceBrief.delete(id);
   if (!deviceByID(devices.currentID)) {
     devices.currentID = devices.list[0]?.id || "";
     store.set("device", devices.currentID);
@@ -75,6 +76,29 @@ function deviceAvatar(profile) {
   img.src = profileURL(profile.id, "boximage");
   return avatar;
 }
+function deviceBriefRow(profile) {
+  const status = devices.status.get(profile.id);
+  const data = deviceBrief.get(profile.id)?.data;
+  if (!data || status?.state !== "online" || deviceInfoState.has(profile.id)) return null;
+  const tuners = data.tuners || [];
+  const rec = tuners.filter((t) => t.rec).length, stream = tuners.filter((t) => t.stream).length;
+  const items = [];
+  const item = (text, cls = "", title = "") => items.push(h("span", { class: `brief-item ${cls}`.trim(), title, text }));
+  if (rec) item(rec > 1 ? `● Recording ×${rec}` : "● Recording", "rec", tuners.filter((t) => t.rec).map((t) => t.rec).join("\n"));
+  if (stream) item(stream > 1 ? `Streaming ×${stream}` : "Streaming", "stream", tuners.filter((t) => t.stream).map((t) => t.stream).join("\n"));
+  if (data.signal?.standby) item("Standby");
+  if (data.model) item(data.model, "model");
+  if (data.uptime) item(`Up ${data.uptime}`, "", "Uptime");
+  if (data.temperature != null) item(`${data.temperature} °C`, data.temperature >= 70 ? "hot" : "", "Temperature");
+  if (data.signal && !data.signal.standby) {
+    const level = data.signal.snr < 35 ? "low" : data.signal.snr < 60 ? "mid" : "ok";
+    const fill = h("span", { dataset: { level } }); fill.style.width = `${Math.max(0, Math.min(100, data.signal.snr))}%`;
+    items.push(h("span", { class: "brief-item brief-snr", title: `Tuner signal${data.signal.tuner ? ` · ${data.signal.tuner}` : ""}` }, `SNR ${data.signal.snr}%`, h("span", { class: "track" }, fill)));
+  }
+  const disk = (data.disks || [])[0];
+  if (disk?.text) item(`${disk.name ? `${disk.name} ` : ""}${disk.text}`, "disk", "Disk");
+  return items.length ? h("div", { class: "device-brief", "aria-label": "Receiver status" }, ...items) : null;
+}
 function siteCard(profile) {
   const status = devices.status.get(profile.id);
   return h("article", { class: `device-card${profile.id === devices.currentID ? " current" : ""}`, dataset: { id: profile.id, color: profile.color || "" }, onDblclick: (event) => { if (!event.target.closest("button")) openDevice(profile.id, "files"); } },
@@ -89,11 +113,13 @@ function siteCard(profile) {
         iconButton("list", "Receiver information (image, signal, tuners, disks)", () => toggleDeviceInfo(profile.id)),
         status && status.state !== "online" && status.state !== "checking" ? iconButton("power", "Wake the receiver over the network (Wake-on-LAN)", () => wakeOnLan(profile.id, (message) => message && toast(message, "error"))) : null,
         iconButton("refresh", "Check this device", () => testDevice(profile.id)),
+        iconButton("plug", "Connection check", () => openDiagnose(profile)),
         iconButton("edit", "Edit device", () => openDeviceDialog(profile)),
         iconButton("trash", "Delete device", () => deleteDevice(profile)))),
     h("div", { class: "chips", title: status && status.state !== "checking" ? status.message : "" }, statusChips(profile, status),
       profile.start_dir ? h("span", { class: "chip plain folder", title: "Files and Terminal open in this folder", text: profile.start_dir }) : null,
       null),
+    deviceBriefRow(profile),
     h("div", { class: "device-actions" },
       h("button", { class: "btn", type: "button", onClick: () => openDevice(profile.id, "files") }, icon("files"), "Files"),
       h("button", { class: "btn", type: "button", onClick: () => openDevice(profile.id, "terminal") }, icon("terminal"), "Terminal"),
@@ -148,9 +174,30 @@ async function testDevice(id) {
   } catch (error) {
     if (deviceChecks.get(id) === token) devices.status.set(id, { state: "error", message: error.message });
   }
-  if (deviceChecks.get(id) === token) { renderDeviceGrid(); updateDeviceDot(); }
+  if (deviceChecks.get(id) === token) {
+    renderDeviceGrid(); updateDeviceDot();
+    if (devices.status.get(id)?.state === "online") loadBrief(id); else if (deviceBrief.delete(id)) renderDeviceGrid();
+  }
 }
 const deviceInfoState = new Map();
+// At-a-glance readings on each online card (same /info data as the full panel).
+const deviceBrief = new Map();
+const briefSignature = (data) => JSON.stringify([data.model, data.uptime, data.temperature, data.signal && [data.signal.snr, data.signal.standby], (data.tuners || []).map((t) => [t.rec, t.stream]), (data.disks || [])[0]?.text]);
+async function loadBrief(id) {
+  const state = deviceBrief.get(id) || {};
+  if (state.busy) return;
+  deviceBrief.set(id, state);
+  state.busy = true;
+  const before = state.data ? briefSignature(state.data) : "";
+  try { state.data = await api(profileURL(id, "info")); state.at = Date.now(); }
+  catch { /* keep the last reading; the card just stays as it was */ }
+  state.busy = false;
+  if (state.data && briefSignature(state.data) !== before && deviceBrief.get(id) === state) renderDeviceGrid();
+}
+window.setInterval(() => {
+  if (document.hidden || !$("#deviceGrid").offsetParent) return;
+  for (const profile of devices.list) if (devices.status.get(profile.id)?.state === "online" && !deviceInfoState.has(profile.id)) loadBrief(profile.id);
+}, 60000); // once a minute, only while the Devices page is visible
 function toggleDeviceInfo(id) {
   if (deviceInfoState.has(id)) { deviceInfoState.delete(id); renderDeviceGrid(); return; }
   deviceInfoState.set(id, { loading: true, data: null, error: "" });
@@ -168,6 +215,7 @@ async function loadDeviceInfo(id, quiet = false) {
       state.data = data;
       state.error = "";
       state.updatedAt = Date.now();
+      deviceBrief.set(id, { ...(deviceBrief.get(id) || {}), data, at: Date.now(), busy: false });
     }
   } catch (error) {
     if (deviceInfoState.get(id) === state) state.error = error.message;
@@ -226,10 +274,51 @@ function deviceInfoPanel(profile) {
   }
   return panel;
 }
+
+// ---- Connection check: every service tested on its own, with the reason and what to do ----
+const diag = { profile: null, token: 0 };
+function diagRow(check) {
+  const mark = { ok: "check", warn: "info", fail: "x", skip: "minus" }[check.state] || "info";
+  return h("li", { class: `diag-row ${check.state}` },
+    h("span", { class: "diag-mark" }, icon(mark)),
+    h("div", { class: "diag-body" },
+      h("div", { class: "diag-title" }, h("strong", { text: check.label }), check.ms ? h("span", { class: "muted small", text: ` ${check.ms} ms` }) : null),
+      check.detail ? h("div", { class: "diag-detail", text: check.detail }) : null,
+      check.hint && check.state !== "ok" ? h("div", { class: "diag-hint small", text: check.hint }) : null));
+}
+async function runDiagnose() {
+  const profile = diag.profile; if (!profile) return;
+  const token = ++diag.token;
+  const list = $("#diagList"), run = $("#diagRun");
+  run.disabled = true;
+  list.replaceChildren(h("li", { class: "diag-row skip" }, h("div", { class: "diag-body muted", text: "Checking the services…" })));
+  try {
+    const result = await post(profileURL(profile.id, "diagnose"));
+    if (token !== diag.token) return;
+    list.replaceChildren(...result.checks.map(diagRow));
+    $("#diagSub").textContent = result.failed
+      ? `${result.failed} of ${result.checks.length} checks failed.`
+      : "Everything the receiver offers is working.";
+  } catch (error) {
+    if (token !== diag.token) return;
+    list.replaceChildren(diagRow({ label: "Connection check", state: "fail", detail: error.message, hint: "Is the receiver switched on and on the same network?" }));
+    $("#diagSub").textContent = "";
+  } finally { if (token === diag.token) run.disabled = false; }
+}
+function openDiagnose(profile) {
+  diag.profile = profile;
+  $("#diagTitle").textContent = `Connection check · ${profile.name}`;
+  $("#diagSub").textContent = profile.host;
+  openDialog($("#diagDialog"));
+  runDiagnose();
+}
+$("#diagRun").addEventListener("click", runDiagnose);
+$("#diagClose").addEventListener("click", () => $("#diagDialog").close());
+$("#diagDialog").addEventListener("close", () => { diag.token++; });
 async function testAllDevices() { await Promise.all(devices.list.map((profile) => testDevice(profile.id))); }
 
 async function deleteDevice(profile) {
-  const confirmed = await ask({ title: "Delete device", message: `Delete “${profile.name}” (${profile.host})? Its saved password is removed too. Open sessions are closed.`, input: false, ok: "Delete", danger: true });
+  const confirmed = await ask({ title: "Delete device", message: `Delete “${profile.name}” (${profile.host})?`, input: false, ok: "Delete", danger: true });
   if (!confirmed) return;
   try {
     await api(profileURL(profile.id), { method: "DELETE" });
@@ -339,6 +428,8 @@ function setCurrentDevice(id, deferViewRefresh = false) {
   updateDeviceDot();
   renderDeviceGrid();
   if (changed) {
+    const own = store.get(`tool.${id}`, "");
+    if (toolKnown(own) && ![...toolViews].includes(view.current)) tools.current = own;
     fileDisconnect(true).then(() => { if (!deferViewRefresh) refreshCurrentDeviceView(); });
   } else if (!deferViewRefresh) {
     refreshCurrentDeviceView();
@@ -351,12 +442,18 @@ const view = { current: "devices" };
 const TOOL_PAGES = [
   { id: "editor", label: "Channel editor", icon: "list", view: "lists" },
   { id: "backup", label: "Backup & restore", icon: "archive", view: "lists" },
-  { id: "ipk", label: "Install .ipk", icon: "box", view: "ipk" },
-  { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
   { id: "packages", label: "Packages", icon: "box", view: "packages" },
+  { id: "ipk", label: "Install .ipk", icon: "plug", view: "ipk" },
+  { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
 ];
+const toolKnown = (id) => TOOL_PAGES.some((t) => t.id === id);
 const tools = { current: store.get("tool", "editor") };
-if (!TOOL_PAGES.some((t) => t.id === tools.current)) tools.current = "editor";
+if (!toolKnown(tools.current)) tools.current = "editor";
+// The last tool is remembered per device and overall.
+function rememberTool() {
+  store.set("tool", tools.current);
+  if (devices.currentID) store.set(`tool.${devices.currentID}`, tools.current);
+}
 const toolViews = ["lists", "ipk", "signal", "packages"];
 function updateToolsNav() {
   for (const nav of $$("[data-toolsnav]")) {
@@ -369,7 +466,7 @@ function updateToolsNav() {
 function showTool(id) {
   const page = TOOL_PAGES.find((t) => t.id === id) || TOOL_PAGES[0];
   tools.current = page.id;
-  store.set("tool", page.id);
+  rememberTool();
   if (page.view === "lists" && typeof listsMode === "function") listsMode(page.id);
   showView(page.view);
 }
@@ -387,7 +484,7 @@ function showView(name) {
   for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === top));
   for (const section of $$("main > .view")) section.hidden = section.id !== `view-${name}`;
   store.set("view", name);
-  if (toolViews.includes(name)) { store.set("tool", tools.current); updateToolsNav(); }
+  if (toolViews.includes(name)) { rememberTool(); updateToolsNav(); }
   if (name === "files") filesEnter();
   if (name === "lists") { if (typeof listsMode === "function") listsMode(tools.current === "backup" ? "backup" : "edit"); listsEnter(); }
   if (name === "ipk") ipkEnter();

@@ -17,9 +17,56 @@ function authExpired(status, data) {
   return true;
 }
 
+// Turns a raw failure into "what happened, and what to do"; messages that already say so are kept.
+const ERROR_ACTIONABLE = /\b(check|try|edit|press|enable|untick|choose|use|reload|restart|wait|open|add|install|set)\b/i;
+const ERROR_BY_CODE = {
+  session_not_found: "Connection closed. Press Connect.",
+  conflict: "The file changed on the receiver. Reload it first.",
+  exists: "That name already exists.",
+  too_large: "The file is too large to open.",
+  not_text: "Not a text file.",
+  file_not_found: "That file no longer exists.",
+  still_running: "A job is still running.",
+  host_files_unavailable: "Not available in a remote session.",
+  web_error: "",
+  web_unsupported: "Not supported by this web interface.",
+};
+const ERROR_PATTERNS = [
+  [/login failed|\b530\b|authentication failed/i, "Wrong user name or password."],
+  [/connection refused/i, "Nothing is listening on that port."],
+  [/i\/o timeout|timed out|deadline exceeded/i, "The receiver did not answer in time."],
+  [/no route to host|network is unreachable|no such host/i, "The receiver cannot be reached."],
+  [/connection reset|broken pipe|use of closed|unexpected eof|^eof$/i, "Connection dropped. Press Connect."],
+  [/permission denied|\b550\b|read-only file system/i, "The receiver does not allow this."],
+  [/no space left|disk quota/i, "The receiver's storage is full."],
+];
+const ERROR_BY_STATUS = {
+  400: "The request was not accepted.",
+  403: "This is not allowed for this connection.",
+  404: "That item no longer exists.",
+  409: "It was changed in the meantime.",
+  413: "That is too large for this action.",
+  422: "The data was refused.",
+  429: "Too many requests. Wait a moment.",
+  500: "Internal problem. See Logs.",
+  502: "The receiver did not answer properly.",
+  503: "The service is not available.",
+  504: "The receiver took too long to answer.",
+};
+function friendlyError(status, code, text) {
+  const raw = (text || "").trim();
+  if (code && ERROR_BY_CODE[code]) return ERROR_BY_CODE[code];
+  if (raw && ERROR_ACTIONABLE.test(raw) && !/^Request failed/i.test(raw)) return raw;
+  for (const [pattern, message] of ERROR_PATTERNS) if (pattern.test(raw)) return message;
+  if (code === "web_error" && raw) return raw;
+  if (!raw || /^Request failed/i.test(raw)) return ERROR_BY_STATUS[status] || `Something went wrong (${status}).`;
+  return raw;
+}
+
 async function responseError(response, fallback = "Request failed") {
   const data = await response.json().catch(() => ({}));
-  const error = new Error(data.error || `${fallback} (${response.status})`);
+  const error = new Error(friendlyError(response.status, data.code, data.error || `${fallback} (${response.status})`));
+  error.raw = data.error || "";
   error.code = data.code || "";
   error.status = response.status;
   error.fatal = response.status === 404 || response.status === 409;

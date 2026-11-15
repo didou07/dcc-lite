@@ -161,7 +161,7 @@ function gdPaintEPG(list) {
   if (!events.length) {
     const query = guide.search.trim();
     list.replaceChildren(...(back ? [back] : []), gdEmpty(similar ? "The receiver found no similar programmes." : searching
-      ? (query.length < 2 ? "Search the programme guide of every channel: type a title or a word." : `Nothing found for “${query}”.`)
+      ? (query.length < 2 ? "Search the guide." : `Nothing found for “${query}”.`)
       : guide.ref ? "The receiver has no programme information for this channel." : "Choose a channel to see its programmes, or search the guide."));
     if (guide.loaded) gdStatus("");
     return;
@@ -222,7 +222,7 @@ function gdPaintTimers(list) {
   const done = guide.timers.filter((t) => t.state === 3).sort((a, b) => b.begin - a.begin);
   const section = (title, items) => (items.length ? [h("div", { class: "gd-day", role: "presentation", text: title }), ...items.map(gdTimerNode)] : []);
   const nodes = [...section("Coming up", active), ...section("Turned off", off), ...section("Finished", done)];
-  list.replaceChildren(...(nodes.length ? nodes : [gdEmpty("No timers yet. Open a programme in the guide and press the record button.")]));
+  list.replaceChildren(...(nodes.length ? nodes : [gdEmpty("No timers yet.")]));
   const running = guide.timers.filter((t) => t.state === 2 && !t.justplay).length;
   gdStatus(guide.timers.length ? `${active.length + off.length} timer${active.length + off.length === 1 ? "" : "s"}${running ? ` · ${running} recording now` : ""}${done.length ? ` · ${done.length} finished` : ""}` : "");
   $("#guideCleanup").disabled = !done.length;
@@ -281,7 +281,7 @@ function gdMovieDate(time) {
   return time ? new Date(time * 1000).toLocaleString((window.DCC_I18N?.locale() || "en-GB"), { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 }
 async function gdDeleteMovie(m) {
-  const ok = await ask({ title: "Delete this recording?", message: `${m.title}\n${m.file}\nThe receiver may move it to its trash folder first.`, input: false, ok: "Delete", danger: true });
+  const ok = await ask({ title: "Delete this recording?", message: `${m.title}\n${m.file}`, input: false, ok: "Delete", danger: true });
   if (!ok) return;
   gdError("");
   try {

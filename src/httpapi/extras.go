@@ -142,7 +142,7 @@ func (s *Server) deviceTimerChange(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 15*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	status, body, err := web.press(ctx, path)
+	status, body, err := web.pressFallback(ctx, path)
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}

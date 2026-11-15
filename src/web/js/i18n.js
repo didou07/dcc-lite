@@ -1,5 +1,5 @@
 "use strict";
-// Language support: translates UI text by exact English match, including text added later by the app.
+// UI translation by exact English match (also covers text added later).
 (() => {
   const KEY = "dcclite.lang";
   const NAMES = { en: "English", ar: "العربية", fr: "Français", es: "Español", de: "Deutsch", tr: "Türkçe", ru: "Русский", zh: "中文" };

@@ -127,7 +127,7 @@ function gridPaint(list) {
     return h("div", { class: "gg-row" }, label, track);
   });
   const inner = h("div", { class: "gg-inner" }, h("div", { class: "gg-row gg-headrow" }, h("div", { class: "gg-corner" }), ruler), ...rows);
-  list.replaceChildren(rows.length ? inner : gdEmpty("The receiver has no programme information for this bouquet in this time window."));
+  list.replaceChildren(rows.length ? inner : gdEmpty("No programme information here."));
   gdStatus(rows.length ? `${rows.length} channel${rows.length === 1 ? "" : "s"}` : "");
 }
 
@@ -157,7 +157,7 @@ async function svcLoad() {
     const ecm = data.ecm || [];
     $("#svcBody").replaceChildren(
       svcSection("Channel", data.service || [], "The receiver did not report a channel."),
-      svcSection("Card information", ecm, "No card information right now. The receiver only has it while a card-sharing emulator is decoding a scrambled channel."),
+      svcSection("Card information", ecm, "No card information right now."),
       svcSection("Technical", data.ids || [], "No technical details available."));
     const lines = [...(data.service || []), ...ecm, ...(data.ids || [])].map((p) => `${p.k}: ${p.v}`);
     svc.text = lines.join("\n");

@@ -1,5 +1,5 @@
 "use strict";
-// Live TV (Windows app only): VLC draws in a native window laid over #liveVideo; window.dccLive(op, json) talks to it.
+// Live TV (Windows app only): VLC draws in a native window over #liveVideo; see window.dccLive.
 
 const liveNative = typeof window.dccLive === "function";
 const liveGui = typeof window.__dccGui === "string"; // running inside the DCC Lite window, bridge or not
@@ -226,7 +226,7 @@ async function liveTick() {
     if (!live.followSince) live.followSince = now;
     if (now - live.followSince > 800) { live.followSince = 0; live.retries = 0; liveBegin(); return; }
   } else live.followSince = 0;
-  // Every few seconds put the window back on top even if nothing moved: the page's own window may have been raised.
+  // Re-raise the picture window every few seconds in case the page window moved above it.
   liveSyncNative(++live.ticks % 6 === 0);
   liveAgo();
 }
@@ -246,7 +246,7 @@ function liveRenderStats() {
   const choice = live.audio.length > 1;
   $("#liveStreamInfo").replaceChildren(
     liveCell("Video", live.video ? [`${live.video.w}×${live.video.h}`, quality && h("span", { class: "live-chip ok", text: quality })] : "Radio / no video"),
-    // With one track there is nothing to pick, so it is a plain line; with several, the list below carries it.
+    // One track: a plain line; several: the list below carries it.
     !choice && liveCell("Audio", active ? active.name : live.audio.length ? "…" : "none", { dim: !active }),
   );
   $("#liveTracks").hidden = !choice;
@@ -419,14 +419,14 @@ function liveRenderCW() {
     const named = /^(.*?)\s*\((.*)\)\s*$/.exec(w.name);
     const title = named ? named[1] : w.name.split(" ")[0], kind = named ? named[2] : "";
     const group = (from) => h("span", { class: "grp" }, bytes.slice(from, from + 4).map((b, i) => h("span", { class: i === 3 ? "sum" : "", text: b })));
-    const tip = zero ? "All zero: the channel is not being decoded" : ok ? "Checksum OK: bytes 4 and 8 match the standard DVB checksum" : "The checksum bytes do not match. Some systems (for example BISS) do not use it.";
+    const tip = zero ? "All zero: the channel is not being decoded" : ok ? "Checksum OK: bytes 4 and 8 match the standard DVB checksum" : "Checksum does not match.";
     // One line per word: name, the eight bytes, and a small checksum mark.
     return h("div", { class: "live-cw", dataset: { name: w.name } },
       h("div", { class: "live-cw-name" }, h("b", { text: title }), kind && h("span", { class: "live-kind", text: kind })),
       h("div", { class: "live-hex", role: "text", "aria-label": w.hex }, group(0), group(4)),
       h("span", { class: `live-chip ${zero ? "bad" : ok ? "ok" : ""}`, title: tip }, zero ? "empty" : ok ? "✓" : "≠"));
   }));
-  // The current words are already on screen above: history lists only what came before, and starts folded.
+  // The current words are shown above; history lists earlier ones and starts folded.
   const rows = live.cwHistory.map((e, i) => h("li", {},
     h("time", { text: new Date(e.at).toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB")) }),
     h("span", { text: `${e.first ? "Seen" : "Changed"} ${e.words.map((w) => w.name.split(" ")[0]).join(" + ")}` }),
@@ -525,7 +525,7 @@ if (liveNative) {
 }
 else if (liveGui) {
   // The window is there but the player bridge did not arrive: say why instead of hiding the button.
-  const why = `The player is not connected to this page (page address ${location.origin}, expected ${window.__dccGui}). Restart DCC Lite; if it stays like this, send the log.`;
+  const why = `The player is not connected to this page. Restart DCC Lite.`;
   console.error(why);
   $("#liveToggle").hidden = false;
   $("#liveToggle").addEventListener("click", () => toast(why, "error"));

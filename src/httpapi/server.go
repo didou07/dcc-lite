@@ -19,6 +19,8 @@ type Server struct {
 
 	names nameCache
 
+	snaps snapshotState
+
 	scanning atomic.Bool
 }
 
@@ -43,6 +45,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/connections", s.listConnections)
 	mux.HandleFunc("PATCH /api/v1/profiles/{id}/meta", s.updateProfileMeta)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.testConnection)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/diagnose", s.deviceDiagnose)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/screen", s.deviceScreen)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/remote-key", s.deviceRemoteKey)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/message", s.deviceMessage)
@@ -92,6 +95,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/profiles/{id}/wake", s.deviceWake)
 	mux.HandleFunc("GET /api/v1/files/sessions/{id}/enigma2/backup", s.backupEnigma2)
 	mux.HandleFunc("POST /api/v1/files/sessions/{id}/enigma2/restore", s.restoreEnigma2)
+	mux.HandleFunc("GET /api/v1/files/sessions/{id}/enigma2/restore-points", s.listRestorePoints)
+	mux.HandleFunc("POST /api/v1/files/sessions/{id}/enigma2/restore-points/{name}/restore", s.restoreFromPoint)
+	mux.HandleFunc("DELETE /api/v1/files/sessions/{id}/enigma2/restore-points/{name}", s.deleteRestorePoint)
 	mux.HandleFunc("POST /api/v1/files/sessions/{id}/ipk", s.uploadIPK)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/power", s.devicePower)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/multiboot", s.deviceMultiboot)

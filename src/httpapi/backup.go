@@ -84,6 +84,7 @@ func backupHostLabel(host string) string {
 
 func (s *Server) backupEnigma2(w http.ResponseWriter, r *http.Request) {
 	logAction(w, r, "Enigma2 backup requested")
+	longTransfer(w) // backups can outlast the server-wide WriteTimeout on slow links
 	id := r.PathValue("id")
 	profile, ok := s.sessionProfile(id)
 	if !ok {

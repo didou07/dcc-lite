@@ -99,7 +99,7 @@ jobs:
             [[ "$(printf '%s\n' "$entries" | wc -l | tr -d ' ')" == "1" ]] || { echo "$file must contain exactly one executable" >&2; exit 1; }
             count=$((count + 1))
           done
-          [[ "$count" -eq 10 ]] || { echo "Expected 10 platform archives, found $count" >&2; exit 1; }
+          [[ "$count" -eq 11 ]] || { echo "Expected 11 platform archives, found $count" >&2; exit 1; }
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           unzip -p "dist/DCC-Lite-${VERSION}-linux-amd64.zip" DCCLite > "$tmp/DCCLite"
@@ -143,7 +143,7 @@ jobs:
             echo "Release $tag already exists; refusing to replace published files." >&2
             exit 1
           fi
-          [[ "$(find dist -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')" == "10" ]] || { echo "Expected 10 release packages." >&2; exit 1; }
+          [[ "$(find dist -maxdepth 1 -name '*.zip' | wc -l | tr -d ' ')" == "11" ]] || { echo "Expected 11 release packages." >&2; exit 1; }
           flags=()
           [[ "$tag" == *-* ]] && flags+=(--prerelease)
           gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "DCC Lite $tag" --generate-notes "${flags[@]}"

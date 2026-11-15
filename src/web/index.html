@@ -26,10 +26,16 @@
   <script src="/js/signal.js" defer></script>
   <script src="/js/power.js" defer></script>
   <script src="/js/channels.js" defer></script>
+  <script src="/js/live.js" defer></script>
   <script src="/js/guide.js" defer></script>
   <script src="/js/guide-extras.js" defer></script>
+  <script src="/js/guide-grid.js" defer></script>
+  <script src="/js/guide-auto.js" defer></script>
+  <script src="/js/guide-epgrefresh.js" defer></script>
+  <script src="/js/packages.js" defer></script>
   <script src="/js/logs.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
+  <script src="/js/update.js" defer></script>
   <script src="/js/shell.js" defer></script>
   <script src="/js/main.js" defer></script>
 </head>
@@ -80,6 +86,14 @@
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
     <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 20v-4M9 20v-8M14 20V8M19 20V4"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+    <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
+    <symbol id="i-pip" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M10 9.5v3l3-1.5z" /></symbol>
     <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 3l3 3 3-3"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 9"/></symbol>
     <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM10 11h4"/></symbol>
@@ -163,6 +177,7 @@
     <label class="sr-only" for="deviceSelect">Device</label>
     <select id="deviceSelect"><option value="">No devices yet</option></select>
   </div>
+  <button class="btn sm primary" id="updateBadge" type="button" title="A new version of DCC Lite is available" hidden><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span>Update</span></button>
   <button class="btn sm" id="logoutButton" type="button" title="Sign out of remote access" hidden><svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>Sign out</button>
 </header>
 
@@ -494,7 +509,7 @@
         <label class="check"><input type="checkbox" id="logsFollow" checked> Follow</label>
         <button class="btn sm" id="logsPause" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
         <button class="btn sm" id="logsCopy" type="button" title="Copy the visible lines"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
-        <button class="btn sm" id="logsDownload" type="button" title="Download a report with system info, open faults and the visible lines"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Report</span></button>
+        <button class="btn sm" id="logsDownload" type="button" title="Download a text report (system info, open faults, visible lines). IP addresses, device names, hosts, e-mails and file names are masked so it is safe to share."><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Report</span></button>
         <button class="btn sm danger" id="logsClear" type="button" title="Clear this view (the log file is kept)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
       </div>
       <div class="lg-chips" id="logsChips" aria-label="Entries per level"></div>
@@ -578,17 +593,23 @@
       <h2 id="screenTitle">Live screen</h2><code id="screenSub" class="ellipsis"></code>
     </div>
     <div class="screen-tools">
-      <label class="field-inline">Show
-        <select id="screenMode"><option value="all">Video + menus</option><option value="video">Video only</option><option value="osd">Menus only</option></select>
-      </label>
-      <label class="field-inline">Width (px)
-        <select id="screenWidth" title="Picture width in pixels. Larger pictures are sharper but slower and heavier for the receiver. 3840 is 4K."><option value="480">480</option><option value="720">720</option><option value="1280">1280</option><option value="1920">1920</option><option value="3840">3840</option></select>
-      </label>
-      <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Auto-refresh every</label>
-        <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
+      <details class="screen-opts" id="screenOpts">
+        <summary class="btn sm" title="Picture settings"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>Picture</summary>
+        <div class="screen-opts-pop">
+        <label class="field-inline">Show
+          <select id="screenMode"><option value="all">Video + menus</option><option value="video">Video only</option><option value="osd">Menus only</option></select>
+        </label>
+        <label class="field-inline">Width (px)
+          <select id="screenWidth" title="Picture width in pixels. Larger pictures are sharper but slower and heavier for the receiver. 3840 is 4K."><option value="480">480</option><option value="720">720</option><option value="1280">1280</option><option value="1920">1920</option><option value="3840">3840</option></select>
+        </label>
+        <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Auto-refresh every</label>
+          <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
+        </div>
+      </details>
       <span class="spacer"></span>
       <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic" aria-hidden="true"><use href="#i-remote"/></svg>Remote</button>
       <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Channels</button>
+      <button class="btn sm primary" id="liveToggle" type="button" aria-pressed="false" title="Watch the current channel in this window (L)" hidden><svg class="ic" aria-hidden="true"><use href="#i-live"/></svg><span>Watch live</span></button>
       <button class="btn sm" id="guideShow" type="button" title="Programme guide, timers and recordings"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Guide</button>
       <button class="btn sm" id="screenPause" type="button" title="Pause or resume the picture"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
       <button class="btn sm" id="screenFull" type="button" title="Full screen (F)"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Full screen</button>
@@ -617,13 +638,68 @@
             <div class="now-next ellipsis" id="nowNext"></div>
           </div>
           <button class="btn sm primary" id="nowStandby" type="button" hidden><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg>In standby · Wake up</button>
+          <button class="icon-btn" id="nowInfo" type="button" title="Channel details: PIDs, ECM and card information" aria-label="Channel details"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></button>
           <div class="now-time" id="nowTime"></div>
           <div class="now-progress" aria-hidden="true"><span id="nowProgress"></span></div>
         </div>
         <div class="screen-stage" id="screenStage">
           <img id="screenImg" alt="Live picture of the receiver's screen" hidden>
           <p class="muted" id="screenWait">Waiting for the first picture…</p>
+          <div class="live-overlay" id="liveOverlay" hidden>
+            <div class="live-top">
+              <span class="live-badge" id="liveBadge" data-state="idle"><i aria-hidden="true"></i><b>LIVE</b></span>
+              <span class="live-name ellipsis" id="liveName"></span>
+              <span class="spacer"></span>
+              <span class="live-tech" id="liveTech"></span>
+            </div>
+            <div class="live-viewport" id="liveVideo">
+            <div class="live-center" id="liveCenter" hidden>
+              <div class="live-spin" id="liveSpin" aria-hidden="true"></div>
+              <p id="liveMsg" role="status" aria-live="polite"></p>
+              <div class="live-center-actions" id="liveCenterActions" hidden>
+                <button class="btn sm primary" id="liveRetry" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Try again</button>
+              </div>
+            </div>
+            </div>
+            <div class="live-bar" id="liveBar">
+              <button class="live-btn" id="livePlay" type="button" title="Pause / play (Space)" aria-label="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
+              <button class="live-btn" id="liveMute" type="button" title="Mute this player" aria-label="Mute"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg></button>
+              <input class="live-vol" id="liveVol" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume">
+              <button class="live-btn live-audio-btn" id="liveAudioBtn" type="button" title="Audio track" aria-label="Audio track" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><span id="liveAudioLabel"></span></button>
+              <span class="spacer"></span>
+              <button class="live-btn" id="liveSnap" type="button" title="Save a snapshot" aria-label="Save a snapshot"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
+              <button class="live-btn" id="liveFull" type="button" title="Full screen (F)" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
+              <button class="live-btn" id="liveStop" type="button" title="Stop watching (L)" aria-label="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
+            </div>
+          </div>
         </div>
+        <section class="live-panel" id="livePanel" data-tab="player" aria-label="Live channel details" hidden>
+          <div class="seg live-tabs" id="liveTabs" role="tablist" aria-label="Details">
+            <button type="button" role="tab" data-tab="player" aria-selected="true">Player</button>
+            <button type="button" role="tab" data-tab="cw" aria-selected="false">Control words</button>
+            <button type="button" role="tab" data-tab="card" aria-selected="false">Card</button>
+          </div>
+          <article class="live-card" data-card="player">
+            <header><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><h3>Player</h3></header>
+            <div class="live-cells" id="liveStreamInfo"></div>
+            <div class="live-tracks" id="liveTracks" role="radiogroup" aria-label="Audio track"></div>
+            <h4 class="live-sub" id="liveRxTitle" hidden>Receiver audio</h4>
+            <div class="live-tracks" id="liveRxTracks" hidden></div>
+          </article>
+          <article class="live-card" data-card="cw">
+            <header><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><h3>Control words</h3><span class="spacer"></span><span class="muted small" id="liveCwAgo"></span>
+              <button class="icon-btn" id="liveCwCopy" type="button" title="Copy the control words" aria-label="Copy the control words"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button></header>
+            <div id="liveCw"></div>
+            <details class="live-more" id="liveCwMore" hidden>
+              <summary>Recent changes <span class="live-count" id="liveCwCount"></span></summary>
+              <ol class="live-history" id="liveCwHistory"></ol>
+            </details>
+          </article>
+          <article class="live-card" data-card="card">
+            <header><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><h3>Card</h3><span class="spacer"></span><span class="muted small" id="liveEcmStamp"></span></header>
+            <div class="live-cells" id="liveEcm"></div>
+          </article>
+        </section>
         <p class="form-error" id="screenError" role="alert" hidden></p>
         <div class="screen-foot">
           <button class="btn sm" id="screenRefresh" type="button" title="Take a new picture now"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
@@ -655,6 +731,30 @@
       </aside>
     </div>
   </section>
+  <section class="view" id="view-packages" aria-label="Packages" hidden>
+    <div class="tools-top">
+      <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
+    </div>
+    <span id="pkDevice" class="sr-only"></span>
+    <div class="screen-tools pk-tools">
+      <label class="sr-only" for="pkSearch">Search packages</label>
+      <input class="filter-input" id="pkSearch" type="search" placeholder="Search by name or description" spellcheck="false" autocomplete="off">
+      <div class="seg" id="pkView" role="group" aria-label="Show">
+        <button type="button" data-pk="all" aria-pressed="true">All</button>
+        <button type="button" data-pk="installed" aria-pressed="false">Installed</button>
+        <button type="button" data-pk="updates" aria-pressed="false">Updates</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn sm" id="pkUpdate" type="button" title="Download the newest package lists from the receiver's feeds"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh lists</button>
+      <button class="btn sm" id="pkUpgrade" type="button" title="Install every available update" disabled><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Upgrade all</button>
+    </div>
+    <p class="muted small pk-status" id="pkStatus" role="status"></p>
+    <div class="pk-list" id="pkList"></div>
+    <pre class="pk-log" id="pkLog" hidden></pre>
+    <p class="form-error" id="pkError" role="alert" hidden></p>
+    <p class="muted small ipk-warn">Packages run as root on the receiver, so install only what you trust. The receiver needs internet access for its feeds.</p>
+  </section>
+
   <section class="view" id="view-ipk" aria-label="Install a plugin" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
@@ -705,6 +805,12 @@
         <span class="input-row"><input id="devPass" type="password" maxlength="4096" placeholder="dreambox" spellcheck="false" autocomplete="off"><button class="icon-btn" id="devPassToggle" type="button" title="Show or hide password" aria-label="Show or hide password"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button></span>
       </label>
     </div>
+    <label class="field"><span>Web interface on the receiver</span>
+      <select id="devWebKind" title="Which web interface this receiver runs. The app then asks the receiver only in that way.">
+        <option value="openwebif">OpenWebif</option>
+        <option value="webinterface">WebInterface</option>
+      </select>
+    </label>
     <details class="advanced" id="devPorts">
       <summary>Custom ports</summary>
       <div class="grid3">
@@ -802,6 +908,25 @@
     </div>
     <div class="dialog-actions"><button class="btn" id="apReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>Reset</button><span class="spacer"></span><button class="btn primary" id="apDone" type="button" autofocus><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Done</button></div>
   </div>
+</dialog>
+
+<dialog id="updDialog" aria-labelledby="updTitle">
+  <form id="updForm" class="dialog-card ra-card" method="dialog" autocomplete="off">
+    <div class="ra-head">
+      <h2 id="updTitle">Software update</h2>
+      <p id="updState" class="ra-state" role="status"></p>
+    </div>
+    <p id="updSummary" class="muted"></p>
+    <pre id="updNotes" class="small upd-notes" hidden></pre>
+    <label class="check ra-switch"><input id="updAuto" type="checkbox"> Install new versions automatically</label>
+    <p class="muted small" id="updHint">New releases are published on GitHub. DCC Lite checks every few hours, verifies the download (SHA-256) and restarts itself when no file transfer is running.</p>
+    <p class="form-error" id="updError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button class="btn" id="updCheck" type="button">Check now</button>
+      <button class="btn primary" id="updInstall" type="button" hidden>Install and restart</button>
+      <button class="btn" id="updClose" type="button">Close</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="raDialog" aria-labelledby="raTitle">
@@ -916,6 +1041,16 @@
       <span class="badge" id="editorMeta"></span>
     </header>
     <p class="form-error" id="editorNotice" role="status" hidden></p>
+    <div class="editor-find" id="editorFind" hidden>
+      <input id="findText" type="text" placeholder="Find" aria-label="Find" spellcheck="false" autocomplete="off">
+      <input id="replaceText" type="text" placeholder="Replace with" aria-label="Replace with" spellcheck="false" autocomplete="off">
+      <button class="btn sm" id="findPrev" type="button" title="Previous match (Shift+Enter)">Prev</button>
+      <button class="btn sm" id="findNext" type="button" title="Next match (Enter)">Next</button>
+      <button class="btn sm" id="replaceOne" type="button">Replace</button>
+      <button class="btn sm" id="replaceAll" type="button">Replace all</button>
+      <label class="check"><input type="checkbox" id="findCase"> Match case</label>
+      <span id="findInfo" class="muted small" role="status" aria-live="polite"></span>
+    </div>
     <textarea id="editorText" class="editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File content"></textarea>
     <div class="editor-foot">
       <span id="editorStatus" class="editor-status" role="status" aria-live="polite"></span>
@@ -923,6 +1058,7 @@
       <label class="check"><input type="checkbox" id="editorWrap"> Wrap lines</label>
     </div>
     <div class="dialog-actions">
+      <button class="btn" id="editorFindBtn" type="button" title="Find and replace (Ctrl+F)"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Find</button>
       <button class="btn" id="editorReload" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reload</button>
       <span class="spacer"></span>
       <button class="btn" id="editorClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
@@ -985,7 +1121,9 @@
       <span class="spacer"></span>
       <div class="seg" id="guideTabs" role="tablist" aria-label="Guide sections">
         <button type="button" role="tab" data-tab="epg" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Programmes</button>
+        <button type="button" role="tab" data-tab="grid" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>Grid</button>
         <button type="button" role="tab" data-tab="timers" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg>Timers</button>
+        <button type="button" role="tab" data-tab="auto" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Auto</button>
         <button type="button" role="tab" data-tab="movies" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Recordings</button>
       </div>
       <button class="icon-btn" id="guideClose" type="button" title="Close" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
@@ -1000,9 +1138,27 @@
         <input class="filter-input" id="guideSearch" type="search" placeholder="Search the guide (all channels)" aria-label="Search the programme guide" autocomplete="off" spellcheck="false">
       </div>
     </div>
+    <div class="gd-tools" data-for="grid" hidden>
+      <label class="sr-only" for="gridBouquet">Bouquet</label>
+      <select id="gridBouquet"></select>
+      <button class="icon-btn" id="gridPrev" type="button" title="Earlier" aria-label="Earlier"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg></button>
+      <button class="btn sm" id="gridNow" type="button" title="Go back to the current time">Now</button>
+      <button class="icon-btn" id="gridNext" type="button" title="Later" aria-label="Later"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg></button>
+      <label class="sr-only" for="gridSpan">Time shown</label>
+      <select id="gridSpan" class="gd-narrow"><option value="2">2 hours</option><option value="3" selected>3 hours</option><option value="6">6 hours</option></select>
+      <span class="muted small" id="gridWhen"></span>
+    </div>
     <div class="gd-tools" data-for="timers" hidden>
+      <button class="btn sm primary" id="guideTimerNew" type="button" title="Create a timer for any channel and time"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New timer</button>
       <button class="btn sm" id="guideTimersRefresh" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
       <button class="btn sm" id="guideCleanup" type="button" title="Remove the timers that are finished"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Clean up finished</button>
+    </div>
+    <div class="gd-tools" data-for="auto" hidden>
+      <button class="btn sm primary" id="autoNew" type="button" title="Create a rule that records matching programmes by itself"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New rule</button>
+      <button class="btn sm" id="autoPreview" type="button" title="Show what the rules would record, without creating anything"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
+      <button class="btn sm" id="autoRun" type="button" title="Search the guide now and create the timers"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Run now</button>
+      <button class="btn sm" id="erOpen" type="button" title="Keep the receiver's programme guide fresh by visiting channels in the background (EPGRefresh plugin)"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>EPG refresh</button>
+      <button class="icon-btn" id="autoRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="gd-tools" data-for="movies" hidden>
       <button class="icon-btn" id="guideUp" type="button" title="Parent folder" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
@@ -1011,6 +1167,10 @@
         <svg class="ic sm"><use href="#i-search"/></svg>
         <input class="filter-input" id="guideMovieFilter" type="search" placeholder="Filter recordings" aria-label="Filter recordings" autocomplete="off" spellcheck="false">
       </div>
+      <label class="sr-only" for="guideMovieTag">Tag</label>
+      <select id="guideMovieTag" class="gd-narrow" hidden></select>
+      <label class="sr-only" for="guideMovieSort">Sort by</label>
+      <select id="guideMovieSort" class="gd-narrow"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="name">Name</option><option value="size">Largest first</option><option value="length">Longest first</option><option value="unseen">Not watched first</option></select>
       <button class="icon-btn" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="gd-body" id="guideList" data-tab="epg" tabindex="-1" autofocus aria-live="polite"></div>
@@ -1023,6 +1183,7 @@
   <form method="dialog" id="timerForm" class="dialog-card" autocomplete="off">
     <h2 id="timerDialogTitle">Edit timer</h2>
     <p class="muted small ellipsis" id="timerChannel"></p>
+    <label class="field" id="tmChannelRow" hidden><span>Channel</span><select id="tmChannel"></select></label>
     <label class="field"><span>Name</span><input id="tmName" required maxlength="200"></label>
     <label class="field"><span>Description</span><input id="tmDesc" maxlength="300"></label>
     <div class="grid2">
@@ -1037,6 +1198,22 @@
     </div>
     <fieldset class="tm-days" id="tmDays"><legend>Repeat on</legend></fieldset>
     <label class="check"><input id="tmOn" type="checkbox"> Timer is on</label>
+    <details class="tm-adv" id="tmAdv">
+      <summary>More options</summary>
+      <label class="field"><span>Save recording in</span><input id="tmDir" list="tmDirList" placeholder="Receiver default" spellcheck="false" maxlength="400"><datalist id="tmDirList"></datalist></label>
+      <label class="field"><span>Tags</span><input id="tmTags" placeholder="space separated" spellcheck="false" maxlength="200"></label>
+      <div class="grid2">
+        <label class="field"><span>Recording type</span>
+          <select id="tmType"><option value="">Receiver default</option><option value="normal">Normal</option><option value="descrambled">Descrambled</option><option value="scrambled">Scrambled (as broadcast)</option></select></label>
+        <label class="field"><span>Adjust times to the guide</span>
+          <select id="tmAdjust"><option value="-1">Receiver default</option><option value="1">Yes</option><option value="0">No</option></select></label>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Switch to the channel first</span>
+          <select id="tmZap"><option value="-1">Receiver default</option><option value="1">Yes</option><option value="0">No</option></select></label>
+        <label class="check tm-dup"><input id="tmDup" type="checkbox"> Allow a duplicate of this programme</label>
+      </div>
+    </details>
     <p class="form-error" id="timerError" role="alert" hidden></p>
     <div class="dialog-actions">
       <span class="spacer"></span>
@@ -1044,6 +1221,138 @@
       <button class="btn primary" id="timerSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="erDialog" aria-labelledby="erDialogTitle">
+  <form method="dialog" id="erForm" class="dialog-card at-card" autocomplete="off">
+    <h2 id="erDialogTitle">EPG refresh</h2>
+    <p class="muted small" id="erIntro">The receiver visits the chosen channels in the background so its programme guide (and your AutoTimer rules) always have fresh data.</p>
+    <label class="check"><input id="erOn" type="checkbox"> EPG refresh is on</label>
+    <div class="grid2">
+      <label class="field"><span>Start after</span><input id="erBegin" type="time" required></label>
+      <label class="field"><span>Stop at</span><input id="erEnd" type="time" required></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Time on each channel (seconds)</span><input id="erSeconds" type="number" min="5" max="3600" required></label>
+      <label class="field"><span>Wait after standby (minutes)</span><input id="erDelay" type="number" min="1" max="240" required></label>
+    </div>
+    <fieldset class="at-where"><legend>Channels to refresh</legend>
+      <input class="filter-input" id="erFilter" type="search" placeholder="Filter bouquets and channels" aria-label="Filter bouquets and channels" spellcheck="false">
+      <div class="at-picklist" id="erPick"></div>
+      <p class="muted small" id="erCount"></p>
+    </fieldset>
+    <details class="tm-adv" id="erAdv">
+      <summary>More options</summary>
+      <div class="grid2">
+        <label class="field"><span>Refresh method</span>
+          <select id="erAdapter"><option value="main">Main picture</option><option value="pip">Picture in picture</option><option value="pip_hidden">Picture in picture (hidden)</option><option value="record">Fake recording (second tuner)</option></select></label>
+        <label class="field"><span>Run AutoTimer afterwards</span>
+          <select id="erRunAT"><option value="never">No</option><option value="always">Yes</option><option value="bg_only">Background only</option><option value="ask_yes">Ask, default yes</option><option value="ask_no">Ask, default no</option></select></label>
+      </div>
+      <label class="field"><span>Protected channels</span>
+        <select id="erSkip"><option value="bg_only">Skip when refreshing in the background</option><option value="always">Refresh them in the foreground too</option></select></label>
+      <label class="check"><input id="erMessage" type="checkbox"> Show a message on the TV when a refresh starts</label>
+      <label class="check"><input id="erForce" type="checkbox"> Refresh even if the receiver is not in standby</label>
+      <label class="check"><input id="erWake" type="checkbox"> Wake the receiver from deep standby for a refresh</label>
+      <label class="check"><input id="erShutdown" type="checkbox"> Switch off again after the refresh</label>
+      <label class="check"><input id="erInherit" type="checkbox"> Also refresh the channels used by AutoTimer rules</label>
+      <p class="muted small">Not every receiver supports every method. DCC Lite tells you if the receiver kept a different one.</p>
+    </details>
+    <p class="muted small" id="erLast"></p>
+    <p class="form-error" id="erError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button class="btn" id="erNow" type="button" title="Start a refresh right now"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh now</button>
+      <span class="spacer"></span>
+      <button class="btn" id="erCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="erSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="atDialog" aria-labelledby="atDialogTitle">
+  <form method="dialog" id="atForm" class="dialog-card at-card" autocomplete="off">
+    <h2 id="atDialogTitle">AutoTimer rule</h2>
+    <label class="field"><span>Search for</span><input id="atMatch" required maxlength="300" spellcheck="false" placeholder="A title, or a word from the description"></label>
+    <div class="grid2">
+      <label class="field"><span>Search in</span>
+        <select id="atType"><option value="partial">Title contains</option><option value="exact">Title is exactly</option><option value="start">Title starts with</option><option value="description">Description contains</option></select></label>
+      <label class="field"><span>Name of the rule</span><input id="atName" maxlength="200" placeholder="Same as the search"></label>
+    </div>
+    <label class="check"><input id="atCase" type="checkbox"> Match upper and lower case exactly</label>
+
+    <fieldset class="at-where"><legend>Channels</legend>
+      <div class="seg" id="atWhereSeg" role="group" aria-label="Which channels">
+        <button type="button" data-where="all" aria-pressed="true">All channels</button>
+        <button type="button" data-where="bouquets" aria-pressed="false">Some bouquets</button>
+        <button type="button" data-where="channels" aria-pressed="false">Some channels</button>
+      </div>
+      <div class="at-pick" id="atPickBox" hidden>
+        <input class="filter-input" id="atPickFilter" type="search" placeholder="Filter the list" aria-label="Filter the list" spellcheck="false">
+        <div class="at-picklist" id="atPick"></div>
+        <p class="muted small" id="atPickCount"></p>
+      </div>
+    </fieldset>
+
+    <div class="grid2">
+      <label class="field"><span>Action</span>
+        <select id="atAction"><option value="record">Record</option><option value="play">Remind: switch to the channel</option></select></label>
+      <label class="field"><span>When it is over</span>
+        <select id="atAfter"><option value="default">Receiver default</option><option value="nothing">Do nothing</option><option value="standby">Standby</option><option value="deepstandby">Deep standby</option><option value="auto">Automatic</option></select></label>
+    </div>
+    <label class="check" id="atZapRow"><input id="atZap" type="checkbox"> Switch to the channel before recording</label>
+
+    <details class="tm-adv" id="atAdv">
+      <summary>More options</summary>
+      <div class="grid2">
+        <label class="field"><span>Only between</span><input id="atFrom" type="time"></label>
+        <label class="field"><span>and</span><input id="atTo" type="time"></label>
+      </div>
+      <fieldset class="tm-days" id="atDays"><legend>Skip these days</legend></fieldset>
+      <div class="grid2">
+        <label class="field"><span>Start earlier by (minutes)</span><input id="atBefore" type="number" min="0" max="600" placeholder="Receiver default"></label>
+        <label class="field"><span>End later by (minutes)</span><input id="atAfterMin" type="number" min="0" max="600" placeholder="Receiver default"></label>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Ignore programmes longer than (minutes)</span><input id="atMaxDur" type="number" min="0" max="1440" placeholder="No limit"></label>
+        <label class="field"><span>Record at most (times)</span><input id="atCounter" type="number" min="0" max="999" placeholder="No limit"></label>
+      </div>
+      <label class="field"><span>Skip a programme already recorded</span>
+        <select id="atDup"><option value="0">No: allow repeats</option><option value="1">On the same channel</option><option value="2">On any channel</option></select></label>
+      <label class="field"><span>Save recording in</span><input id="atDir" list="tmDirList" placeholder="Receiver default" spellcheck="false" maxlength="400"></label>
+      <label class="field"><span>Tags</span><input id="atTags" placeholder="space separated" spellcheck="false"></label>
+      <label class="field"><span>Also require in the title (one per line)</span><textarea id="atIncTitle" rows="2" spellcheck="false"></textarea></label>
+      <label class="field"><span>Also require in the description (one per line)</span><textarea id="atIncDesc" rows="2" spellcheck="false"></textarea></label>
+      <label class="field"><span>Skip when the title contains (one per line)</span><textarea id="atExcTitle" rows="2" spellcheck="false"></textarea></label>
+      <label class="field"><span>Skip when the description contains (one per line)</span><textarea id="atExcDesc" rows="2" spellcheck="false"></textarea></label>
+      <p class="muted small">Words are matched as regular expressions by the receiver, so a plain word works as it is.</p>
+    </details>
+
+    <label class="check"><input id="atOn" type="checkbox" checked> Rule is on</label>
+    <p class="form-error" id="atError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" id="atCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="atSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="svcDialog" aria-labelledby="svcTitle">
+  <div class="dialog-card svc-card">
+    <h2 id="svcTitle">Channel details</h2>
+    <div class="svc-body" id="svcBody" aria-live="polite"></div>
+    <section class="svc-sec" id="svcAudio" hidden>
+      <h3>Audio track</h3>
+      <div class="svc-audio" id="svcAudioList" role="group" aria-label="Audio track"></div>
+    </section>
+    <p class="form-error" id="svcError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="muted small" id="svcStamp"></span>
+      <span class="spacer"></span>
+      <button class="btn" id="svcCopy" type="button"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>Copy</button>
+      <button class="btn primary" id="svcClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="askDialog" aria-labelledby="askTitle">
@@ -1054,6 +1363,7 @@
     <p class="form-error" id="askError" role="alert" hidden></p>
     <div class="dialog-actions"><span class="spacer"></span>
       <button class="btn" id="askCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn" id="askAlt" type="button" hidden></button>
       <button class="btn primary" id="askOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>OK</button>
     </div>
   </form>

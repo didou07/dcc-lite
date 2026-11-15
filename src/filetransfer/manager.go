@@ -596,7 +596,7 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 	defer func() { <-m.queue }()
 	m.updateTask(task, func(info *TaskInfo) { info.State = "running" })
 	started := time.Now()
-	flog.Info("transfer started", "task", task.info.ID, "direction", task.info.Direction, "remote", task.info.RemotePath, "resume", resume)
+	flog.Info("transfer started", "task", task.info.ID, "direction", task.info.Direction, "remote_path", task.info.RemotePath, "resume", resume)
 	session := task.session
 	if session == nil {
 		m.finishTask(task, "failed", "file transfer session is unavailable")
@@ -657,9 +657,9 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 		}
 		m.finishTask(task, state, err.Error())
 		if state == "cancelled" {
-			flog.Info("transfer cancelled", "task", task.info.ID, "remote", task.info.RemotePath)
+			flog.Info("transfer cancelled", "task", task.info.ID, "remote_path", task.info.RemotePath)
 		} else {
-			flog.Error("transfer failed", "task", task.info.ID, "direction", task.info.Direction, "remote", task.info.RemotePath, "error", err, "after", time.Since(started).Round(time.Millisecond))
+			flog.Error("transfer failed", "task", task.info.ID, "direction", task.info.Direction, "remote_path", task.info.RemotePath, "error", err, "after", time.Since(started).Round(time.Millisecond))
 		}
 		return
 	}
@@ -676,7 +676,7 @@ func (m *Manager) runTransfer(ctx context.Context, task *taskEntry, resume bool)
 	m.mu.Lock()
 	done := task.info.Progress.BytesDone
 	m.mu.Unlock()
-	flog.Info("transfer completed", "task", task.info.ID, "direction", task.info.Direction, "remote", task.info.RemotePath, "bytes", done, "took", time.Since(started).Round(time.Millisecond))
+	flog.Info("transfer completed", "task", task.info.ID, "direction", task.info.Direction, "remote_path", task.info.RemotePath, "bytes", done, "took", time.Since(started).Round(time.Millisecond))
 
 	if task.info.Staged && task.info.Direction == "upload" {
 		removeStagedFiles(task)
@@ -1400,8 +1400,6 @@ func downloadFile(ctx context.Context, adapter core.FileTransfer, local *LocalFS
 }
 
 func RemoteParent(value string) string { return path.Dir(value) }
-
-var _ = fmt.Sprintf
 
 func friendlyConnectError(host string, port int, err error) error {
 	lower := strings.ToLower(err.Error())

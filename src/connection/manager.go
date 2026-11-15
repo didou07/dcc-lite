@@ -41,12 +41,13 @@ type Manager struct {
 	statuses map[string]Status
 	active   map[string]context.CancelFunc
 	sequence map[string]uint64
+	logged   map[string]string // last state written to the log per device
 }
 
 func NewManager(checker Checker) *Manager {
 	return &Manager{
 		checker: checker, statuses: make(map[string]Status),
-		active: make(map[string]context.CancelFunc), sequence: make(map[string]uint64),
+		active: make(map[string]context.CancelFunc), sequence: make(map[string]uint64), logged: make(map[string]string),
 	}
 }
 
@@ -66,14 +67,10 @@ func (m *Manager) Test(ctx context.Context, profile config.Profile) Status {
 
 	status := m.checker.Check(checkCtx, profile)
 	cancel()
-	level := slog.LevelDebug
-	switch status.State {
-	case "error":
-		level = slog.LevelWarn
-	case "offline", "partial":
-		level = slog.LevelInfo
+	if m.superseded(profile.ID, sequence) {
+		return status
 	}
-	clog.Log(ctx, level, "device check", "device", profile.Name, "host", profile.Host, "state", status.State, "message", status.Message)
+	m.logResult(ctx, profile, status)
 	m.mu.Lock()
 	if m.sequence[profile.ID] == sequence {
 		delete(m.active, profile.ID)
@@ -81,6 +78,40 @@ func (m *Manager) Test(ctx context.Context, profile config.Profile) Status {
 	}
 	m.mu.Unlock()
 	return status
+}
+
+func (m *Manager) superseded(profileID string, sequence uint64) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sequence[profileID] != sequence
+}
+
+// logResult writes a device check at info/warn level only when its state changed,
+// so periodic "Check all" runs do not fill the log with identical lines.
+func (m *Manager) logResult(ctx context.Context, profile config.Profile, status Status) {
+	m.mu.Lock()
+	previous, known := m.logged[profile.ID]
+	m.logged[profile.ID] = status.State
+	m.mu.Unlock()
+	level := slog.LevelDebug
+	msg := "device check: " + status.State
+	if !known || previous != status.State {
+		switch status.State {
+		case "error":
+			level = slog.LevelWarn
+		case "offline":
+			level = slog.LevelWarn
+			if !known {
+				level = slog.LevelInfo
+			}
+		default:
+			level = slog.LevelInfo
+		}
+		if known {
+			msg = "device state changed: " + previous + " -> " + status.State
+		}
+	}
+	clog.Log(ctx, level, msg, "device", profile.Name, "host", profile.Host, "detail", status.Message)
 }
 
 func (m *Manager) List() []Status {
@@ -108,6 +139,7 @@ func (m *Manager) Forget(profileID string) {
 	}
 	delete(m.active, profileID)
 	delete(m.statuses, profileID)
+	delete(m.logged, profileID)
 	m.sequence[profileID]++
 }
 

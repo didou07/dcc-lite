@@ -183,7 +183,7 @@ const validName = (name) => name && name !== "." && name !== ".." && !/[\\/\0\r\
 
 function openDialog(dialog) { if (!dialog.open) dialog.showModal(); }
 
-function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", danger = false, validate = null }) {
+function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", alt = "", danger = false, validate = null }) {
   const dialog = $("#askDialog");
   $("#askTitle").textContent = title;
   $("#askMessage").textContent = message;
@@ -195,6 +195,9 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
   okButton.textContent = ok;
   okButton.classList.toggle("danger", danger);
   okButton.classList.toggle("primary", !danger);
+  const altButton = $("#askAlt");
+  altButton.hidden = !alt;
+  altButton.textContent = alt;
   const error = $("#askError");
   error.hidden = true;
   return new Promise((resolve) => {
@@ -204,6 +207,7 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
       finished = true;
       form.removeEventListener("submit", onSubmit);
       $("#askCancel").removeEventListener("click", onCancel);
+      altButton.removeEventListener("click", onAlt);
       dialog.removeEventListener("cancel", onCancel);
       dialog.removeEventListener("close", onClose);
       if (dialog.open) dialog.close();
@@ -221,7 +225,9 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
     };
     const onCancel = (event) => { event?.preventDefault?.(); finish(null); };
     form.addEventListener("submit", onSubmit);
+    const onAlt = () => finish("alt");
     $("#askCancel").addEventListener("click", onCancel);
+    altButton.addEventListener("click", onAlt);
     dialog.addEventListener("cancel", onCancel);
     const onClose = () => { if (!dialog.open) finish(null); };
     dialog.addEventListener("close", onClose);

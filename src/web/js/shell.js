@@ -46,7 +46,7 @@
   const DIALOG_ICONS = {
     deviceDialog: "tv", histDialog: "history", termCfgDialog: "sliders", pasteDialog: "paste", raDialog: "lock",
     scanDialog: "search", bqAddDialog: "plus", bqStreamDialog: "link", editorDialog: "edit", powerDialog: "power",
-    guideDialog: "calendar", timerDialog: "bell", askDialog: "info", themeDialog: "palette",
+    guideDialog: "calendar", timerDialog: "bell", atDialog: "bolt", erDialog: "calendar", svcDialog: "info", askDialog: "info", themeDialog: "palette",
   };
   for (const dialog of document.querySelectorAll("dialog[id]")) {
     const heading = dialog.querySelector(".dialog-card h2");
@@ -61,6 +61,8 @@
     } else head = anchor;
     head.classList.add("dlg-head");
     head.prepend(icon(DIALOG_ICONS[dialog.id] || "info"));
+    // A header that already carries its own close button (the guide) must not get a second one.
+    const hasClose = Boolean(head.querySelector('[aria-label="Close"], [id$="Close"]'));
     const close = document.createElement("button");
     close.type = "button";
     close.className = "icon-btn dlg-close";
@@ -71,7 +73,7 @@
       const existing = dialog.querySelector('[id$="Cancel"], [id$="Close"]');
       if (existing) existing.click(); else dialog.close();
     });
-    head.append(close);
+    if (!hasClose) head.append(close);
     // Keep initial focus on the first real field, not on the close button.
     const field = dialog.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea');
     if (field && !dialog.querySelector("[autofocus]")) field.setAttribute("autofocus", "");

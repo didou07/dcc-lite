@@ -246,6 +246,7 @@ func (s *Server) deviceInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if signalErr != nil || signalStatus != http.StatusOK {
 		signal = nil
 	}
+	s.learnMAC(profile, about)
 	info := buildDeviceInfo(about, signal)
 	info.Temperature = temperature
 	w.Header().Set("Cache-Control", "no-store")

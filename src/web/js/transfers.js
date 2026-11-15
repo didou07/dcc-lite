@@ -6,7 +6,7 @@ async function transferSelection(direction, given = null, destPath = null) {
     return chooseDeviceFiles(false);
   }
   const source = direction === "upload" ? panes.local : panes.remote;
-  const entries = given || selectedEntries(source);
+  let entries = given || selectedEntries(source);
   if (!entries.length) { toast(direction === "upload" ? "Select local items to upload" : "Select remote items to download"); return; }
   const destPane = direction === "upload" ? panes.remote : panes.local;
   const destBase = destPath || destPane.path;
@@ -21,9 +21,12 @@ async function transferSelection(direction, given = null, destPath = null) {
   let overwrite = false;
   if (clashes.length) {
     const list = clashes.slice(0, 5).map((e) => `• ${e.name}`).join("\n") + (clashes.length > 5 ? `\n… and ${clashes.length - 5} more` : "");
-    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} ${direction === "upload" ? "on the device" : "on this computer"}. Folders are merged and matching files replaced.`, input: false, ok: "Replace", danger: true });
+    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} ${direction === "upload" ? "on the device" : "on this computer"}. Folders are merged and matching files replaced.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
     if (!answer) return;
-    overwrite = true;
+    if (answer === "alt") {
+      entries = entries.filter((e) => !existing.has(e.name));
+      if (!entries.length) { toast("Nothing to transfer: every item already exists"); return; }
+    } else overwrite = true;
   }
   let queued = 0;
   for (const entry of entries) {
@@ -169,7 +172,7 @@ async function uploadFromDevice(items, destPath = null) {
   if (!dest || !dest.startsWith("/")) { toast("Open a folder on the device first.", "error"); return; }
   items = items.filter((it) => it.dir || it.file);
   if (!items.length) return;
-  const fileItems = items.filter((it) => it.file);
+  let fileItems = items.filter((it) => it.file);
   if (fileItems.length > 5000) { toast("That is more than 5000 files. Upload them in smaller batches.", "error"); return; }
 
   const tops = [...new Set(items.map((it) => (it.dir || it.rel).split("/")[0]))];
@@ -180,9 +183,14 @@ async function uploadFromDevice(items, destPath = null) {
   let overwrite = false;
   if (clashes.length) {
     const list = clashes.slice(0, 5).map((n) => `• ${n}`).join("\n") + (clashes.length > 5 ? `\n… and ${clashes.length - 5} more` : "");
-    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} on the device. Folders are merged and matching files replaced.`, input: false, ok: "Replace", danger: true });
+    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} on the device. Folders are merged and matching files replaced.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
     if (!answer) return;
-    overwrite = true;
+    if (answer === "alt") {
+      const skip = new Set(clashes);
+      items = items.filter((it) => !skip.has((it.dir || it.rel).split("/")[0]));
+      fileItems = items.filter((it) => it.file);
+      if (!items.length) { toast("Nothing to upload: every item already exists"); return; }
+    } else overwrite = true;
   }
 
   const dirs = new Set();
@@ -401,6 +409,42 @@ async function runRemoteFile() {
   if (!command) return;
   createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: panes.remote.path, initialCommand: command });
   showView("terminal");
+}
+function runOnDevice(command, directory) {
+  const device = currentDevice();
+  if (!device) return;
+  createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: directory || panes.remote.path, initialCommand: command });
+  showView("terminal");
+}
+const remoteAbsolute = (v) => (!v ? "Enter a path." : !v.startsWith("/") ? "Use a full path that starts with /." : /[\r\n\0]/.test(v) ? "Use a single line." : "");
+async function cmdSymlink() {
+  if (!requireSession()) return;
+  const sel = selectedEntries(panes.remote);
+  let target = sel.length === 1 ? sel[0].path : "";
+  if (!target) {
+    target = await ask({ title: "New symbolic link", message: "What should the link point to?", label: "Target path on the device", value: panes.remote.path, ok: "Next", validate: remoteAbsolute });
+    if (!target) return;
+  }
+  const base = target.replace(/\/+$/, "").split("/").pop() || "link";
+  const linkPath = await ask({ title: "New symbolic link", message: `Target: ${target}`, label: "Link path (the new file)", value: joinRemote(panes.remote.path, `${base}-link`), ok: "Create in terminal", validate: remoteAbsolute });
+  if (!linkPath) return;
+  runOnDevice(`ln -s ${shellQuote(target)} ${shellQuote(linkPath)} && ls -l ${shellQuote(linkPath)}`);
+  toast("The link is created in the terminal. Refresh the folder afterwards.");
+}
+const copyName = (name) => { const dot = name.lastIndexOf("."); return dot > 0 ? `${name.slice(0, dot)}-copy${name.slice(dot)}` : `${name}-copy`; };
+async function cmdCopyOnDevice() {
+  if (!requireSession()) return;
+  const sel = selectedEntries(panes.remote);
+  if (!sel.length) { toast("Select the items to copy on the device"); return; }
+  const dest = await ask({ title: sel.length === 1 ? `Copy ${sel[0].name}` : `Copy ${sel.length} items`, message: "The copy is made on the device itself and does not pass through this computer.", label: "Destination folder on the device", value: panes.remote.path, ok: "Copy in terminal", validate: remoteAbsolute });
+  if (!dest) return;
+  const clean = dest.replace(/\/+$/, "") || "/";
+  if (sel.length > 1 || sel[0].is_dir || clean !== panes.remote.path) {
+    runOnDevice(`cp -a ${sel.map((e) => shellQuote(e.path)).join(" ")} ${shellQuote(clean + "/")} && echo Done`);
+  } else {
+    runOnDevice(`cp -a ${shellQuote(sel[0].path)} ${shellQuote(joinRemote(clean, copyName(sel[0].name)))} && echo Done`);
+  }
+  toast("The copy runs in the terminal. Refresh the folder afterwards.");
 }
 $("#fileTerminalHere").addEventListener("click", () => openTerminalHere());
 $("#fileRun").addEventListener("click", runRemoteFile);

@@ -32,12 +32,16 @@ type Profile struct {
 	Password    string `json:"-"`
 	Enabled     bool   `json:"enabled"`
 	InsecureTLS bool   `json:"tls_insecure_skip_verify,omitempty"`
+	// WebKind says which web interface the receiver runs: "" (detect), "openwebif" or "webinterface" (the older plugin).
+	WebKind string `json:"web_kind,omitempty"`
 
 	Group    string `json:"group,omitempty"`     // folder name in the site list
 	Color    string `json:"color,omitempty"`     // one of SiteColors, or empty
 	Favorite bool   `json:"favorite,omitempty"`  // pinned to the top
 	StartDir string `json:"start_dir,omitempty"` // remote folder opened by Files and Terminal
 	Note     string `json:"note,omitempty"`      // free text, shown on the card
+
+	MAC string `json:"mac,omitempty"` // learned from the receiver; used by Wake-on-LAN
 }
 
 // SiteColors are the colour labels a saved site can carry.
@@ -124,6 +128,9 @@ func (p Profile) Validate() error {
 	if p.InsecureTLS && p.Scheme != "https" {
 		return errors.New("accepting an untrusted TLS certificate requires HTTPS")
 	}
+	if p.WebKind != "" && p.WebKind != "openwebif" && p.WebKind != "webinterface" {
+		return errors.New("web interface must be automatic, OpenWebif or WebInterface")
+	}
 	if len(p.Group) > 40 || hasControl(p.Group) {
 		return errors.New("group must be at most 40 characters without control characters")
 	}
@@ -132,6 +139,11 @@ func (p Profile) Validate() error {
 	}
 	if len(p.StartDir) > 512 || hasControl(p.StartDir) || (p.StartDir != "" && !strings.HasPrefix(p.StartDir, "/")) {
 		return errors.New("start folder must be an absolute path such as /etc/enigma2")
+	}
+	if p.MAC != "" {
+		if hw, err := net.ParseMAC(p.MAC); err != nil || len(hw) != 6 {
+			return errors.New("the MAC address must look like aa:bb:cc:dd:ee:ff")
+		}
 	}
 	if len(p.Note) > 200 || strings.ContainsAny(p.Note, "\r\n\x00") {
 		return errors.New("note must be at most 200 characters on one line")

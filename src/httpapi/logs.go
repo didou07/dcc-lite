@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/didou07/dcc-lite/src/logx"
 )
@@ -124,8 +125,25 @@ func (s *Server) putLogConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.logConfig())
 }
 
+// reportSanitizer lists everything the user typed in (devices, hosts, accounts)
+// so the downloaded report can be shared without exposing it.
+func (s *Server) reportSanitizer() *logx.Sanitizer {
+	var terms []logx.Term
+	for _, p := range s.app.Profiles.List() {
+		terms = append(terms,
+			logx.Term{Value: p.Name, Kind: "device"}, logx.Term{Value: p.Host, Kind: "host"},
+			logx.Term{Value: p.Username, Kind: "user"}, logx.Term{Value: p.Group, Kind: "group"})
+	}
+	if s.app.RemoteAccess != nil {
+		for _, host := range strings.Split(s.app.RemoteAccess.Status().TLSHosts, ",") {
+			terms = append(terms, logx.Term{Value: host, Kind: "host"})
+		}
+	}
+	return logx.NewSanitizer(terms...)
+}
+
 func (s *Server) downloadLogs(w http.ResponseWriter, r *http.Request) {
-	report := logx.Default().Report(s.app.SystemInfo(), queryFromRequest(r, 5000))
+	report := logx.Default().Report(s.app.SystemInfo(), queryFromRequest(r, 5000), s.reportSanitizer())
 	name := "dcclite-report-" + time.Now().Format("20060102-150405") + ".txt"
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
@@ -154,7 +172,11 @@ func allowClientLog() bool {
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if len(s) > n {
-		return s[:n] + "..."
+		cut := n
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		return s[:cut] + "..."
 	}
 	return s
 }

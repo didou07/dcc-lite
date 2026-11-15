@@ -31,6 +31,14 @@ func rawNum(m json.RawMessage) int64 {
 	return 0
 }
 
+// rawNumOr is rawNum with a fallback for a missing or non-numeric value.
+func rawNumOr(m json.RawMessage, fallback int64) int64 {
+	if len(m) == 0 || string(m) == "null" {
+		return fallback
+	}
+	return rawNum(m)
+}
+
 func cleanText(text string, limit int) string {
 	var b strings.Builder
 	count := 0
@@ -194,6 +202,11 @@ type timerEntry struct {
 	File        string `json:"file,omitempty"`
 	Dir         string `json:"dir,omitempty"`
 	Tags        string `json:"tags,omitempty"`
+
+	RecordingType  string `json:"recordingtype,omitempty"`
+	AllowDuplicate bool   `json:"allow_duplicate,omitempty"`
+	AutoAdjust     int64  `json:"autoadjust"`
+	AlwaysZap      int64  `json:"always_zap"`
 }
 
 func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +238,11 @@ func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
 			File        string          `json:"filename"`
 			Dir         json.RawMessage `json:"dirname"`
 			Tags        json.RawMessage `json:"tags"`
+
+			RecordingType  string          `json:"recordingtype"`
+			AllowDuplicate json.RawMessage `json:"allow_duplicate"`
+			AutoAdjust     json.RawMessage `json:"autoadjust"`
+			AlwaysZap      json.RawMessage `json:"always_zap"`
 		} `json:"timers"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -242,6 +260,8 @@ func (s *Server) deviceTimers(w http.ResponseWriter, r *http.Request) {
 			Begin: begin, End: end, EIT: rawNum(t.EIT), Disabled: rawNum(t.Disabled) == 1, JustPlay: rawNum(t.JustPlay) == 1,
 			State: rawNum(t.State), Repeated: rawNum(t.Repeated), AfterEvent: rawNum(t.AfterEvent), File: cleanText(t.File, 400),
 			Dir: timerDir(rawString(t.Dir)), Tags: cleanText(rawString(t.Tags), 200),
+			RecordingType: cleanText(t.RecordingType, 20), AllowDuplicate: rawNum(t.AllowDuplicate) == 1,
+			AutoAdjust: rawNumOr(t.AutoAdjust, -1), AlwaysZap: rawNumOr(t.AlwaysZap, -1),
 		})
 		if len(out) >= 1000 {
 			break
@@ -260,6 +280,10 @@ type timerAddRequest struct {
 	EventID     int64  `json:"eventid"`
 	JustPlay    bool   `json:"justplay"`
 	AfterEvent  int    `json:"afterevent"`
+	Repeated    int    `json:"repeated"`
+	Dir         string `json:"dir"`
+	Tags        string `json:"tags"`
+	timerExtras
 }
 
 func (s *Server) deviceTimerAdd(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +326,20 @@ func (s *Server) deviceTimerAdd(w http.ResponseWriter, r *http.Request) {
 			"&name=" + url.QueryEscape(name) + "&description=" + url.QueryEscape(cleanText(input.Description, 300)) +
 			"&disabled=0&justplay=" + justplay + "&afterevent=" + strconv.Itoa(input.AfterEvent)
 	}
+	if input.Repeated < 0 || input.Repeated > 127 {
+		writeError(w, http.StatusBadRequest, "the repeat days are not valid")
+		return
+	}
+	if input.EventID <= 0 && input.Repeated > 0 {
+		path += "&repeated=" + strconv.Itoa(input.Repeated)
+	}
+	if dir := timerDir(input.Dir); dir != "" {
+		path += "&dirname=" + url.QueryEscape(dir)
+	}
+	if tags := cleanText(input.Tags, 200); tags != "" {
+		path += "&tags=" + url.QueryEscape(tags)
+	}
+	path += input.extraQuery()
 	web := newDeviceWeb(profile, 15*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
@@ -381,6 +419,8 @@ type movieEntry struct {
 	Length  string `json:"length,omitempty"`
 	Seen    int64  `json:"seen,omitempty"`
 	Size    int64  `json:"size,omitempty"`
+	Tags    string `json:"tags,omitempty"`
+	Ext     string `json:"ext,omitempty"`
 }
 
 func (s *Server) deviceMovies(w http.ResponseWriter, r *http.Request) {
@@ -416,6 +456,8 @@ func (s *Server) deviceMovies(w http.ResponseWriter, r *http.Request) {
 			Length      string          `json:"length"`
 			Seen        json.RawMessage `json:"lastseen"`
 			Size        json.RawMessage `json:"filesize"`
+			Tags        json.RawMessage `json:"tags"`
+			Ext         string          `json:"descriptionExtended"`
 		} `json:"movies"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -438,6 +480,7 @@ func (s *Server) deviceMovies(w http.ResponseWriter, r *http.Request) {
 		movies = append(movies, movieEntry{
 			Ref: m.Ref, File: m.File, Title: title, Channel: cleanText(m.Channel, 120), Info: cleanText(m.Description, 400),
 			Time: rawNum(m.Time), Length: length, Seen: rawNum(m.Seen), Size: rawNum(m.Size),
+			Tags: cleanText(rawString(m.Tags), 200), Ext: cleanText(m.Ext, 2000),
 		})
 		if len(movies) >= maxMovieEntries {
 			break

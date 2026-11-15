@@ -26,6 +26,7 @@ type App struct {
 	Staging *filetransfer.LocalFS
 
 	RemoteAccess RemoteController
+	Updates      UpdateController
 
 	backgroundCancel context.CancelFunc
 	backgroundDone   chan struct{}

@@ -60,6 +60,34 @@ type timerChangeRequest struct {
 	Repeated    int    `json:"repeated"`
 	Dir         string `json:"dir"`
 	Tags        string `json:"tags"`
+	timerExtras
+}
+
+// timerExtras holds the OpenWebif timer options beyond the basics.
+type timerExtras struct {
+	RecordingType  string `json:"recordingtype"`
+	AllowDuplicate *bool  `json:"allow_duplicate"`
+	AutoAdjust     *bool  `json:"autoadjust"`
+	AlwaysZap      *int   `json:"always_zap"`
+}
+
+// extraQuery turns the extra timer options into query parameters.
+func (e timerExtras) extraQuery() string {
+	q := ""
+	switch e.RecordingType {
+	case "normal", "descrambled", "scrambled":
+		q += "&recordingtype=" + e.RecordingType
+	}
+	if e.AllowDuplicate != nil {
+		q += "&allow_duplicate=" + boolFlag(*e.AllowDuplicate)
+	}
+	if e.AutoAdjust != nil {
+		q += "&autoadjust=" + boolFlag(*e.AutoAdjust)
+	}
+	if e.AlwaysZap != nil && (*e.AlwaysZap == 0 || *e.AlwaysZap == 1) {
+		q += "&always_zap=" + strconv.Itoa(*e.AlwaysZap)
+	}
+	return q
 }
 
 func (s *Server) deviceTimerChange(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +138,7 @@ func (s *Server) deviceTimerChange(w http.ResponseWriter, r *http.Request) {
 	if tags := cleanText(in.Tags, 200); tags != "" {
 		path += "&tags=" + url.QueryEscape(tags)
 	}
+	path += in.extraQuery()
 	web := newDeviceWeb(profile, 15*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()

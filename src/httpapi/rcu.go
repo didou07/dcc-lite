@@ -190,6 +190,10 @@ func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []by
 }
 
 func (d deviceWeb) press(ctx context.Context, pathAndQuery string) (int, []byte, error) {
+	return d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.pressRaw(ctx, pathAndQuery) })
+}
+
+func (d deviceWeb) pressRaw(ctx context.Context, pathAndQuery string) (int, []byte, error) {
 	resp, err := d.get(ctx, pathAndQuery)
 	if err != nil {
 		return 0, nil, err

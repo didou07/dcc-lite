@@ -14,6 +14,17 @@ async function powerAction(action, doing, confirm = null, report = remoteError) 
   } catch (error) { report(error.message); return false; }
 }
 
+// Wake-on-LAN: the receiver's hardware address is learned while it is on, so this also works after deep standby.
+async function wakeOnLan(id, report = remoteError) {
+  if (!id) return false;
+  report("");
+  try {
+    await post(profileURL(id, "wake"), {});
+    toast("Wake-up signal sent. The receiver needs about a minute to start.");
+    return true;
+  } catch (error) { report(error.message); return false; }
+}
+
 const powerView = { gen: 0, busy: false };
 function powerDialogError(message) {
   const node = $("#powerError");
@@ -50,7 +61,8 @@ function openPowerDialog() {
       : { label: "Standby", run: () => act("standby", "Receiver goes to standby") },
     { label: "Restart interface (GUI)", run: () => act("restart_gui", "Restarting the interface…", { title: "Restart the interface?", message: "Enigma2 restarts on the receiver. The picture is gone for about a minute; recordings in progress may be interrupted.", ok: "Restart GUI" }) },
     { label: "Reboot", run: () => act("reboot", "Rebooting the receiver…", { title: "Reboot the receiver?", message: "The whole receiver restarts and will be unreachable for a couple of minutes.", ok: "Reboot" }) },
-    { label: "Deep standby", danger: true, run: () => act("deep", "Shutting the receiver down…", { title: "Shut the receiver down?", message: "The receiver switches off completely. It cannot be woken from here; you must start it with its own button or a timer.", ok: "Shut down" }) },
+    { label: "Wake over the network (WOL)", run: () => wakeOnLan(id, powerDialogError) },
+    { label: "Deep standby", danger: true, run: () => act("deep", "Shutting the receiver down…", { title: "Shut the receiver down?", message: "The receiver switches off completely. You can start it again with “Wake over the network” if its network wake-up is enabled, or with its own button or a timer.", ok: "Shut down" }) },
   ];
   $("#powerActions").replaceChildren(...actions.map((item) => h("button", {
     type: "button", class: `power-btn${item.danger ? " danger" : ""}`, text: item.label, onClick: () => powerRun(item.run),

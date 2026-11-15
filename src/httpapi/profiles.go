@@ -85,6 +85,7 @@ type profileRequest struct {
 	WebPort               int    `json:"web_port"`
 	WebHTTPS              bool   `json:"web_https"`
 	TLSInsecureSkipVerify bool   `json:"tls_insecure_skip_verify"`
+	WebKind               string `json:"web_kind"`
 	Username              string `json:"username"`
 	Password              string `json:"password"`
 	Enabled               *bool  `json:"enabled"`
@@ -132,6 +133,9 @@ func (s *Server) updateProfile(w http.ResponseWriter, r *http.Request) {
 	p.ID = existing.ID
 	if p.Password == "" {
 		p.Password = existing.Password
+	}
+	if p.Host == existing.Host {
+		p.MAC = existing.MAC
 	}
 	saved, err := s.app.Profiles.Save(p)
 	if err != nil {
@@ -219,5 +223,6 @@ func profileFromRequest(input profileRequest) config.Profile {
 		p.Scheme = "https"
 	}
 	p.InsecureTLS = input.TLSInsecureSkipVerify
+	p.WebKind = strings.ToLower(strings.TrimSpace(input.WebKind))
 	return p
 }

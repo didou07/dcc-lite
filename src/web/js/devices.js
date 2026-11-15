@@ -2,7 +2,6 @@
 const devices = { list: [], status: new Map(), currentID: store.get("device", "") };
 const currentDevice = () => devices.list.find((p) => p.id === devices.currentID) || null;
 const deviceByID = (id) => devices.list.find((p) => p.id === id) || null;
-const SITE_COLORS = ["red", "orange", "amber", "green", "teal", "blue", "violet", "pink"];
 const sites = { query: "", mode: store.get("sitesMode", "grid") === "list" ? "list" : "grid" };
 const lastUsed = () => store.get("siteLastUsed", {});
 function touchSite(id) { if (!id) return; const m = lastUsed(); m[id] = Date.now(); const keep = Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 200); store.set("siteLastUsed", Object.fromEntries(keep)); }
@@ -78,7 +77,6 @@ function deviceAvatar(profile) {
 }
 function siteCard(profile) {
   const status = devices.status.get(profile.id);
-  const used = lastUsed()[profile.id];
   return h("article", { class: `device-card${profile.id === devices.currentID ? " current" : ""}`, dataset: { id: profile.id, color: profile.color || "" }, onDblclick: (event) => { if (!event.target.closest("button")) openDevice(profile.id, "files"); } },
     h("div", { class: "device-top" },
       deviceAvatar(profile),
@@ -89,6 +87,7 @@ function siteCard(profile) {
       h("div", { class: "device-menu" },
         iconButton("star", profile.favorite ? "Unpin from the top" : "Pin to the top", () => saveSiteMeta(profile, { favorite: !profile.favorite }), profile.favorite ? "on" : ""),
         iconButton("list", "Receiver information (image, signal, tuners, disks)", () => toggleDeviceInfo(profile.id)),
+        status && status.state !== "online" && status.state !== "checking" ? iconButton("power", "Wake the receiver over the network (Wake-on-LAN)", () => wakeOnLan(profile.id, (message) => message && toast(message, "error"))) : null,
         iconButton("refresh", "Check this device", () => testDevice(profile.id)),
         iconButton("edit", "Edit device", () => openDeviceDialog(profile)),
         iconButton("trash", "Delete device", () => deleteDevice(profile)))),
@@ -99,15 +98,8 @@ function siteCard(profile) {
       h("button", { class: "btn", type: "button", onClick: () => openDevice(profile.id, "files") }, icon("files"), "Files"),
       h("button", { class: "btn", type: "button", onClick: () => openDevice(profile.id, "terminal") }, icon("terminal"), "Terminal"),
       h("button", { class: "btn", type: "button", title: "Watch what the receiver shows on the TV", onClick: () => openDevice(profile.id, "screen") }, icon("screen"), "Screen"),
-      h("button", { class: "btn", type: "button", title: "Channel editor, backup, .ipk install and signal meter", onClick: () => openDevice(profile.id, "tools") }, icon("gear"), "Tools")),
+      h("button", { class: "btn", type: "button", title: "Channel editor, backup, .ipk install, packages and signal meter", onClick: () => openDevice(profile.id, "tools") }, icon("gear"), "Tools")),
     deviceInfoState.has(profile.id) ? deviceInfoPanel(profile) : null);
-}
-function relativeTime(ms) {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
 }
 function renderDeviceGrid() {
   if (typeof renderSitesSide === "function") renderSitesSide();
@@ -262,6 +254,7 @@ function openDeviceDialog(profile = null) {
   $("#devFtp").value = profile?.ftp_port || "";
   $("#devWeb").value = profile?.port || "";
   $("#devTelnet").value = profile?.telnet_port || "";
+  $("#devWebKind").value = profile?.web_kind || "openwebif";
   $(".advanced", $("#deviceDialog")).open = Boolean(profile && (profile.ftp_port || profile.telnet_port || profile.port || profile.scheme === "https"));
   $("#deviceError").hidden = true;
   openDialog($("#deviceDialog"));
@@ -285,7 +278,7 @@ $("#deviceForm").addEventListener("submit", async (event) => {
       name: $("#devName").value.trim(), host: $("#devHost").value.trim(), username: $("#devUser").value.trim() || "root",
       password: $("#devPass").value, ftp_port: portValue("#devFtp"), telnet_port: portValue("#devTelnet"),
       web_port: portValue("#devWeb"),
-      tls_insecure_skip_verify: false,
+      tls_insecure_skip_verify: false, web_kind: $("#devWebKind").value,
       group: old.group || "", color: old.color || "", favorite: Boolean(old.favorite),
       start_dir: old.start_dir || "", note: old.note || "",
     };
@@ -335,6 +328,7 @@ function refreshCurrentDeviceView() {
     case "terminal": terminalEnter(); break;
     case "screen": screenEnter(); break;
     case "signal": signalEnter(); break;
+    case "packages": packagesEnter(); break;
   }
 }
 function setCurrentDevice(id, deferViewRefresh = false) {
@@ -359,10 +353,11 @@ const TOOL_PAGES = [
   { id: "backup", label: "Backup & restore", icon: "archive", view: "lists" },
   { id: "ipk", label: "Install .ipk", icon: "box", view: "ipk" },
   { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
+  { id: "packages", label: "Packages", icon: "box", view: "packages" },
 ];
 const tools = { current: store.get("tool", "editor") };
 if (!TOOL_PAGES.some((t) => t.id === tools.current)) tools.current = "editor";
-const toolViews = ["lists", "ipk", "signal"];
+const toolViews = ["lists", "ipk", "signal", "packages"];
 function updateToolsNav() {
   for (const nav of $$("[data-toolsnav]")) {
     nav.replaceChildren(...TOOL_PAGES.map((t) => h("button", {
@@ -385,9 +380,8 @@ function showView(name) {
   if (view.current === "signal" && name !== "signal") signalStop();
   if (view.current === "logs" && name !== "logs") logsLeave();
   view.current = name;
-  if (name === "ipk") tools.current = "ipk";
-  else if (name === "signal") tools.current = "signal";
-  else if (name === "lists" && (tools.current === "ipk" || tools.current === "signal")) tools.current = "editor";
+  if (name === "ipk" || name === "signal" || name === "packages") tools.current = name;
+  else if (name === "lists" && ["ipk", "signal", "packages"].includes(tools.current)) tools.current = "editor";
   document.body.dataset.view = name;
   const top = toolViews.includes(name) ? "tools" : name;
   for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === top));
@@ -400,6 +394,7 @@ function showView(name) {
   if (name === "terminal") terminalEnter();
   if (name === "screen") screenEnter();
   if (name === "signal") signalEnter();
+  if (name === "packages") packagesEnter();
   if (name === "logs") logsEnter();
 }
 for (const tab of $$("#mainTabs .tab")) tab.addEventListener("click", () => showView(tab.dataset.view));

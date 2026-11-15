@@ -29,6 +29,10 @@ type grabState struct {
 	streak  int
 	failMsg string
 	doneAt  time.Time
+	// the address that last gave a picture, so a receiver is probed once and not on every refresh
+	found bool
+	idx   int
+	kind  string
 }
 
 var grabStates sync.Map
@@ -122,40 +126,97 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 	}
 	upstream, cancel := context.WithTimeout(context.WithoutCancel(ctx), grabTimeout)
 	defer cancel()
-	resp, err := web.get(upstream, fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width))
-	if err != nil {
-		code := "web_unreachable"
-		msg := web.unreachable(err)
-		if errors.Is(err, context.DeadlineExceeded) {
-			st.fail(msg)
-		}
-		return nil, &grabError{code, msg}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, &grabError{"web_auth", "The receiver's web interface rejected the saved user name or password."}
-	}
-	if resp.StatusCode != http.StatusOK {
-		msg := fmt.Sprintf("The receiver's screenshot tool (grab) failed (HTTP %d). On some images this can crash Enigma2.", resp.StatusCode)
-		st.fail(msg)
-		return nil, &grabError{"web_error", msg}
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxScreenBytes+1))
-	if err != nil || len(body) > maxScreenBytes {
-		msg := "The receiver sent an unusable picture."
-		st.fail(msg)
-		return nil, &grabError{"web_error", msg}
-	}
-	if len(body) < 3 || body[0] != 0xFF || body[1] != 0xD8 || body[2] != 0xFF {
-		msg := "The receiver did not return a picture (is the grab feature available on this image?)."
-		st.fail(msg)
-		return nil, &grabError{"web_error", msg}
+	body, gerr := grabOnce(upstream, web, st, mode, width)
+	if gerr != nil {
+		return nil, gerr
 	}
 	st.ok(key, body)
 	return body, nil
 }
 
 const maxScreenBytes = 16 << 20
+
+// grabAddresses are the screenshot addresses known to exist. OpenWebif and the WebInterface plugin
+// both answer /grab; some images only have /web/screenshot or a fixed /video.png.
+func grabAddresses(mode string, width int) []string {
+	return []string{
+		fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width),
+		fmt.Sprintf("/web/screenshot?format=jpg&mode=%s&r=%d", mode, width),
+		"/video.png",
+	}
+}
+
+func isPicture(body []byte) bool {
+	if len(body) >= 3 && body[0] == 0xFF && body[1] == 0xD8 && body[2] == 0xFF {
+		return true
+	}
+	return len(body) >= 8 && string(body[1:4]) == "PNG"
+}
+
+// grabOnce asks the receiver for one picture.
+//   - A receiver that works with /grab costs exactly one request, as always.
+//   - Other addresses are tried only when an address does not exist (404/405), never after a real
+//     failure, so a struggling receiver is not hit again. The address that worked is remembered.
+//   - If the owner chose OpenWebif for the device, only /grab is ever asked.
+func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, width int) ([]byte, *grabError) {
+	all := grabAddresses(mode, width)
+	st.mu.Lock()
+	if st.kind != web.kind {
+		st.kind, st.found = web.kind, false
+	}
+	idx, found := st.idx, st.found
+	st.mu.Unlock()
+	order := []int{0} // OpenWebif: /grab and nothing else
+	switch {
+	case found:
+		order = []int{idx}
+	case web.kind != "openwebif":
+		order = []int{0, 1, 2} // the others are asked only while an address is missing (404)
+	}
+	var lastMsg string
+	for n, i := range order {
+		resp, err := web.get(ctx, all[i])
+		if err != nil {
+			msg := web.unreachable(err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				st.fail(msg)
+			}
+			return nil, &grabError{"web_unreachable", msg}
+		}
+		body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxScreenBytes+1))
+		resp.Body.Close()
+		missing := resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+			return nil, &grabError{"web_auth", "The receiver's web interface rejected the saved user name or password."}
+		case missing:
+			lastMsg = "This receiver has no screenshot address (grab). Install a screenshot plugin for its web interface."
+			if found {
+				st.mu.Lock()
+				st.found = false
+				st.mu.Unlock()
+			}
+			continue // only a missing address moves on to the next one
+		case resp.StatusCode != http.StatusOK:
+			lastMsg = fmt.Sprintf("The receiver's screenshot tool (grab) failed (HTTP %d). On some images this can crash Enigma2.", resp.StatusCode)
+		case rerr != nil || len(body) > maxScreenBytes:
+			lastMsg = "The receiver sent an unusable picture."
+		case !isPicture(body):
+			lastMsg = "The receiver did not return a picture (is the grab feature available on this image?)."
+			if web.kind == "webinterface" && n < len(order)-1 {
+				continue // the owner said it is the older interface: its pages may answer with text instead
+			}
+		default:
+			st.mu.Lock()
+			st.found, st.idx = true, i
+			st.mu.Unlock()
+			return body, nil
+		}
+		break // a real failure: stop, do not ask again
+	}
+	st.fail(lastMsg)
+	return nil, &grabError{"web_error", lastMsg}
+}
 
 var screenWidths = map[int]bool{320: true, 480: true, 640: true, 720: true, 960: true, 1280: true, 1920: true, 3840: true}
 
@@ -197,7 +258,11 @@ func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, map[string]any{"error": gerr.msg, "code": gerr.code})
 		return
 	}
-	w.Header().Set("Content-Type", "image/jpeg")
+	ctype := "image/jpeg"
+	if body[0] == 0x89 {
+		ctype = "image/png"
+	}
+	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	_, _ = w.Write(body)

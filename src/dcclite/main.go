@@ -21,9 +21,13 @@ import (
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/httpapi"
 	"github.com/didou07/dcc-lite/src/logx"
+	"github.com/didou07/dcc-lite/src/updater"
 )
 
 var version = "dev"
+
+// variant is "win7" for the Windows 7 build so it only ever updates to its own package.
+var variant = ""
 
 var (
 	appLog    = logx.For("app")
@@ -50,6 +54,7 @@ func main() {
 	configPath := flag.String("config", "", "Settings file (default: dcc-lite.ini beside the program)")
 	noBrowser := flag.Bool("no-browser", false, "Do not open the web interface automatically")
 	showVersion := flag.Bool("version", false, "Print version and exit")
+	noAutoUpdate := flag.Bool("no-auto-update", false, "Do not install new GitHub releases automatically (checking from the interface still works)")
 	remote := remoteSettings{}
 	flag.StringVar(&remote.Listen, "remote-listen", "", "Also serve the interface over HTTPS with a password on this address, for example 0.0.0.0:443 (off by default)")
 	flag.StringVar(&remote.CertFile, "tls-cert", "", "Trusted PEM certificate for remote HTTPS (automatic Let's Encrypt certificate is used when omitted)")
@@ -118,7 +123,7 @@ func main() {
 	}()
 	defer hub.Close()
 	if logErr != nil {
-		appLog.Warn("log file disabled", "dir", dir, "error", logErr)
+		appLog.Warn("log file unavailable; logging to the console only", "dir", dir, "error", logErr)
 	}
 	hub.SessionStart(version)
 
@@ -149,7 +154,9 @@ func main() {
 		if errors.Is(err, syscall.EADDRINUSE) && isExistingDCCLite(*listen) {
 			existingURL := "http://" + *listen
 			appLog.Info("DCC Lite is already running", "url", existingURL)
-			if !*noBrowser {
+			if nativeBuild {
+				nativeNotice("DCC Lite is already running.")
+			} else if !*noBrowser {
 				openBrowser(existingURL)
 			}
 			return
@@ -160,6 +167,22 @@ func main() {
 
 	application := app.New(version, store, root)
 	defer application.Close()
+	selfUpdater := updater.New(updater.Options{
+		Version: version, Variant: variant, DataDir: root, Log: logx.For("update"),
+		Idle: func() bool {
+			for _, task := range application.Files.Tasks() {
+				if task.State == "queued" || task.State == "running" {
+					return false
+				}
+			}
+			return true
+		},
+	})
+	selfUpdater.CleanupOld()
+	if *noAutoUpdate {
+		selfUpdater.DisableAuto()
+	}
+	application.Updates = selfUpdater
 	server := &http.Server{
 		Addr:              *listen,
 		Handler:           httpapi.New(application),
@@ -180,25 +203,58 @@ func main() {
 		fatal(1, "remote access setup", "error", err)
 	}
 	defer manager.Stop()
-	if !*noBrowser {
+	if !*noBrowser && !nativeBuild {
 		openBrowser(url)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	logx.Go(appLog, "self update", func() { selfUpdater.Run(ctx) })
+	restarting := false
+	watcherDone := make(chan struct{})
 	logx.Go(appLog, "shutdown watcher", func() {
-		<-ctx.Done()
-		appLog.Info("shutting down")
+		defer close(watcherDone)
+		select {
+		case <-ctx.Done():
+			appLog.Info("shutting down (stop requested)")
+		case <-selfUpdater.Restart():
+			restarting = true
+			appLog.Info("restarting to apply the update")
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		manager.Stop()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			appLog.Error("graceful shutdown", "error", err)
+			appLog.Error("shutdown did not finish cleanly; open connections were closed", "error", err)
 		}
+		nativeClose()
 	})
 
-	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-		fatal(1, "HTTP server", "error", err)
+	var serveErr error
+	if nativeBuild {
+		// The window needs this thread, so the server runs beside it. Closing the window ends the program.
+		served := make(chan error, 1)
+		go func() { served <- server.Serve(listener) }()
+		if err := runNative(nativeDeps{App: application, URL: url, DataDir: root}); err != nil {
+			appLog.Error("the window could not be shown", "error", err)
+		}
+		stop()
+		serveErr = <-served
+	} else {
+		serveErr = server.Serve(listener)
+	}
+	if serveErr != nil && serveErr != http.ErrServerClosed {
+		fatal(1, "HTTP server", "error", serveErr)
+	}
+	<-watcherDone
+	if restarting {
+		_ = listener.Close()
+		application.Close()
+		logx.Close()
+		if err := restartSelf(selfUpdater.ExecPath(), append(os.Args[1:], "--no-browser")); err != nil {
+			fmt.Fprintln(os.Stderr, "restart after update failed; start DCC Lite again manually:", err)
+			os.Exit(1)
+		}
 	}
 }
 

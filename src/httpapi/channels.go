@@ -42,7 +42,13 @@ func (s *Server) enabledProfile(w http.ResponseWriter, r *http.Request) (config.
 	return profile, true
 }
 
+// getBounded reads a reply from the receiver. An /api/ address the receiver does not have is answered
+// from the older WebInterface instead where possible (see legacywebif.go).
 func (d deviceWeb) getBounded(ctx context.Context, pathAndQuery string, limit int64) (int, []byte, error) {
+	return d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.getBoundedRaw(ctx, pathAndQuery, limit) })
+}
+
+func (d deviceWeb) getBoundedRaw(ctx context.Context, pathAndQuery string, limit int64) (int, []byte, error) {
 	resp, err := d.get(ctx, pathAndQuery)
 	if err != nil {
 		return 0, nil, err
@@ -136,7 +142,7 @@ func (s *Server) deviceChannels(w http.ResponseWriter, r *http.Request) {
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return a channel list (is OpenWebif installed and up to date?).", "code": "web_error"})
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return a channel list (is OpenWebif or the WebInterface plugin installed?).", "code": "web_error"})
 		return
 	}
 	out := make([]channelBouquet, 0, len(raw.Services))

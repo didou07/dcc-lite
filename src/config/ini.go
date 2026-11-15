@@ -107,6 +107,9 @@ func encodeINI(doc Document) []byte {
 		if p.InsecureTLS {
 			line("InsecureTLS=yes")
 		}
+		if p.WebKind != "" {
+			line("WebKind=%s", iniValue(p.WebKind))
+		}
 		line("Enabled=%s", iniBool(p.Enabled))
 		if p.Group != "" {
 			line("Group=%s", iniValue(p.Group))
@@ -155,10 +158,12 @@ func decodeINI(data []byte) (Document, error) {
 				return fmt.Errorf("unknown section [%s]", name)
 			}
 			n, err := strconv.Atoi(strings.TrimPrefix(name, "device"))
-			if err != nil || n < 1 || n != nextDevice || fmt.Sprintf("device%d", n) != name {
-				return fmt.Errorf("device sections must be numbered sequentially starting at [Device1]")
+			if err != nil || n < 1 || n < nextDevice || fmt.Sprintf("device%d", n) != name {
+				return fmt.Errorf("device sections must be unique and in ascending order ([Device1], [Device2], ...)")
 			}
-			nextDevice++
+			// Gaps are tolerated so a hand-deleted device doesn't break startup;
+			// encodeINI renumbers sequentially on the next save.
+			nextDevice = n + 1
 		}
 		return nil
 	}
@@ -326,6 +331,8 @@ func decodeDeviceKey(p *Profile, key, value string) error {
 		p.Password = value
 	case "enabled":
 		p.Enabled, err = iniParseBool(value)
+	case "webkind":
+		p.WebKind = strings.ToLower(value)
 	case "insecuretls":
 		p.InsecureTLS, err = iniParseBool(value)
 	case "group":

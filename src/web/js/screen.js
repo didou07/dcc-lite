@@ -18,7 +18,6 @@ function screenShowError(message) {
 function screenShowStats(extra = "") {
   const now = performance.now();
   screenView.stamps = screenView.stamps.filter((t) => now - t < 5000);
-  const rate = screenView.stamps.length > 1 ? (screenView.stamps.length - 1) / ((screenView.stamps[screenView.stamps.length - 1] - screenView.stamps[0]) / 1000) : 0;
   const img = $("#screenImg");
   const parts = [];
   if (!img.hidden && img.naturalWidth) parts.push(`updated ${new Date(screenView.shownAt || Date.now()).toLocaleTimeString()}`, `${img.naturalWidth}×${img.naturalHeight}`, formatBytes(screenView.blob?.size || 0));
@@ -49,7 +48,7 @@ async function screenSetPicture(blob, gen) {
 async function screenLoop(gen) {
   while (gen === screenView.gen) {
     const auto = $("#screenAuto").checked;
-    if ((screenView.paused && !screenView.once) || document.hidden) { await screenSleep(500); continue; }
+    if ((screenView.paused && !screenView.once) || document.hidden || (typeof liveIsOn === "function" && liveIsOn())) { await screenSleep(500); continue; }
     if (!auto && !screenView.once) { await screenSleep(60000); continue; }
     const floor = auto ? screenIntervalMs() : 1000;
     const since = performance.now() - screenView.lastStart;
@@ -94,6 +93,7 @@ function setPauseLabel(paused) {
 function screenStop() {
   channelsStop();
   screenView.running = false;
+  if (typeof liveStop === "function") liveStop();
   screenView.gen += 1;
   screenView.controller?.abort();
   screenView.wake?.();
@@ -177,3 +177,15 @@ $("#screenSave").addEventListener("click", () => {
 });
 $("#screenImg").addEventListener("load", () => { $("#screenSave").disabled = false; });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view.current === "screen") screenRestart(); });
+
+document.addEventListener("click", (event) => {
+  const opts = $("#screenOpts");
+  if (opts && opts.open && !opts.contains(event.target)) opts.open = false;
+});
+
+$("#liveTabs").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-tab]");
+  if (!button) return;
+  $("#livePanel").dataset.tab = button.dataset.tab;
+  for (const b of $$("#liveTabs button")) b.setAttribute("aria-selected", String(b === button));
+});

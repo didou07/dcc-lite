@@ -201,6 +201,6 @@ func (tlsNoiseFilter) Write(p []byte) (int, error) {
 		remoteLog.Debug("remote TLS handshake failed", "detail", line)
 		return len(p), nil
 	}
-	remoteLog.Warn("remote HTTPS server", "detail", line)
+	remoteLog.Warn("remote HTTPS server reported a problem", "detail", line)
 	return len(p), nil
 }

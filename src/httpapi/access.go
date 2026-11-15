@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/didou07/dcc-lite/src/app"
 	"github.com/didou07/dcc-lite/src/logx"
@@ -147,21 +148,24 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var throttled remoteaccess.ErrThrottled
 	switch {
 	case err == nil:
-		logx.For("auth").Info("remote sign-in", "remote", remoteHost(r))
+		logx.For("auth").Info("remote sign-in succeeded", "client", remoteHost(r))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case errors.Is(err, remoteaccess.ErrBadPassword):
+		logx.For("auth").Warn("remote sign-in failed: wrong password", "client", remoteHost(r))
 		writeError(w, http.StatusUnauthorized, "Incorrect password.")
 	case errors.As(err, &throttled):
+		logx.For("auth").Warn("remote sign-in blocked: too many failed attempts", "client", remoteHost(r), "retry_after", throttled.RetryAfter.Round(time.Second))
 		w.Header().Set("Retry-After", strconv.Itoa(int(throttled.RetryAfter.Seconds())+1))
 		writeError(w, http.StatusTooManyRequests, "Too many failed attempts. Wait a few minutes and try again.")
 	default:
+		logx.For("auth").Error("remote sign-in unavailable", "client", remoteHost(r), "error", err)
 		writeError(w, http.StatusInternalServerError, "sign-in is unavailable")
 	}
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	s.remote.auth.Logout(w, r)
-	logx.For("auth").Info("remote sign-out", "remote", remoteHost(r))
+	logx.For("auth").Info("remote sign-out", "client", remoteHost(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -493,6 +493,7 @@ function contextItems(pane, onEntry) {
     items.push({ label: "Rename", icon: "edit", sub: "F2", disabled: !single, run: () => cmdRename() });
     items.push({ label: "Permissions…", icon: "lock", sub: "F9", run: () => cmdChmod() });
     items.push({ label: "Copy path", icon: "copy", run: () => cmdCopyPath() });
+    if (kind === "remote") items.push({ label: sel.length > 1 ? `Copy ${sel.length} items on the device…` : "Copy on the device…", icon: "copy", run: () => cmdCopyOnDevice() }, { label: "New symbolic link…", icon: "link", disabled: sel.length > 1, run: () => cmdSymlink() });
     if (kind === "remote") {
       items.push("-");
       items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path) });
@@ -504,7 +505,7 @@ function contextItems(pane, onEntry) {
   } else {
     if (files.browserMode && kind === "remote") items.push({ label: "Upload files from this device…", icon: "upload", run: () => chooseDeviceFiles(false) }, { label: "Upload a folder from this device…", icon: "newfolder", run: () => chooseDeviceFiles(true) }, "-");
     items.push({ label: "New folder", icon: "newfolder", sub: "F7", run: () => cmdMkdir() });
-    if (kind === "remote") items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() });
+    if (kind === "remote") items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() }, { label: "New symbolic link…", icon: "link", run: () => cmdSymlink() });
     items.push({ label: "Refresh", icon: "refresh", run: () => refreshPane(kind) });
     items.push({ label: "Select all", icon: "check", run: () => cmdSelectAll() });
     if (kind === "remote") items.push("-", { label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) });
@@ -784,3 +785,89 @@ $("#sitesSideFilter").addEventListener("input", renderSitesSide);
 $("#sitesSideAdd").addEventListener("click", () => openDeviceDialog());
 $("#sitesSide").hidden = !store.get("filesSitesOpen", false);
 applyFilesLayout();
+
+
+// ---- Editor: find and replace -------------------------------------------------
+(function editorFindReplace() {
+  const bar = $("#editorFind"), text = $("#editorText"), needleInput = $("#findText"), replaceInput = $("#replaceText"), info = $("#findInfo");
+  const matchCase = () => $("#findCase").checked;
+  const fold = (value) => (matchCase() ? value : value.toLowerCase());
+  const setInfo = (message) => { info.textContent = message; };
+  function openBar() {
+    bar.hidden = false;
+    const picked = text.value.slice(text.selectionStart, text.selectionEnd);
+    if (picked && !/\n/.test(picked)) needleInput.value = picked;
+    needleInput.focus(); needleInput.select();
+  }
+  function closeBar() { bar.hidden = true; setInfo(""); text.focus(); }
+  function reveal(start, end) {
+    text.focus();
+    text.setSelectionRange(start, end);
+    const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 18;
+    const line = text.value.slice(0, start).split("\n").length - 1;
+    if (line * lineHeight < text.scrollTop || (line + 2) * lineHeight > text.scrollTop + text.clientHeight) text.scrollTop = Math.max(0, line * lineHeight - text.clientHeight / 2);
+    editorCursor();
+    needleInput.focus();
+  }
+  function step(backwards) {
+    const needle = needleInput.value;
+    if (!needle) { setInfo(""); return false; }
+    const hay = fold(text.value), key = fold(needle);
+    let at = backwards ? (text.selectionStart > 0 ? hay.lastIndexOf(key, text.selectionStart - 1) : -1) : hay.indexOf(key, text.selectionEnd);
+    let wrapped = false;
+    if (at < 0) { at = backwards ? hay.lastIndexOf(key) : hay.indexOf(key); wrapped = at >= 0; }
+    if (at < 0) { setInfo("Not found"); return false; }
+    reveal(at, at + needle.length);
+    setInfo(wrapped ? "Wrapped around" : "");
+    return true;
+  }
+  function writeValue(value, from, to) {
+    text.focus();
+    text.setSelectionRange(from, to);
+    if (!document.execCommand || !document.execCommand("insertText", false, value)) {
+      text.setRangeText(value, from, to, "end");
+      text.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+  function replaceOne() {
+    const needle = needleInput.value;
+    if (!needle) return;
+    const selected = text.value.slice(text.selectionStart, text.selectionEnd);
+    if (fold(selected) === fold(needle)) {
+      writeValue(replaceInput.value, text.selectionStart, text.selectionEnd);
+      needleInput.focus();
+    }
+    step(false);
+  }
+  function replaceAll() {
+    const needle = needleInput.value;
+    if (!needle) return;
+    const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), matchCase() ? "g" : "gi");
+    let count = 0;
+    const next = text.value.replace(pattern, () => { count++; return replaceInput.value; });
+    if (!count) { setInfo("Not found"); return; }
+    writeValue(next, 0, text.value.length);
+    text.setSelectionRange(0, 0);
+    text.scrollTop = 0;
+    editorCursor();
+    needleInput.focus();
+    setInfo(`${count} replaced`);
+  }
+  $("#findNext").addEventListener("click", () => step(false));
+  $("#findPrev").addEventListener("click", () => step(true));
+  $("#replaceOne").addEventListener("click", replaceOne);
+  $("#replaceAll").addEventListener("click", replaceAll);
+  $("#editorFindBtn").addEventListener("click", () => (bar.hidden ? openBar() : closeBar()));
+  for (const input of [needleInput, replaceInput]) {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); if (input === replaceInput) replaceOne(); else step(event.shiftKey); }
+      else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeBar(); }
+    });
+  }
+  $("#findCase").addEventListener("change", () => setInfo(""));
+  $("#editorDialog").addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") { event.preventDefault(); openBar(); }
+    else if (event.key === "F3") { event.preventDefault(); step(event.shiftKey); }
+  });
+  $("#editorDialog").addEventListener("close", () => { bar.hidden = true; setInfo(""); });
+})();

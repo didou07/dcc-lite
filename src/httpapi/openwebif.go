@@ -24,6 +24,7 @@ type deviceWeb struct {
 	user   string
 	pass   string
 	client *http.Client
+	kind   string // "", "openwebif" or "webinterface": what the owner said the receiver runs
 }
 
 func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
@@ -48,7 +49,7 @@ func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
 	}
 	return deviceWeb{
 		base: scheme + "://" + net.JoinHostPort(strings.Trim(profile.Host, "[]"), strconv.Itoa(port)),
-		port: port, user: user, pass: profile.Password, client: client,
+		port: port, user: user, pass: profile.Password, client: client, kind: profile.WebKind,
 	}
 }
 

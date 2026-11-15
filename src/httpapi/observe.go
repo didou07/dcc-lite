@@ -33,7 +33,7 @@ func isQuiet(path string) bool {
 			return true
 		}
 	}
-	return strings.HasSuffix(path, "/screen") || strings.HasSuffix(path, "/signal") || strings.HasSuffix(path, "/picon") || strings.HasSuffix(path, "/boximage")
+	return strings.Contains(path, "/live/") || strings.HasSuffix(path, "/screen") || strings.HasSuffix(path, "/signal") || strings.HasSuffix(path, "/picon") || strings.HasSuffix(path, "/boximage")
 }
 
 func newRequestID() string {
@@ -136,7 +136,7 @@ func observe(next http.Handler) http.Handler {
 				args = append(args, "bytes", rec.bytes)
 			}
 			if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests {
-				args = append(args, "remote", remoteHost(r))
+				args = append(args, "client", remoteHost(r))
 			}
 			if msg := rec.errorText(); msg != "" {
 				args = append(args, "error", msg)
@@ -178,5 +178,5 @@ func remoteHost(r *http.Request) string {
 }
 
 func rejected(r *http.Request, reason string) {
-	logx.For("auth").Warn("request rejected", "reason", reason, "method", r.Method, "path", r.URL.Path, "remote", remoteHost(r))
+	logx.For("auth").Warn("request rejected", "reason", reason, "method", r.Method, "path", r.URL.Path, "client", remoteHost(r))
 }

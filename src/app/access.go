@@ -1,5 +1,19 @@
 package app
 
+import (
+	"context"
+
+	"github.com/didou07/dcc-lite/src/updater"
+)
+
+// UpdateController is implemented by *updater.Updater.
+type UpdateController interface {
+	Status() updater.Status
+	Check(ctx context.Context) (updater.Status, error)
+	Install(ctx context.Context) error
+	SetAuto(auto bool) error
+}
+
 type RemoteSettings struct {
 	Enabled  bool   `json:"enabled"`
 	Listen   string `json:"listen"`

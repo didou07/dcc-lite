@@ -3,10 +3,10 @@ const guide = {
   profileID: "", tab: store.get("guide.tab", "epg"), ref: "", name: "", bouquetRef: "", search: "",
   events: [], now: 0, nowAt: 0, loaded: "",
   timers: [], timersAt: 0,
-  dir: "", folders: [], movies: [], movieFilter: "", movieLimit: 200, moviesAt: 0, filled: -1, watch: 0,
+  dir: "", folders: [], movies: [], movieFilter: "", movieSort: store.get("guide.movieSort", "new"), movieTag: "", movieLimit: 200, moviesAt: 0, filled: -1, watch: 0,
   gen: { epg: 0, timers: 0, movies: 0 },
 };
-const GUIDE_TABS = ["epg", "timers", "movies"];
+const GUIDE_TABS = ["epg", "grid", "timers", "auto", "movies"];
 const guideURL = (path) => profileURL(guide.profileID, path);
 
 const gdClock = (ts) => { const d = new Date(ts * 1000); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
@@ -237,7 +237,8 @@ async function gdLoadMovies(dir = guide.dir) {
     if (gen !== guide.gen.movies || id !== guide.profileID) return;
     guide.dir = data.directory || dir || "";
     guide.folders = data.folders || [];
-    guide.movies = (data.movies || []).slice().sort((a, b) => (b.time || 0) - (a.time || 0));
+    guide.movies = data.movies || [];
+    if (guide.movieTag && !guide.movies.some((m) => gdTags(m).includes(guide.movieTag))) guide.movieTag = "";
     guide.moviesAt = Date.now();
     guide.movieLimit = 200;
     gdPaint();
@@ -249,6 +250,31 @@ async function gdLoadMovies(dir = guide.dir) {
     gdStatus("");
     gdError(error.message);
   }
+}
+const gdTags = (m) => (m.tags || "").split(/\s+/).filter(Boolean);
+const gdMovieSorters = {
+  new: (a, b) => (b.time || 0) - (a.time || 0),
+  old: (a, b) => (a.time || 0) - (b.time || 0),
+  name: (a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }),
+  size: (a, b) => (b.size || 0) - (a.size || 0),
+  length: (a, b) => gdLengthMin(b) - gdLengthMin(a),
+  unseen: (a, b) => (a.seen || 0) - (b.seen || 0) || (b.time || 0) - (a.time || 0),
+};
+function gdLengthMin(m) {
+  const parts = (m.length || "").split(":").map(Number);
+  return parts.length === 2 && parts.every(Number.isFinite) ? parts[0] * 60 + parts[1] : 0;
+}
+function gdRecordingNow(m) {
+  return guide.timers.some((t) => t.state === 2 && !t.justplay && t.file && t.file === m.file);
+}
+function gdFillTags() {
+  const select = $("#guideMovieTag");
+  const counts = new Map();
+  for (const m of guide.movies) for (const tag of gdTags(m)) counts.set(tag, (counts.get(tag) || 0) + 1);
+  select.hidden = counts.size === 0;
+  select.replaceChildren(h("option", { value: "", text: "All tags" }),
+    ...[...counts].sort((a, b) => a[0].localeCompare(b[0])).map(([tag, n]) => h("option", { value: tag, text: `${tag} (${n})` })));
+  select.value = guide.movieTag;
 }
 const gdParent = (dir) => (dir.replace(/\/+$/, "").replace(/[^/]*$/, "") || "/");
 function gdMovieDate(time) {
@@ -267,26 +293,40 @@ async function gdDeleteMovie(m) {
 }
 function gdMovieNode(m) {
   const meta = [m.channel, gdMovieDate(m.time), m.length && `${m.length} min`, m.size && formatBytes(m.size)].filter(Boolean).join(" · ");
-  return h("div", { class: "gd-item gd-movie" },
+  const tags = gdTags(m), recording = gdRecordingNow(m), text = m.ext || "";
+  const toggle = () => { const on = row.classList.toggle("open"); row.setAttribute("aria-expanded", String(on)); };
+  const row = h("div", { class: `gd-item gd-movie${recording ? " running" : ""}`, role: text ? "button" : null, tabindex: text ? "0" : null, "aria-expanded": text ? "false" : null, onClick: text ? toggle : null,
+    onKeydown: text ? (event) => { if ((event.key === "Enter" || event.key === " ") && event.target === row) { event.preventDefault(); toggle(); } } : null },
     h("div", { class: "gd-time" }, h("span", { class: "gd-kind" }, icon("video"))),
     h("div", { class: "gd-main" },
-      h("div", { class: "gd-title ellipsis", title: m.title, text: m.title }),
+      h("div", { class: "gd-title" }, m.title,
+        recording ? h("span", { class: "badge bad", text: "Recording now" }) : null,
+        !recording && !m.seen && m.time ? h("span", { class: "badge accent", text: "New" }) : null,
+        ...tags.map((tag) => h("span", { class: "badge tag", text: tag }))),
       meta ? h("div", { class: "gd-short ellipsis", text: meta }) : null,
-      m.info ? h("div", { class: "gd-short ellipsis", title: m.info, text: m.info }) : null),
+      m.info ? h("div", { class: "gd-short ellipsis", title: m.info, text: m.info }) : null,
+      text ? h("div", { class: "gd-long", text }) : null),
     h("div", { class: "gd-acts" },
-      iconButton("play", "Watch on this computer (opens a playlist in VLC or your player)", () => {
+      iconButton("play", "Watch on this computer (opens a playlist in VLC or your player)", (event) => {
+        event.stopPropagation();
         downloadLink(guideURL(`movie.m3u?file=${encodeURIComponent(m.file)}&name=${encodeURIComponent(m.title)}`));
         toast("Playlist saved: open it with VLC or your media player");
       }),
-      iconButton("edit", "Rename this recording", () => gdRenameMovie(m)),
-      iconButton("folder", "Move this recording to another folder", () => gdMoveMovie(m)),
-      iconButton("trash", "Delete this recording", () => gdDeleteMovie(m))));
+      iconButton("edit", "Rename this recording", (event) => { event.stopPropagation(); gdRenameMovie(m); }),
+      iconButton("folder", "Move this recording to another folder", (event) => { event.stopPropagation(); gdMoveMovie(m); }),
+      iconButton("trash", "Delete this recording", (event) => { event.stopPropagation(); gdDeleteMovie(m); })));
+  return row;
 }
 function gdPaintMovies(list) {
   $("#guideDir").textContent = guide.dir || "Default folder";
   $("#guideUp").disabled = !guide.dir || guide.dir === "/";
   const needle = guide.movieFilter.trim().toLowerCase();
-  const movies = needle ? guide.movies.filter((m) => `${m.title} ${m.channel} ${m.file}`.toLowerCase().includes(needle)) : guide.movies;
+  gdFillTags();
+  $("#guideMovieSort").value = guide.movieSort;
+  let movies = guide.movies;
+  if (guide.movieTag) movies = movies.filter((m) => gdTags(m).includes(guide.movieTag));
+  if (needle) movies = movies.filter((m) => `${m.title} ${m.channel} ${m.file} ${m.tags || ""}`.toLowerCase().includes(needle));
+  movies = movies.slice().sort(gdMovieSorters[guide.movieSort] || gdMovieSorters.new);
   const folders = needle ? guide.folders.filter((f) => f.toLowerCase().includes(needle)) : guide.folders;
   const shown = movies.slice(0, guide.movieLimit);
   const nodes = folders.map((name) => h("button", { class: "gd-item gd-folder", type: "button", onClick: () => gdLoadMovies(`${guide.dir.replace(/\/+$/, "")}/${name}/`) },
@@ -304,6 +344,8 @@ function gdPaint() {
   const list = $("#guideList");
   list.dataset.tab = guide.tab;
   if (guide.tab === "epg") gdPaintEPG(list);
+  else if (guide.tab === "grid") gridPaint(list);
+  else if (guide.tab === "auto") autoPaint(list);
   else if (guide.tab === "timers") gdPaintTimers(list);
   else gdPaintMovies(list);
 }
@@ -320,11 +362,18 @@ function guideSetTab(tab) {
     gdFillChannels();
     if (guide.loaded !== (guide.search.trim() ? `q:${guide.search.trim()}` : `c:${guide.ref}`)) gdLoadEPG(); else gdPaint();
     gdLoadTimers(false);
+  } else if (tab === "auto") {
+    gdPaint();
+    autoLoad(false);
+  } else if (tab === "grid") {
+    gridEnter();
+    gdLoadTimers(false);
   } else if (tab === "timers") {
     gdPaint();
     gdLoadTimers(true);
   } else {
     gdPaint();
+    gdLoadTimers(false);
     if (!guide.moviesAt || Date.now() - guide.moviesAt > 30000) gdLoadMovies();
   }
 }
@@ -332,7 +381,9 @@ function openGuide(tab = guide.tab, entry = null) {
   const id = screenView.profileID;
   if (!id) { toast("Pick a device first", "error"); return; }
   if (guide.profileID !== id) {
-    Object.assign(guide, { profileID: id, ref: "", name: "", bouquetRef: "", search: "", events: [], loaded: "", timers: [], timersAt: 0, dir: "", folders: [], movies: [], movieFilter: "", moviesAt: 0 });
+    Object.assign(guide, { profileID: id, ref: "", name: "", bouquetRef: "", search: "", events: [], loaded: "", timers: [], timersAt: 0, dir: "", folders: [], movies: [], movieFilter: "", movieTag: "", moviesAt: 0 });
+    if (typeof gridReset === "function") gridReset();
+    if (typeof autoReset === "function") autoReset();
     $("#guideSearch").value = "";
     $("#guideMovieFilter").value = "";
   }
@@ -395,6 +446,8 @@ $("#guideMovieFilter").addEventListener("keydown", (event) => {
     $("#guideMovieFilter").value = ""; guide.movieFilter = ""; gdPaint();
   }
 });
+$("#guideMovieSort").addEventListener("change", () => { guide.movieSort = $("#guideMovieSort").value; store.set("guide.movieSort", guide.movieSort); guide.movieLimit = 200; gdPaint(); });
+$("#guideMovieTag").addEventListener("change", () => { guide.movieTag = $("#guideMovieTag").value; guide.movieLimit = 200; gdPaint(); });
 $("#guideTimersRefresh").addEventListener("click", () => gdLoadTimers(true));
 $("#guideCleanup").addEventListener("click", async () => {
   gdError("");

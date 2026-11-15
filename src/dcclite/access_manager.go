@@ -17,6 +17,7 @@ import (
 	"github.com/didou07/dcc-lite/src/app"
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/httpapi"
+	"github.com/didou07/dcc-lite/src/logx"
 	"github.com/didou07/dcc-lite/src/remoteaccess"
 )
 
@@ -224,25 +225,25 @@ func (m *remoteManager) start() (remotePlan, error) {
 	_, m.port, _ = net.SplitHostPort(raw.Addr().String())
 	m.lastErr = ""
 	m.hosts = hosts
-	remoteLog.Info("Remote access (HTTPS) is ready", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
+	remoteLog.Info("remote access is on (HTTPS)", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
 	for _, url := range m.links() {
-		remoteLog.Info("Open from another device", "url", url)
+		remoteLog.Info("remote access address", "url", url)
 	}
 	if plan.AutoTLS {
-		remoteLog.Info("Trusted HTTPS certificates will be obtained and renewed automatically", "hosts", strings.Join(m.hosts, ", "))
+		remoteLog.Info("automatic HTTPS certificates enabled (obtained and renewed on demand)", "hosts", strings.Join(m.hosts, ", "))
 	}
 	if redirectServer != nil {
-		go func() {
+		logx.Go(remoteLog, "HTTP-to-HTTPS redirect server", func() {
 			if err := redirectServer.Serve(redirectListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				remoteLog.Error("HTTP-to-HTTPS redirect server", "error", err)
+				remoteLog.Error("HTTP-to-HTTPS redirect server stopped unexpectedly", "error", err)
 			}
-		}()
+		})
 	}
-	go func() {
+	logx.Go(remoteLog, "remote HTTPS server", func() {
 		if err := server.ServeTLS(raw, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			remoteLog.Error("remote HTTPS server", "error", err)
+			remoteLog.Error("remote HTTPS server stopped unexpectedly", "error", err)
 		}
-	}()
+	})
 	return plan, nil
 }
 
@@ -297,7 +298,7 @@ func (m *remoteManager) stop() {
 		m.plan.Auth.RevokeAll()
 	}
 	m.server, m.redirect, m.closeAll, m.running, m.plan, m.hosts = nil, nil, nil, false, remotePlan{}, nil
-	remoteLog.Info("Remote access stopped")
+	remoteLog.Info("remote access is off")
 }
 
 func (m *remoteManager) Stop() {

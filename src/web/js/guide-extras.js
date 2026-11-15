@@ -61,7 +61,7 @@ const tmLocal = (ts) => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 const tmParse = (text) => { const ms = Date.parse(text); return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0; };
-const tmState = { timer: null, beginText: "", endText: "", busy: false };
+const tmState = { timer: null, beginText: "", endText: "", busy: false, isNew: false };
 
 function tmError(message) {
   const node = $("#timerError");
@@ -69,10 +69,46 @@ function tmError(message) {
   node.hidden = !message;
 }
 
+async function tmFillLocations() {
+  const list = $("#tmDirList");
+  if (list.dataset.profile === guide.profileID) return;
+  try {
+    const known = (await api(guideURL("movie-locations"))).locations || [];
+    list.replaceChildren(...known.map((dir) => h("option", { value: dir })));
+    list.dataset.profile = guide.profileID;
+  } catch { }
+}
+
+function tmFillChannels(selected) {
+  const select = $("#tmChannel");
+  const groups = ch.bouquets.map((b) => {
+    const channels = (b.channels || []).filter((c) => !c.marker);
+    return channels.length ? h("optgroup", { label: b.name }, ...channels.map((c) => h("option", { value: c.ref, text: `${c.number ? `${c.number}. ` : ""}${c.name}` }))) : null;
+  }).filter(Boolean);
+  select.replaceChildren(h("option", { value: "", text: "Choose a channel…" }), ...groups);
+  select.value = selected && [...select.options].some((o) => o.value === selected) ? selected : "";
+}
+
+function tmFillOptions(t) {
+  $("#tmDir").value = t.dir || "";
+  $("#tmTags").value = t.tags || "";
+  $("#tmType").value = ["normal", "descrambled", "scrambled"].includes(t.recordingtype) ? t.recordingtype : "";
+  $("#tmAdjust").value = t.autoadjust === 0 || t.autoadjust === 1 ? String(t.autoadjust) : "-1";
+  $("#tmZap").value = t.always_zap === 0 || t.always_zap === 1 ? String(t.always_zap) : "-1";
+  $("#tmDup").checked = Boolean(t.allow_duplicate);
+  const custom = t.dir || t.tags || t.recordingtype === "descrambled" || t.recordingtype === "scrambled" || t.allow_duplicate;
+  $("#tmAdv").open = Boolean(custom);
+  tmFillLocations();
+}
+
 function openTimerEditor(t) {
+  tmState.isNew = false;
   tmState.timer = t;
   tmState.beginText = tmLocal(t.begin);
   tmState.endText = tmLocal(t.end);
+  $("#timerDialogTitle").textContent = "Edit timer";
+  $("#tmChannelRow").hidden = true;
+  $("#timerChannel").hidden = false;
   $("#timerChannel").textContent = t.channel || "";
   $("#tmName").value = t.title || "";
   $("#tmDesc").value = t.description || "";
@@ -81,38 +117,79 @@ function openTimerEditor(t) {
   $("#tmKind").value = t.justplay ? "play" : "record";
   $("#tmAfter").value = [0, 1, 2, 3].includes(t.afterevent) ? String(t.afterevent) : "3";
   $("#tmOn").checked = !t.disabled;
-  const days = $("#tmDays");
-  days.replaceChildren(days.querySelector("legend"), ...GD_WEEK.map((name, i) => h("label", { class: "check" },
-    h("input", { type: "checkbox", value: String(1 << i), checked: Boolean((t.repeated || 0) & (1 << i)) }), name)));
+  tmFillOptions(t);
+  tmFillDays(t.repeated || 0);
   tmError("");
   openDialog($("#timerDialog"));
   $("#tmName").focus();
   $("#tmName").select();
 }
 
+function tmFillDays(mask) {
+  const days = $("#tmDays");
+  days.replaceChildren(days.querySelector("legend"), ...GD_WEEK.map((name, i) => h("label", { class: "check" },
+    h("input", { type: "checkbox", value: String(1 << i), checked: Boolean(mask & (1 << i)) }), name)));
+}
+
+function openNewTimer() {
+  if (!guide.profileID) return;
+  const begin = Math.ceil((Date.now() / 1000 + 120) / 300) * 300;
+  tmState.isNew = true;
+  tmState.timer = null;
+  tmState.beginText = tmLocal(begin);
+  tmState.endText = tmLocal(begin + 3600);
+  $("#timerDialogTitle").textContent = "New timer";
+  $("#timerChannel").hidden = true;
+  $("#tmChannelRow").hidden = false;
+  tmFillChannels(guide.ref || ch.currentRef || "");
+  $("#tmName").value = "";
+  $("#tmDesc").value = "";
+  $("#tmBegin").value = tmState.beginText;
+  $("#tmEnd").value = tmState.endText;
+  $("#tmKind").value = "record";
+  $("#tmAfter").value = "3";
+  $("#tmOn").checked = true;
+  tmFillOptions({});
+  tmFillDays(0);
+  tmError("");
+  openDialog($("#timerDialog"));
+  $("#tmName").focus();
+}
+
+function tmOptions() {
+  const adjust = $("#tmAdjust").value, zap = $("#tmZap").value;
+  return {
+    dir: $("#tmDir").value.trim(), tags: $("#tmTags").value.trim().replace(/\s+/g, " "),
+    recordingtype: $("#tmType").value, allow_duplicate: $("#tmDup").checked,
+    autoadjust: adjust === "-1" ? null : adjust === "1", always_zap: zap === "-1" ? null : Number(zap),
+  };
+}
+
 async function saveTimerEdit(event) {
   event.preventDefault();
   const t = tmState.timer;
-  if (!t || tmState.busy) return;
+  if ((!t && !tmState.isNew) || tmState.busy) return;
   const name = $("#tmName").value.trim();
   if (!name) { tmError("The timer needs a name."); return; }
-  const begin = $("#tmBegin").value === tmState.beginText ? t.begin : tmParse($("#tmBegin").value);
-  const end = $("#tmEnd").value === tmState.endText ? t.end : tmParse($("#tmEnd").value);
+  const begin = !tmState.isNew && $("#tmBegin").value === tmState.beginText ? t.begin : tmParse($("#tmBegin").value);
+  const end = !tmState.isNew && $("#tmEnd").value === tmState.endText ? t.end : tmParse($("#tmEnd").value);
   if (!begin || !end || end <= begin) { tmError("The timer must end after it starts."); return; }
   if (end - begin > 48 * 3600) { tmError("A timer can be at most 48 hours long."); return; }
+  const ref = tmState.isNew ? $("#tmChannel").value : t.ref;
+  if (!ref) { tmError("Choose the channel for this timer."); return; }
   const repeated = $$("#tmDays input:checked").reduce((mask, box) => mask | Number(box.value), 0);
+  const body = {
+    ref, name, description: $("#tmDesc").value.trim(), begin, end,
+    justplay: $("#tmKind").value === "play", afterevent: Number($("#tmAfter").value), repeated, ...tmOptions(),
+  };
   tmState.busy = true;
   $("#timerSave").disabled = true;
   tmError("");
   try {
-    await post(guideURL("timers/change"), {
-      old_ref: t.ref, old_begin: t.begin, old_end: t.end,
-      ref: t.ref, name, description: $("#tmDesc").value.trim(), begin, end,
-      justplay: $("#tmKind").value === "play", disabled: !$("#tmOn").checked,
-      afterevent: Number($("#tmAfter").value), repeated, dir: t.dir || "", tags: t.tags || "",
-    });
+    if (tmState.isNew) await post(guideURL("timers"), body);
+    else await post(guideURL("timers/change"), { ...body, old_ref: t.ref, old_begin: t.begin, old_end: t.end, disabled: !$("#tmOn").checked });
     $("#timerDialog").close();
-    toast("Timer saved");
+    toast(tmState.isNew ? "Timer created" : "Timer saved");
     await gdLoadTimers(true);
   } catch (error) { tmError(error.message); } finally {
     tmState.busy = false;
@@ -122,3 +199,4 @@ async function saveTimerEdit(event) {
 
 $("#timerForm").addEventListener("submit", saveTimerEdit);
 $("#timerCancel").addEventListener("click", () => $("#timerDialog").close());
+$("#guideTimerNew").addEventListener("click", openNewTimer);

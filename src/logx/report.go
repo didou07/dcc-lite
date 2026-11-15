@@ -7,7 +7,13 @@ import (
 	"time"
 )
 
-func (h *Hub) Report(info map[string]string, q Query) string {
+// Report builds the downloadable text report. Personal data (IP and MAC
+// addresses, e-mails, device and host names, user names, file names) is masked
+// with the given sanitizer; pass nil to mask only what can be recognised by shape.
+func (h *Hub) Report(info map[string]string, q Query, san *Sanitizer) string {
+	if san == nil {
+		san = NewSanitizer()
+	}
 	entries, _ := h.ring.Snapshot(q)
 	faults, st := h.faults.List()
 
@@ -18,23 +24,24 @@ func (h *Hub) Report(info map[string]string, q Query) string {
 	sort.Strings(keys)
 	system := make([]string, 0, len(keys)+1)
 	for _, k := range keys {
-		system = append(system, token(k, info[k]))
+		system = append(system, token(k, san.Text(info[k])))
 	}
 	system = append(system, token("uptime", time.Since(h.started).Round(time.Second).String()))
 
 	var b strings.Builder
 	b.WriteString("DCC Lite report " + time.Now().Format("2006-01-02 15:04:05 MST") + "\n")
+	b.WriteString("privacy IP/MAC addresses, e-mails, device and host names, user names and file names are replaced by labels like ip#1 or device#2; passwords and tokens are removed; the same label is always the same value\n")
 	b.WriteString("system " + strings.Join(system, " ") + "\n")
 	b.WriteString("levels " + token("console", LevelName(h.ConsoleLevel())) + " " + token("file", LevelName(h.FileLevel())) + "\n")
 	fmt.Fprintf(&b, "faults open=%d errors=%d panics=%d total=%d\n", st.Open, st.Errors, st.Panics, st.Total)
 	for _, f := range faults {
 		if !f.Acked {
-			b.WriteString(faultLine(f))
+			b.WriteString(faultLine(san.fault(f)))
 		}
 	}
 	b.WriteString("log\n")
 	for _, e := range entries {
-		b.WriteString(formatLine(e, true))
+		b.WriteString(formatLine(san.entry(e), true))
 	}
 	return redactHome(b.String())
 }

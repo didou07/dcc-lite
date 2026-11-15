@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # DCC Lite release build (run on Linux).
 #
-#   ./build.sh                 8 standard targets
+#   ./build.sh                 8 standard targets + the Windows app with its own window (windowsgui/amd64)
 #   ./build.sh all             + Windows 7 builds (downloads the patched Go)
 #   ./build.sh linux/arm64 ... only the targets you list
 set -euo pipefail
@@ -27,7 +27,7 @@ win7_go() {
   echo "$dir/bin/go"
 }
 
-STANDARD=(windows/amd64 windows/386 linux/amd64 linux/386 linux/arm64 linux/arm darwin/amd64 darwin/arm64)
+STANDARD=(windows/amd64 windows/386 linux/amd64 linux/386 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windowsgui/amd64)
 case "${1:-}" in
   "")  TARGETS=("${STANDARD[@]}") ;;
   all) TARGETS=("${STANDARD[@]}" windows7/amd64 windows7/386) ;;
@@ -39,9 +39,13 @@ trap 'rm -rf "$stage"' EXIT
 rm -rf dist && mkdir dist
 
 for target in "${TARGETS[@]}"; do
-  os="${target%/*}" arch="${target#*/}" go=go suffix="" ext="" extra=()
+  os="${target%/*}" arch="${target#*/}" go=go suffix="" ext="" variant="" exe="DCCLite" tags="" gui=""  extra=()
+  if [[ $os == windowsgui ]]; then
+    # Windows 10/11 app: WebView2 window plus live TV through the user's own VLC (still no cgo).
+    os=windows suffix=-gui variant=gui exe="DCCLite-GUI" tags="native" gui="-H windowsgui"
+  fi
   if [[ $os == windows7 ]]; then
-    os=windows suffix=-win7 go="${GO_WIN7:=$(win7_go)}" extra+=(GOTOOLCHAIN=local)
+    os=windows suffix=-win7 variant=win7 go="${GO_WIN7:=$(win7_go)}" extra+=(GOTOOLCHAIN=local)
   fi
   [[ $arch == arm ]] && extra+=(GOARM="${GOARM:-7}")
   [[ $os == windows ]] && ext=.exe
@@ -49,10 +53,10 @@ for target in "${TARGETS[@]}"; do
   name="DCC-Lite-$VERSION-$os-$arch$suffix"
   echo "==> $name"
   env CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" ${extra[@]+"${extra[@]}"} \
-    "$go" build -trimpath -buildvcs=false -ldflags "-s -w -buildid= -X main.version=$VERSION" \
-    -o "$stage/DCCLite$ext" ./src/dcclite
-  zip -qj9 "dist/$name.zip" "$stage/DCCLite$ext"
-  rm -f "$stage/DCCLite$ext"
+    "$go" build -trimpath -buildvcs=false ${tags:+-tags "$tags"} -ldflags "-s -w -buildid= $gui -X main.version=$VERSION -X main.variant=$variant" \
+    -o "$stage/$exe$ext" ./src/dcclite
+  zip -qj9 "dist/$name.zip" "$stage/$exe$ext"
+  rm -f "$stage/$exe$ext"
 done
 
 (cd dist && { sha256sum ./*.zip 2>/dev/null || shasum -a 256 ./*.zip; } | sed 's| \./| |' > SHA256SUMS.txt)

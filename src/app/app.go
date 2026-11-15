@@ -16,7 +16,7 @@ import (
 )
 
 type App struct {
-	Version     string
+	Version string
 	// DataDir is the application data folder (restore points are kept under it); empty when unknown.
 	DataDir     string
 	Profiles    *config.ProfileStore

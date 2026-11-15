@@ -29,10 +29,8 @@ func NewProfileStore(dataDir, iniPath string) (*ProfileStore, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create profile directory: %w", err)
 	}
-	if os.PathSeparator != '\\' {
-		if err := os.Chmod(dataDir, 0o700); err != nil {
-			return nil, fmt.Errorf("secure profile directory: %w", err)
-		}
+	if err := restrictToOwner(dataDir, true); err != nil && !bestEffortPerms {
+		return nil, fmt.Errorf("secure profile directory: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(iniPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create settings directory: %w", err)
@@ -124,10 +122,8 @@ func readLimited(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	if os.PathSeparator != '\\' {
-		if err := os.Chmod(path, 0o600); err != nil {
-			return nil, fmt.Errorf("secure settings file: %w", err)
-		}
+	if err := restrictToOwner(path, false); err != nil && !bestEffortPerms {
+		return nil, fmt.Errorf("secure settings file: %w", err)
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxStoreBytes+1))
 	if err != nil {
@@ -189,6 +185,10 @@ func (s *ProfileStore) persistLocked() error {
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
 	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("secure temporary settings file: %w", err)
+	}
+	if err := restrictToOwner(tmpName, false); err != nil && !bestEffortPerms {
 		tmp.Close()
 		return fmt.Errorf("secure temporary settings file: %w", err)
 	}

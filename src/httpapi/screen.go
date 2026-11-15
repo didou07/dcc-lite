@@ -138,12 +138,17 @@ const maxScreenBytes = 16 << 20
 
 // grabAddresses are the screenshot addresses known to exist. OpenWebif and the WebInterface plugin
 // both answer /grab; some images only have /web/screenshot or a fixed /video.png.
-func grabAddresses(mode string, width int) []string {
-	return []string{
+func grabAddresses(mode string, width int, kind string) []string {
+	addrs := []string{
 		fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width),
 		fmt.Sprintf("/web/screenshot?format=jpg&mode=%s&r=%d", mode, width),
 		"/video.png",
 	}
+	if kind == "webinterface" {
+		// the older WebInterface (DreamOS) may refuse the mode argument: the same address without it
+		addrs = append(addrs[:1], append([]string{fmt.Sprintf("/grab?format=jpg&r=%d", width)}, addrs[1:]...)...)
+	}
+	return addrs
 }
 
 func isPicture(body []byte) bool {
@@ -159,7 +164,7 @@ func isPicture(body []byte) bool {
 //     failure, so a struggling receiver is not hit again. The address that worked is remembered.
 //   - If the owner chose OpenWebif for the device, only /grab is ever asked.
 func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, width int) ([]byte, *grabError) {
-	all := grabAddresses(mode, width)
+	all := grabAddresses(mode, width, web.kind)
 	st.mu.Lock()
 	if st.kind != web.kind {
 		st.kind, st.found = web.kind, false
@@ -171,7 +176,11 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 	case found:
 		order = []int{idx}
 	case web.kind != "openwebif":
-		order = []int{0, 1, 2} // the others are asked only while an address is missing (404)
+		// The others are asked only while an address is missing (404) or refuses the request (400/412/415/501).
+		order = make([]int, len(all))
+		for i := range order {
+			order[i] = i
+		}
 	}
 	var lastMsg string
 	for n, i := range order {
@@ -199,6 +208,13 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 			continue // only a missing address moves on to the next one
 		case resp.StatusCode != http.StatusOK:
 			lastMsg = fmt.Sprintf("The receiver's screenshot tool (grab) failed (HTTP %d). On some images this can crash Enigma2.", resp.StatusCode)
+			devLog.Warn("screenshot address refused", "base", web.base, "path", pathOnly(all[i]), "status", resp.StatusCode)
+			switch resp.StatusCode {
+			case http.StatusBadRequest, http.StatusPreconditionFailed, http.StatusUnsupportedMediaType, http.StatusNotImplemented:
+				if web.kind == "webinterface" && n < len(order)-1 {
+					continue // the request was refused, not crashed: another form of the address may be accepted
+				}
+			}
 		case rerr != nil || len(body) > maxScreenBytes:
 			lastMsg = "The receiver sent an unusable picture."
 		case !isPicture(body):

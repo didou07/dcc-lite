@@ -460,6 +460,9 @@ document.addEventListener("keydown", (event) => {
   if (typing) return;
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "a") { event.preventDefault(); cmdSelectAll(); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "r") { event.preventDefault(); refreshPane(files.active); return; }
+  if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "c") { event.preventDefault(); cmdCopy(); return; }
+  if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "x") { event.preventDefault(); cmdCut(); return; }
+  if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "v") { event.preventDefault(); cmdPaste(); return; }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const count = pane.visible.length;
   const move = (to, extend) => {

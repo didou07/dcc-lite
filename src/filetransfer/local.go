@@ -1,8 +1,10 @@
 package filetransfer
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -266,6 +268,137 @@ func (f *LocalFS) ReplaceTemp(tempPath, targetRelative string, overwrite bool) e
 	}
 	return os.Rename(tempPath, target)
 }
+
+// Copy duplicates srcRelative onto dstRelative within the local root. Files are
+// copied byte-for-byte (preserving permissions); directories are copied
+// recursively. Symbolic links are rejected, matching the folder-transfer rules
+// used for FTP uploads and downloads. ctx is checked between entries so a
+// cancelled or disconnected request stops a large folder copy instead of
+// letting it run unbounded in the background.
+func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, overwrite bool) error {
+	srcAbsolute, srcClean, err := f.Resolve(srcRelative, false)
+	if err != nil {
+		return err
+	}
+	dstAbsolute, dstClean, err := f.Resolve(dstRelative, true)
+	if err != nil {
+		return err
+	}
+	if dstClean == "." {
+		return errors.New("the local root cannot be a copy destination")
+	}
+	if dstClean == srcClean || strings.HasPrefix(dstClean, srcClean+"/") {
+		return errors.New("cannot copy a folder into itself")
+	}
+	srcInfo, err := os.Lstat(srcAbsolute)
+	if err != nil {
+		return err
+	}
+	if srcInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.New("copying symbolic links is not supported")
+	}
+	dstInfo, statErr := os.Lstat(dstAbsolute)
+	dstExists := statErr == nil
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+	if dstExists {
+		if !overwrite {
+			return errors.New("destination already exists")
+		}
+		if dstInfo.IsDir() != srcInfo.IsDir() {
+			return errors.New("destination exists with a different file type")
+		}
+	}
+	if srcInfo.IsDir() {
+		entries := 0
+		return copyLocalDir(ctx, srcAbsolute, dstAbsolute, overwrite, 0, &entries)
+	}
+	return copyLocalFile(srcAbsolute, dstAbsolute, srcInfo.Mode())
+}
+
+func copyLocalFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".dcclite-copy-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	_, copyErr := io.Copy(tmp, in)
+	closeErr := tmp.Close()
+	if copyErr == nil {
+		copyErr = closeErr
+	}
+	if copyErr != nil {
+		os.Remove(tmpPath)
+		return copyErr
+	}
+	_ = os.Chmod(tmpPath, mode.Perm())
+	if err := os.Rename(tmpPath, dst); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
+func copyLocalDir(ctx context.Context, src, dst string, overwrite bool, depth int, entries *int) error {
+	if depth > maxDirectoryDepth {
+		return errors.New("folder copy exceeds the maximum directory depth")
+	}
+	if err := os.MkdirAll(dst, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	items, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		*entries++
+		if *entries > maxDirectoryEntries {
+			return errors.New("folder copy exceeds the maximum entry count")
+		}
+		info, err := item.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("folder copy does not follow symbolic links: %s", item.Name())
+		}
+		srcChild := filepath.Join(src, item.Name())
+		dstChild := filepath.Join(dst, item.Name())
+		if item.IsDir() {
+			if err := copyLocalDir(ctx, srcChild, dstChild, overwrite, depth+1, entries); err != nil {
+				return err
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported local file type: %s", item.Name())
+		}
+		if existing, statErr := os.Lstat(dstChild); statErr == nil {
+			if !overwrite {
+				return fmt.Errorf("destination already contains %q", item.Name())
+			}
+			if existing.IsDir() {
+				return fmt.Errorf("destination %q exists with a different file type", item.Name())
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return statErr
+		}
+		if err := copyLocalFile(srcChild, dstChild, info.Mode()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func pathClean(value string) string {
 	if value == "" {
 		return "."

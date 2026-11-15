@@ -164,8 +164,9 @@ func (s *Server) terminalWebSocket(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				if s.remote != nil {
-					s.remote.auth.Authenticated(r)
+				if s.remote != nil && !s.remote.auth.Authenticated(r) {
+					cancel()
+					return
 				}
 			}
 		}

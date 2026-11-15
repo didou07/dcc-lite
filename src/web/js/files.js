@@ -5,6 +5,7 @@ const files = {
   transfers: [], queueTimer: 0, queueBusy: false, seenDone: new Set(),
   browserMode: false, ready: null, sync: store.get("filesSync", false), fresh: false, localLeft: store.get("filesLocalLeft", true),
   pending: [], fetched: new Set(), autoDone: new Set(), transfersSeen: false,
+  clipboard: null,
 };
 files.ready = systemInfo().then((info) => {
   files.browserMode = info?.remote === "true";
@@ -54,7 +55,7 @@ function updateFileUI() {
   const paneReady = files.active === "local" || connected;
   can("mkdir", paneReady); can("rename", paneReady && selection.length === 1); can("chmod", paneReady && selection.length > 0);
   can("delete", paneReady && selection.length > 0); can("copypath", paneReady);
-  can("edit", connected && remoteSel.length === 1 && !remoteSel[0].is_dir); can("transfer", connected && selection.length > 0); can("selectall", paneReady && active.visible.length > 0);
+  can("edit", paneReady && selection.length === 1 && !selection[0].is_dir); can("transfer", connected && selection.length > 0); can("selectall", paneReady && active.visible.length > 0);
   $("#btnDownload").disabled = !(connected && remoteSel.length);
   $("#btnUpload").disabled = !(connected && localSel.length);
   const transferBtn = $("#btnTransferActive");
@@ -349,6 +350,7 @@ for (const pane of Object.values(panes)) {
     pane.sort = { key, dir: pane.sort.key === key && pane.sort.dir === "asc" ? "desc" : "asc" };
     saveSort(pane); renderPane(pane);
   }));
+  makeColumnsResizable(pane);
   $$(".pathbar .icon-btn", pane.root).forEach((button) => button.addEventListener("click", (event) => {
     const act = button.dataset.act;
     if (act === "up") goUp(pane.kind); else if (act === "root") goRoot(pane.kind); else if (act === "refresh") refreshPane(pane.kind);
@@ -356,7 +358,116 @@ for (const pane of Object.values(panes)) {
   }));
   pane.root.addEventListener("pointerdown", () => { if (files.active !== pane.kind) setActivePane(pane.kind); });
 }
+makePanesResizable();
+function makePanesResizable() {
+  const commander = $("#commander"), bridge = $(".bridge", commander);
+  if (!commander || !bridge) return;
+  const KEY = "paneSplit";
+  const saved = store.get(KEY, null);
+  if (saved) commander.style.gridTemplateColumns = saved;
+  const handle = document.createElement("div");
+  handle.className = "pane-resize";
+  handle.setAttribute("aria-hidden", "true");
+  bridge.appendChild(handle);
+  handle.addEventListener("dblclick", () => { commander.style.gridTemplateColumns = ""; store.set(KEY, null); });
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const commanderRect = commander.getBoundingClientRect(), bridgeRect = bridge.getBoundingClientRect();
+    const startX = event.clientX, startFirst = bridgeRect.left - commanderRect.left, min = 220;
+    const maxFirst = Math.max(min, commanderRect.width - bridgeRect.width - min);
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add("col-resizing");
+    const onMove = (moveEvent) => {
+      const next = Math.max(min, Math.min(maxFirst, startFirst + (moveEvent.clientX - startX)));
+      commander.style.gridTemplateColumns = `${next}px ${bridgeRect.width}px minmax(0, 1fr)`;
+    };
+    const onUp = () => {
+      handle.releasePointerCapture(event.pointerId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("col-resizing");
+      store.set(KEY, commander.style.gridTemplateColumns);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+  });
+}
 function saveSort(pane) { store.set(`pane.${pane.kind}`, { key: pane.sort.key, dir: pane.sort.dir, hidden: pane.showHidden }); }
+
+function colWidthsKey(pane) { return `colwidths.${pane.kind}`; }
+function saveColumnWidths(pane) {
+  const widths = $$("th[data-sort]", pane.root).map((th) => th.style.width || null);
+  store.set(colWidthsKey(pane), widths);
+}
+function attachColumnHandle(host, side, onStart) {
+  const handle = document.createElement("span");
+  handle.className = `col-resize col-resize-${side}`;
+  handle.setAttribute("aria-hidden", "true");
+  if (side === "left") host.prepend(handle); else host.appendChild(handle);
+  handle.addEventListener("click", (event) => event.stopPropagation());
+  handle.addEventListener("dblclick", (event) => { event.stopPropagation(); onStart().reset(); });
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    const drag = onStart();
+    const startX = event.clientX;
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add("col-resizing");
+    const onMove = (moveEvent) => drag.move(moveEvent.clientX - startX);
+    const onUp = () => {
+      handle.releasePointerCapture(event.pointerId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("col-resizing");
+      drag.done();
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+  });
+}
+function makeColumnsResizable(pane) {
+  const ths = $$("th[data-sort]", pane.root);
+  const saved = store.get(colWidthsKey(pane), null);
+  ths.forEach((th, index) => { if (Array.isArray(saved) && saved[index]) th.style.width = saved[index]; });
+  const min = 48;
+  // Each <th> is `position: sticky`, which makes sibling cells stack by DOM
+  // order — a later column always paints over an earlier one. A resize handle
+  // placed on the right edge of column i would therefore be half-covered by
+  // column i+1 and miss most clicks/drags. Instead, host the handle for the
+  // boundary between column i-1 and i as the FIRST child of column i (on its
+  // left edge): that way the handle lives inside the cell that already wins
+  // the stacking order, so it is never covered.
+  for (let i = 1; i < ths.length; i++) {
+    const target = ths[i - 1], host = ths[i];
+    attachColumnHandle(host, "left", () => {
+      const startTarget = target.getBoundingClientRect().width, startHost = host.getBoundingClientRect().width;
+      const pairWidth = startTarget + startHost;
+      return {
+        move: (dx) => {
+          const next = Math.max(min, Math.min(pairWidth - min, startTarget + dx));
+          target.style.width = `${next}px`;
+          host.style.width = `${pairWidth - next}px`;
+        },
+        done: () => saveColumnWidths(pane),
+        reset: () => { target.style.width = ""; host.style.width = ""; saveColumnWidths(pane); },
+      };
+    });
+  }
+  // The outer right edge of the LAST column (the one visible at the far edge
+  // of the table, e.g. "Perm") has no later sibling to pair with. Resize it
+  // on its own: the first column keeps `width: auto` until it is touched, so
+  // it naturally absorbs whatever space this column gives up or takes.
+  const last = ths[ths.length - 1];
+  attachColumnHandle(last, "right", () => {
+    const startWidth = last.getBoundingClientRect().width;
+    return {
+      move: (dx) => { last.style.width = `${Math.max(min, startWidth + dx)}px`; },
+      done: () => saveColumnWidths(pane),
+      reset: () => { last.style.width = ""; saveColumnWidths(pane); },
+    };
+  });
+}
 $$("#paneSwitch button").forEach((button) => button.addEventListener("click", () => setActivePane(button.dataset.pane)));
 
 function rowEntry(pane, row) { return row && row.dataset.index !== undefined ? pane.visible[Number(row.dataset.index)] : null; }
@@ -489,11 +600,14 @@ function contextItems(pane, onEntry) {
       ? { label: files.browserMode ? (sel.length > 1 ? `Download ${sel.length} items to this device` : "Download to this device") : (sel.length > 1 ? `Download ${sel.length} items` : "Download"), icon: "download", disabled: files.browserMode && !sel.some((e) => !e.is_dir), run: () => transferSelection("download") }
       : { label: sel.length > 1 ? `Upload ${sel.length} items` : "Upload", icon: "upload", run: () => transferSelection("upload") });
     items.push("-");
-    if (kind === "remote") items.push({ label: "Edit as text", icon: "file", sub: "F4", disabled: !single || single.is_dir, run: () => cmdEdit() });
+    items.push({ label: "Edit as text", icon: "file", sub: "F4", disabled: !single || single.is_dir, run: () => cmdEdit() });
     items.push({ label: "Rename", icon: "edit", sub: "F2", disabled: !single, run: () => cmdRename() });
     items.push({ label: "Permissions…", icon: "lock", sub: "F9", run: () => cmdChmod() });
     items.push({ label: "Copy path", icon: "copy", run: () => cmdCopyPath() });
     if (kind === "remote") items.push({ label: sel.length > 1 ? `Copy ${sel.length} items on the device…` : "Copy on the device…", icon: "copy", run: () => cmdCopyOnDevice() }, { label: "New symbolic link…", icon: "link", disabled: sel.length > 1, run: () => cmdSymlink() });
+    items.push("-");
+    items.push({ label: sel.length > 1 ? `Copy ${sel.length} items` : "Copy", icon: "copy", sub: "Ctrl+C", run: () => cmdCopy() });
+    items.push({ label: sel.length > 1 ? `Cut ${sel.length} items` : "Cut", icon: "scissors", sub: "Ctrl+X", run: () => cmdCut() });
     if (kind === "remote") {
       items.push("-");
       items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path) });
@@ -505,7 +619,9 @@ function contextItems(pane, onEntry) {
   } else {
     if (files.browserMode && kind === "remote") items.push({ label: "Upload files from this device…", icon: "upload", run: () => chooseDeviceFiles(false) }, { label: "Upload a folder from this device…", icon: "newfolder", run: () => chooseDeviceFiles(true) }, "-");
     items.push({ label: "New folder", icon: "newfolder", sub: "F7", run: () => cmdMkdir() });
-    if (kind === "remote") items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() }, { label: "New symbolic link…", icon: "link", run: () => cmdSymlink() });
+    items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() });
+    if (kind === "remote") items.push({ label: "New symbolic link…", icon: "link", run: () => cmdSymlink() });
+    items.push({ label: "Paste", icon: "paste", sub: "Ctrl+V", disabled: !files.clipboard?.entries?.length, run: () => cmdPaste() });
     items.push({ label: "Refresh", icon: "refresh", run: () => refreshPane(kind) });
     items.push({ label: "Select all", icon: "check", run: () => cmdSelectAll() });
     if (kind === "remote") items.push("-", { label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) });
@@ -610,8 +726,117 @@ async function cmdChmod() {
   await loadPane(kind, panes[kind].path, { keepSelection: true });
   if (failed) toast(`Permissions failed for ${failed} item(s): ${last.message}`, "error"); else toast(`Permissions set to ${mode}`);
 }
-const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false };
-const editorURL = () => sessionURL(files.sessionID, "content");
+
+/* ── Copy / Cut / Paste ───────────────────────────────────────────────── */
+const LocalParentPath = (value) => { const index = value.lastIndexOf("/"); return index <= 0 ? "." : value.slice(0, index); };
+function uniqueName(baseName, existingNames) {
+  if (!existingNames.has(baseName)) return baseName;
+  const dot = baseName.lastIndexOf(".");
+  const hasExt = dot > 0 && dot < baseName.length - 1;
+  const stem = hasExt ? baseName.slice(0, dot) : baseName, ext = hasExt ? baseName.slice(dot) : "";
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${stem} (copy${n > 2 ? ` ${n}` : ""})${ext}`;
+    if (!existingNames.has(candidate)) return candidate;
+  }
+  return `${stem} (copy ${Date.now()})${ext}`;
+}
+function cmdCopy() {
+  const kind = files.active, sel = selectedEntries(panes[kind]);
+  if (!sel.length) { toast("Select items to copy"); return; }
+  files.clipboard = { mode: "copy", kind, entries: sel.map((e) => ({ path: e.path, name: e.name, is_dir: e.is_dir })) };
+  toast(`${sel.length} item${sel.length === 1 ? "" : "s"} copied`);
+}
+function cmdCut() {
+  const kind = files.active, sel = selectedEntries(panes[kind]);
+  if (!sel.length) { toast("Select items to cut"); return; }
+  if (kind === "remote" && !requireSession()) return;
+  files.clipboard = { mode: "cut", kind, entries: sel.map((e) => ({ path: e.path, name: e.name, is_dir: e.is_dir })) };
+  toast(`${sel.length} item${sel.length === 1 ? "" : "s"} ready to paste (moves on paste)`);
+}
+async function cmdPaste() {
+  const clip = files.clipboard;
+  if (!clip || !clip.entries.length) { toast("Nothing to paste"); return; }
+  const kind = files.active;
+  if (kind === "remote" && !requireSession()) return;
+  if (clip.kind === "remote" && !files.sessionID) { toast("Connect to the device to paste items copied or cut from it"); return; }
+  if (clip.kind === kind) await pasteWithinPane(clip, kind);
+  else await pasteAcrossPanes(clip, kind);
+}
+async function pasteWithinPane(clip, kind) {
+  const destDir = panes[kind].path;
+  const existingNames = new Set(panes[kind].entries.map((e) => e.name));
+  let done = 0, failed = 0, last = null;
+  for (const entry of clip.entries) {
+    let name = entry.name;
+    let dst = kind === "local" ? joinLocal(destDir, name) : joinRemote(destDir, name);
+    if (clip.mode === "copy" && dst === entry.path) { name = uniqueName(entry.name, existingNames); dst = kind === "local" ? joinLocal(destDir, name) : joinRemote(destDir, name); }
+    else if (dst === entry.path) { continue; } // cutting into the same folder it's already in: nothing to do
+    existingNames.add(name);
+    const paste = async (overwrite) => {
+      if (clip.mode === "cut") {
+        if (overwrite) await post(kind === "local" ? "/api/v1/files/local/remove" : sessionURL(files.sessionID, "remove"), kind === "local" ? { path: dst } : { path: dst, directory: entry.is_dir });
+        await post(kind === "local" ? "/api/v1/files/local/rename" : sessionURL(files.sessionID, "rename"), { old_path: entry.path, new_path: dst });
+      } else {
+        await post(kind === "local" ? "/api/v1/files/local/copy" : sessionURL(files.sessionID, "copy"), { src_path: entry.path, dst_path: dst, overwrite });
+      }
+    };
+    try {
+      await paste(false);
+      done++;
+    } catch (error) {
+      if (error.code === "exists") {
+        const overwrite = await ask({ title: "Replace existing item?", message: `“${name}” already exists in this folder.\n\nReplace it with the ${clip.mode === "cut" ? "moved" : "copied"} item?`, input: false, ok: "Replace", danger: true });
+        if (overwrite) {
+          try { await paste(true); done++; } catch (error2) { failed++; last = error2; }
+        }
+      } else { failed++; last = error; if (sessionLost(error)) break; }
+    }
+  }
+  if (clip.mode === "cut" && !failed) files.clipboard = null;
+  await refreshPane(kind);
+  if (failed) toast(`${failed} item(s) could not be pasted: ${last.message}`, "error");
+  else if (done) toast(`${done} item${done === 1 ? "" : "s"} ${clip.mode === "cut" ? "moved" : "copied"}`);
+}
+async function pasteAcrossPanes(clip, kind) {
+  const direction = kind === "remote" ? "upload" : "download";
+  const destDir = panes[kind].path;
+  const beforeIDs = new Set(files.transfers.map((t) => t.id));
+  await transferSelection(direction, clip.entries, destDir);
+  if (clip.mode !== "cut") return;
+  let transfers = [];
+  try { ({ transfers } = await api("/api/v1/files/transfers")); } catch { return; }
+  files.transfers = transfers || [];
+  const matchEntry = (task) => clip.entries.find((e) => (direction === "upload" ? task.local_path === e.path : task.remote_path === e.path));
+  const pending = new Map();
+  for (const task of files.transfers) { if (!beforeIDs.has(task.id)) { const entry = matchEntry(task); if (entry) pending.set(task.id, entry); } }
+  if (!pending.size) return;
+  files.clipboard = null;
+  toast(`Moving ${pending.size} item${pending.size === 1 ? "" : "s"} — the original is removed once the transfer finishes`);
+  const poll = async () => {
+    let current;
+    try { ({ transfers: current } = await api("/api/v1/files/transfers")); } catch { window.setTimeout(poll, 1500); return; }
+    for (const [id, entry] of [...pending]) {
+      const task = current.find((t) => t.id === id);
+      if (!task || task.state === "completed" || task.state === "failed" || task.state === "cancelled") {
+        pending.delete(id);
+        if (task?.state === "completed") {
+          try {
+            if (clip.kind === "local") await post("/api/v1/files/local/remove", { path: entry.path });
+            else await post(sessionURL(files.sessionID, "remove"), { path: entry.path, directory: entry.is_dir });
+            await refreshPane(clip.kind);
+          } catch (error) { toast(`Could not remove the original “${entry.name}” after moving it: ${error.message}`, "error"); }
+        } else if (task) {
+          toast(`“${entry.name}” was not moved: the transfer ${task.state}`, "error");
+        }
+      }
+    }
+    if (pending.size) window.setTimeout(poll, 1200);
+  };
+  window.setTimeout(poll, 1200);
+}
+
+const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false, kind: "remote" };
+const editorURL = () => (editor.kind === "local" ? "/api/v1/files/local/content" : sessionURL(files.sessionID, "content"));
 const editorDirty = () => $("#editorText").value !== editor.original;
 function editorStatus(message, kind = "") { const node = $("#editorStatus"); node.textContent = message; node.dataset.kind = kind; }
 function editorRender() {
@@ -629,16 +854,16 @@ function editorCursor() {
   const line = before.split("\n").length;
   $("#editorCursor").textContent = `Ln ${line}, Col ${before.length - before.lastIndexOf("\n")}`;
 }
-function showEditor(file, create) {
+function showEditor(kind, file, create) {
   Object.assign(editor, {
-    path: file.path, name: file.path.split("/").filter(Boolean).pop() || file.path, size: Number(file.size) || 0,
+    kind, path: file.path, name: file.path.split("/").filter(Boolean).pop() || file.path, size: Number(file.size) || 0,
     modifiedAt: file.modified_at || "", hash: file.hash || "", lineEnding: file.line_ending || "lf", create, original: file.content, busy: false,
   });
   const text = $("#editorText");
   text.value = file.content;
   $("#editorPath").textContent = file.path;
   $("#editorPath").title = file.path;
-  editorStatus(create ? "New file — it is created on the device when you save." : "");
+  editorStatus(create ? `New file — it is created ${kind === "local" ? "on this computer" : "on the device"} when you save.` : "");
   const wrap = store.get("editorWrap", false);
   $("#editorWrap").checked = wrap;
   text.setAttribute("wrap", wrap ? "soft" : "off");
@@ -649,28 +874,30 @@ function showEditor(file, create) {
   text.scrollTop = 0;
   editorCursor();
 }
-function editorError(error) {
-  if (error?.code === "file_not_found") { toast(error.message, "error"); refreshPane("remote"); return; }
-  handleOpError(error, "remote");
+function editorError(kind, error) {
+  if (error?.code === "file_not_found") { toast(error.message, "error"); refreshPane(kind); return; }
+  handleOpError(error, kind);
 }
-async function openEditor(remotePath) {
+async function openEditor(kind, path) {
   try {
-    const data = await api(`${editorURL()}?path=${encodeURIComponent(remotePath)}`);
-    showEditor(data.file, false);
-  } catch (error) { editorError(error); }
+    const url = kind === "local" ? "/api/v1/files/local/content" : sessionURL(files.sessionID, "content");
+    const data = await api(`${url}?path=${encodeURIComponent(path)}`);
+    showEditor(kind, data.file, false);
+  } catch (error) { editorError(kind, error); }
 }
 async function cmdEdit() {
-  if (files.active !== "remote") { toast("Editing works on device files — select a file in the Remote panel"); return; }
-  if (!requireSession()) return;
-  const sel = selectedEntries(panes.remote);
+  const kind = files.active, sel = selectedEntries(panes[kind]);
   if (sel.length !== 1 || sel[0].is_dir) { toast("Select one file to edit"); return; }
-  await openEditor(sel[0].path);
+  if (kind === "remote" && !requireSession()) return;
+  await openEditor(kind, sel[0].path);
 }
 async function cmdNewFile() {
-  if (!requireSession()) return;
+  const kind = files.active;
+  if (kind === "remote" && !requireSession()) return;
   const name = await ask({ title: "New text file", label: "File name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid file name (no slashes).") });
   if (!name) return;
-  showEditor({ path: joinRemote(panes.remote.path, name), content: "", size: 0, line_ending: "lf" }, true);
+  const path = kind === "local" ? joinLocal(panes.local.path, name) : joinRemote(panes.remote.path, name);
+  showEditor(kind, { path, content: "", size: 0, line_ending: "lf" }, true);
 }
 async function editorSave(force = false) {
   if (editor.busy) return;
@@ -690,14 +917,14 @@ async function editorSave(force = false) {
     });
     editor.busy = false; editorRender();
     editorStatus(data.file.mode_unknown
-      ? `Saved ${new Date().toLocaleTimeString()} — the device did not report permissions; if this is a script, check them with Permissions (F9).`
+      ? `Saved ${new Date().toLocaleTimeString()} — ${editor.kind === "local" ? "this computer" : "the device"} did not report permissions; if this is a script, check them with Permissions (F9).`
       : `Saved ${new Date().toLocaleTimeString()}`, data.file.mode_unknown ? "" : "ok");
-    if (panes.remote.path === RemoteParentPath(editor.path)) loadPane("remote", panes.remote.path, { keepSelection: true });
+    if (panes[editor.kind].path === (editor.kind === "local" ? LocalParentPath(editor.path) : RemoteParentPath(editor.path))) loadPane(editor.kind, panes[editor.kind].path, { keepSelection: true });
   } catch (error) {
     editor.busy = false; editorRender();
     editorStatus(error.message, "error");
     if (error.code === "conflict") {
-      const overwrite = await ask({ title: "File changed on the device", message: `“${editor.name}” was modified on the device after you opened it.\n\nOverwrite it with your version, or cancel and use Reload to see the device’s version (your edits stay in the editor).`, input: false, ok: "Overwrite", danger: true });
+      const overwrite = await ask({ title: "File changed since it was opened", message: `“${editor.name}” was changed ${editor.kind === "local" ? "on this computer" : "on the device"} after you opened it.\n\nOverwrite it with your version, or cancel and use Reload to see the other version (your edits stay in the editor).`, input: false, ok: "Overwrite", danger: true });
       if (overwrite) await editorSave(true);
     } else if (error.code === "exists") {
       editor.create = false;
@@ -720,12 +947,12 @@ async function editorClose() {
 }
 async function editorReload() {
   if (editor.busy || editor.create) return;
-  if (!(await editorDiscardOK("Reload from the device?"))) return;
+  if (!(await editorDiscardOK(editor.kind === "local" ? "Reload from this computer?" : "Reload from the device?"))) return;
   try {
     const data = await api(`${editorURL()}?path=${encodeURIComponent(editor.path)}`);
-    showEditor(data.file, false);
-    editorStatus("Reloaded from the device", "ok");
-  } catch (error) { editorStatus(error.message, "error"); editorError(error); }
+    showEditor(editor.kind, data.file, false);
+    editorStatus(editor.kind === "local" ? "Reloaded from this computer" : "Reloaded from the device", "ok");
+  } catch (error) { editorStatus(error.message, "error"); editorError(editor.kind, error); }
 }
 {
   const dialog = $("#editorDialog"), text = $("#editorText");
@@ -785,89 +1012,3 @@ $("#sitesSideFilter").addEventListener("input", renderSitesSide);
 $("#sitesSideAdd").addEventListener("click", () => openDeviceDialog());
 $("#sitesSide").hidden = !store.get("filesSitesOpen", false);
 applyFilesLayout();
-
-
-// ---- Editor: find and replace -------------------------------------------------
-(function editorFindReplace() {
-  const bar = $("#editorFind"), text = $("#editorText"), needleInput = $("#findText"), replaceInput = $("#replaceText"), info = $("#findInfo");
-  const matchCase = () => $("#findCase").checked;
-  const fold = (value) => (matchCase() ? value : value.toLowerCase());
-  const setInfo = (message) => { info.textContent = message; };
-  function openBar() {
-    bar.hidden = false;
-    const picked = text.value.slice(text.selectionStart, text.selectionEnd);
-    if (picked && !/\n/.test(picked)) needleInput.value = picked;
-    needleInput.focus(); needleInput.select();
-  }
-  function closeBar() { bar.hidden = true; setInfo(""); text.focus(); }
-  function reveal(start, end) {
-    text.focus();
-    text.setSelectionRange(start, end);
-    const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 18;
-    const line = text.value.slice(0, start).split("\n").length - 1;
-    if (line * lineHeight < text.scrollTop || (line + 2) * lineHeight > text.scrollTop + text.clientHeight) text.scrollTop = Math.max(0, line * lineHeight - text.clientHeight / 2);
-    editorCursor();
-    needleInput.focus();
-  }
-  function step(backwards) {
-    const needle = needleInput.value;
-    if (!needle) { setInfo(""); return false; }
-    const hay = fold(text.value), key = fold(needle);
-    let at = backwards ? (text.selectionStart > 0 ? hay.lastIndexOf(key, text.selectionStart - 1) : -1) : hay.indexOf(key, text.selectionEnd);
-    let wrapped = false;
-    if (at < 0) { at = backwards ? hay.lastIndexOf(key) : hay.indexOf(key); wrapped = at >= 0; }
-    if (at < 0) { setInfo("Not found"); return false; }
-    reveal(at, at + needle.length);
-    setInfo(wrapped ? "Wrapped around" : "");
-    return true;
-  }
-  function writeValue(value, from, to) {
-    text.focus();
-    text.setSelectionRange(from, to);
-    if (!document.execCommand || !document.execCommand("insertText", false, value)) {
-      text.setRangeText(value, from, to, "end");
-      text.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  }
-  function replaceOne() {
-    const needle = needleInput.value;
-    if (!needle) return;
-    const selected = text.value.slice(text.selectionStart, text.selectionEnd);
-    if (fold(selected) === fold(needle)) {
-      writeValue(replaceInput.value, text.selectionStart, text.selectionEnd);
-      needleInput.focus();
-    }
-    step(false);
-  }
-  function replaceAll() {
-    const needle = needleInput.value;
-    if (!needle) return;
-    const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), matchCase() ? "g" : "gi");
-    let count = 0;
-    const next = text.value.replace(pattern, () => { count++; return replaceInput.value; });
-    if (!count) { setInfo("Not found"); return; }
-    writeValue(next, 0, text.value.length);
-    text.setSelectionRange(0, 0);
-    text.scrollTop = 0;
-    editorCursor();
-    needleInput.focus();
-    setInfo(`${count} replaced`);
-  }
-  $("#findNext").addEventListener("click", () => step(false));
-  $("#findPrev").addEventListener("click", () => step(true));
-  $("#replaceOne").addEventListener("click", replaceOne);
-  $("#replaceAll").addEventListener("click", replaceAll);
-  $("#editorFindBtn").addEventListener("click", () => (bar.hidden ? openBar() : closeBar()));
-  for (const input of [needleInput, replaceInput]) {
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") { event.preventDefault(); if (input === replaceInput) replaceOne(); else step(event.shiftKey); }
-      else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeBar(); }
-    });
-  }
-  $("#findCase").addEventListener("change", () => setInfo(""));
-  $("#editorDialog").addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") { event.preventDefault(); openBar(); }
-    else if (event.key === "F3") { event.preventDefault(); step(event.shiftKey); }
-  });
-  $("#editorDialog").addEventListener("close", () => { bar.hidden = true; setInfo(""); });
-})();

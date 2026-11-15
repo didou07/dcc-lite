@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -77,7 +78,7 @@ func (b *slotBody) Close() error {
 	return err
 }
 
-func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response, error) {
+func (d deviceWeb) getOnce(ctx context.Context, pathAndQuery string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.base+pathAndQuery, nil)
 	if err != nil {
 		return nil, err
@@ -243,6 +244,10 @@ func (d deviceWeb) probe() probeResult {
 }
 
 func (d deviceWeb) unreachable(err error) string {
+	var bad *legacyBadReply
+	if errors.As(err, &bad) {
+		return "The receiver's WebInterface could not answer: " + bad.msg + ". Check that the web interface plugin is installed and the web port is right."
+	}
 	at := strings.TrimPrefix(strings.TrimPrefix(d.base, "http://"), "https://")
 	switch errKind(err) {
 	case "plainhttp":

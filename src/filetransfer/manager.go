@@ -247,6 +247,107 @@ func (m *Manager) Remove(ctx context.Context, sessionID, remotePath string, dire
 func (m *Manager) Chmod(ctx context.Context, sessionID, remotePath string, mode uint32) error {
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Chmod(ctx, remotePath, mode) })
 }
+
+// Copy duplicates srcPath onto dstPath within the same device, for the
+// in-panel Copy/Paste command. FTP has no server-side copy command, so files
+// are streamed through a local temp file (download, then upload); folders are
+// copied entry by entry the same way directory transfers are.
+func (m *Manager) Copy(ctx context.Context, sessionID, srcPath, dstPath string, overwrite bool) error {
+	if err := validateRemotePath(srcPath); err != nil {
+		return err
+	}
+	if err := validateRemotePath(dstPath); err != nil {
+		return err
+	}
+	if dstPath == srcPath || strings.HasPrefix(dstPath, strings.TrimSuffix(srcPath, "/")+"/") {
+		return errors.New("cannot copy a folder into itself")
+	}
+	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
+		entries, err := adapter.List(ctx, path.Dir(srcPath))
+		if err != nil {
+			return fmt.Errorf("look up source: %w", err)
+		}
+		var srcEntry core.FileEntry
+		found := false
+		for _, entry := range entries {
+			if entry.Name == path.Base(srcPath) {
+				srcEntry, found = entry, true
+				break
+			}
+		}
+		if !found {
+			return errors.New("source no longer exists")
+		}
+		if strings.HasPrefix(srcEntry.Mode, "l") {
+			return errors.New("copying symbolic links is not supported")
+		}
+		if err := checkRemoteDestination(ctx, adapter, dstPath, srcEntry.IsDir, overwrite); err != nil {
+			return err
+		}
+		if srcEntry.IsDir {
+			count := 0
+			return copyRemoteDirectory(ctx, adapter, srcPath, dstPath, overwrite, 0, &count)
+		}
+		return copyRemoteFile(ctx, adapter, srcPath, dstPath)
+	})
+}
+
+func copyRemoteFile(ctx context.Context, adapter core.FileTransfer, src, dst string) error {
+	dir, err := os.MkdirTemp("", "dcclite-copy-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	tmpPath := filepath.Join(dir, "copy")
+	if err := adapter.Download(ctx, src, tmpPath, nil); err != nil {
+		return fmt.Errorf("read source for copy: %w", err)
+	}
+	return adapter.Upload(ctx, tmpPath, dst, nil)
+}
+
+func copyRemoteDirectory(ctx context.Context, adapter core.FileTransfer, srcRoot, dstRoot string, overwrite bool, depth int, count *int) error {
+	if depth > maxDirectoryDepth {
+		return errors.New("folder copy exceeds the maximum directory depth")
+	}
+	if err := ensureRemoteDirectory(ctx, adapter, dstRoot, overwrite); err != nil {
+		return err
+	}
+	entries, err := adapter.List(ctx, srcRoot)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		*count++
+		if *count > maxDirectoryEntries {
+			return errors.New("folder copy exceeds the maximum entry count")
+		}
+		if invalidFTPArgument(entry.Name) || strings.ContainsAny(entry.Name, "/\\") {
+			return fmt.Errorf("unsupported file name: %q", entry.Name)
+		}
+		if strings.HasPrefix(entry.Mode, "l") {
+			return fmt.Errorf("folder copy does not follow symbolic links: %s", entry.Name)
+		}
+		srcChild := path.Join(srcRoot, entry.Name)
+		dstChild := path.Join(dstRoot, entry.Name)
+		if entry.IsDir {
+			if err := copyRemoteDirectory(ctx, adapter, srcChild, dstChild, overwrite, depth+1, count); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := checkRemoteDestination(ctx, adapter, dstChild, false, overwrite); err != nil {
+			return err
+		}
+		if err := copyRemoteFile(ctx, adapter, srcChild, dstChild); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *Manager) withAdapter(id string, fn func(core.FileTransfer) error) error {
 	session, err := m.get(id)
 	if err != nil {

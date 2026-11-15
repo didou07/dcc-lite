@@ -48,6 +48,18 @@ func legacyMark(base, route string, on bool) {
 	legacySeen.Delete(base + "|" + route)
 }
 
+var legacyWarned sync.Map
+
+// legacyWarnDue limits the same warning to once a minute so polling does not fill the log.
+func legacyWarnDue(base, route string) bool {
+	key := base + "|" + route
+	if v, ok := legacyWarned.Load(key); ok && time.Since(v.(time.Time)) < time.Minute {
+		return false
+	}
+	legacyWarned.Store(key, time.Now())
+	return true
+}
+
 func looksJSON(body []byte) bool {
 	t := bytes.TrimLeft(body, " \t\r\n\xef\xbb\xbf")
 	return len(t) > 0 && (t[0] == '{' || t[0] == '[')
@@ -131,7 +143,12 @@ func (d deviceWeb) viaLegacy(ctx context.Context, pathAndQuery string, do func()
 		if !errors.As(err, &bad) {
 			return 0, nil, err
 		}
-		return do()
+		// The owner said the receiver has no /api/ addresses, so asking /api/ again would only produce a
+		// misleading 404. Report what the older interface really answered.
+		if legacyWarnDue(d.base, route.name) {
+			devLog.Warn("older web interface could not answer", "base", d.base, "route", route.name, "reason", bad.msg)
+		}
+		return 0, nil, bad
 	}
 	if legacyKnown(d.base, route.name) {
 		out, err := route.run(ctx, d, q)
@@ -157,7 +174,9 @@ func (d deviceWeb) viaLegacy(ctx context.Context, pathAndQuery string, do func()
 	if !errors.As(lerr, &bad) {
 		return 0, nil, lerr
 	}
-	devLog.Debug("older web interface could not answer either", "base", d.base, "route", route.name, "error", lerr)
+	if legacyWarnDue(d.base, route.name) {
+		devLog.Warn("older web interface could not answer either", "base", d.base, "route", route.name, "reason", lerr.Error())
+	}
 	return status, body, nil
 }
 
@@ -413,7 +432,33 @@ func legacyCurrent(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, erro
 		Events []xEvent `xml:"e2eventlist>e2event"`
 	}
 	if err := d.legacyXML(ctx, "/web/getcurrent", 1<<20, &cur); err != nil {
-		return nil, err
+		var bad *legacyBadReply
+		if !errors.As(err, &bad) {
+			return nil, err
+		}
+		// Some images (DreamOS among them) have no /web/getcurrent; /web/about names the current channel too.
+		var about struct {
+			Service struct {
+				Ref      string `xml:"e2servicereference"`
+				Name     string `xml:"e2servicename"`
+				Provider string `xml:"e2providername"`
+				Width    string `xml:"e2videowidth"`
+				Height   string `xml:"e2videoheight"`
+				Wide     string `xml:"e2iswidescreen"`
+				Apid     string `xml:"e2apid"`
+				Vpid     string `xml:"e2vpid"`
+				Pcrpid   string `xml:"e2pcrpid"`
+				Pmtpid   string `xml:"e2pmtpid"`
+				Txtpid   string `xml:"e2txtpid"`
+				Tsid     string `xml:"e2tsid"`
+				Onid     string `xml:"e2onid"`
+				Sid      string `xml:"e2sid"`
+			} `xml:"e2about>e2service"`
+		}
+		if aerr := d.legacyXML(ctx, "/web/about", 1<<20, &about); aerr != nil || (strings.TrimSpace(about.Service.Ref) == "" && strings.TrimSpace(about.Service.Name) == "") {
+			return nil, err // report the first failure: it names the address that is missing
+		}
+		cur.Service = about.Service
 	}
 	s := cur.Service
 	info := map[string]any{"ref": strings.TrimSpace(s.Ref), "name": strings.TrimSpace(s.Name)}

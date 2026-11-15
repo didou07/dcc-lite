@@ -145,6 +145,102 @@ func (s *Server) chmodLocalFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) copyLocalFile(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
+	logAction(w, r, "local file copy requested")
+	var input struct {
+		SrcPath   string `json:"src_path"`
+		DstPath   string `json:"dst_path"`
+		Overwrite bool   `json:"overwrite"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if s.app.LocalFiles == nil {
+		writeError(w, http.StatusServiceUnavailable, "local file browser is unavailable")
+		return
+	}
+	if err := s.app.LocalFiles.Copy(r.Context(), input.SrcPath, input.DstPath, input.Overwrite); err != nil {
+		writeCopyError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) readLocalText(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
+	localPath := r.URL.Query().Get("path")
+	if localPath == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if s.app.LocalFiles == nil {
+		writeError(w, http.StatusServiceUnavailable, "local file browser is unavailable")
+		return
+	}
+	file, err := s.app.LocalFiles.ReadText(localPath)
+	if err != nil {
+		writeEditError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"file": file, "max_bytes": filetransfer.MaxEditBytes})
+}
+
+func (s *Server) writeLocalText(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
+	}
+	logAction(w, r, "local file save requested")
+	var input struct {
+		Path               string    `json:"path"`
+		Content            string    `json:"content"`
+		LineEnding         string    `json:"line_ending"`
+		ExpectedSize       int64     `json:"expected_size"`
+		ExpectedModifiedAt time.Time `json:"expected_modified_at"`
+		ExpectedHash       string    `json:"expected_hash"`
+		Force              bool      `json:"force"`
+		Create             bool      `json:"create"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 2*filetransfer.MaxEditBytes+4096)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if input.Path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if s.app.LocalFiles == nil {
+		writeError(w, http.StatusServiceUnavailable, "local file browser is unavailable")
+		return
+	}
+	file, err := s.app.LocalFiles.WriteText(input.Path, filetransfer.TextWrite{
+		Content: input.Content, LineEnding: input.LineEnding,
+		ExpectedSize: input.ExpectedSize, ExpectedModifiedAt: input.ExpectedModifiedAt, ExpectedHash: input.ExpectedHash,
+		Force: input.Force, Create: input.Create,
+	})
+	if err != nil {
+		writeEditError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"file": file})
+}
+
+func writeCopyError(w http.ResponseWriter, err error) {
+	if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "already contains") || strings.Contains(err.Error(), "different file type") {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "exists"})
+		return
+	}
+	writeError(w, http.StatusUnprocessableEntity, err.Error())
+}
+
 func (s *Server) listFileSessions(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": s.app.Files.Sessions()})
 }
@@ -268,6 +364,28 @@ func (s *Server) chmodRemoteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.app.Files.Chmod(r.Context(), r.PathValue("id"), input.Path, uint32(mode)); err != nil {
+		writeFilesError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) copyRemoteFile(w http.ResponseWriter, r *http.Request) {
+	logAction(w, r, "remote file copy requested")
+	var input struct {
+		SrcPath   string `json:"src_path"`
+		DstPath   string `json:"dst_path"`
+		Overwrite bool   `json:"overwrite"`
+	}
+	if err := decodeJSON(w, r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.app.Files.Copy(r.Context(), r.PathValue("id"), input.SrcPath, input.DstPath, input.Overwrite); err != nil {
+		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "already contains") || strings.Contains(err.Error(), "different file type") {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "exists"})
+			return
+		}
 		writeFilesError(w, err)
 		return
 	}

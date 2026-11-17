@@ -5,11 +5,11 @@ Run:
   chmod +x DCCLite
   ./DCCLite
 
-Needed:
-  A Chromium-family browser for the window (Chrome, Chromium, Edge, Brave...).
-    Debian/Ubuntu:  sudo apt install chromium    (or chromium-browser)
-    Fedora:         sudo dnf install chromium
-    Arch:           sudo pacman -S chromium
-  Without one, the interface opens in your default browser at
-  http://127.0.0.1:8787 and the program runs until you press Ctrl+C.
-  Another browser: DCC_BROWSER=/path/to/browser ./DCCLite
+The program opens its own GTK window. If the window cannot open (no graphical session, missing libraries),
+the interface opens in your default browser at http://127.0.0.1:8787 and the program runs until you press
+Ctrl+C.
+
+Needed for the window (all CPUs; on WSL use WSLg):
+  Debian/Ubuntu:  sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0
+  Fedora:         sudo dnf install gtk3 webkit2gtk4.1
+  Arch:           sudo pacman -S gtk3 webkit2gtk-4.1

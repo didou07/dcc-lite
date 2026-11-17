@@ -1,4 +1,4 @@
-//go:build linux && native && gtk
+//go:build linux && native && cgo
 
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
@@ -7,9 +7,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "gtkwin.h"
+#include "linuxwin.h"
 
-// Implemented in Go (native_gtk_linux.go).
+// Implemented in Go (native_window_linux.go).
 extern char *dccGoHandle(char *op, char *raw, char **err);
 extern void dccGoMouse(char *kind, int x, int y);
 extern void dccGoAlive(void);

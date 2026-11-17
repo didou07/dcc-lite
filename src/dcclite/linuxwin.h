@@ -1,7 +1,7 @@
-//go:build linux && native && gtk
+//go:build linux && native && cgo
 
-#ifndef DCC_GTKWIN_H
-#define DCC_GTKWIN_H
+#ifndef DCC_LINUXWIN_H
+#define DCC_LINUXWIN_H
 
 int dcc_gtk_run(const char *url, const char *origin, const char *datadir, const char *title, int w, int h);
 

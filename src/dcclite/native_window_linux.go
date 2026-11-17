@@ -1,11 +1,11 @@
-//go:build linux && native && gtk
+//go:build linux && native && cgo
 
 package main
 
 /*
 #cgo pkg-config: gtk+-3.0 gdk-x11-3.0 webkit2gtk-4.1
 #include <stdlib.h>
-#include "gtkwin.h"
+#include "linuxwin.h"
 */
 import "C"
 

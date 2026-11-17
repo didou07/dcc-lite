@@ -1,4 +1,4 @@
-//go:build linux && native && !gtk
+//go:build linux && native && !cgo
 
 package main
 

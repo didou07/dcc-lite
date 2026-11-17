@@ -37,6 +37,11 @@ jobs:
           go-version: '1.27.3'
           check-latest: false
 
+      - name: Install GTK and WebKitGTK development packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
       - name: Validate release version
         id: meta
         shell: bash
@@ -70,7 +75,9 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet ./...
+        run: |
+          go vet ./...
+          go vet -tags native ./src/dcclite ./src/vlc
 
       - name: Check first-party JavaScript syntax
         shell: bash
@@ -100,7 +107,7 @@ jobs:
             [[ "$(printf '%s\n' "$entries" | wc -l | tr -d ' ')" == "2" ]] && printf '%s\n' "$entries" | grep -qx 'README.txt' || { echo "$file must contain the program and README.txt" >&2; exit 1; }
             count=$((count + 1))
           done
-          [[ "$count" -eq 6 ]] || { echo "Expected 6 platform archives, found $count" >&2; exit 1; }
+          [[ "$count" -eq 3 ]] || { echo "Expected 3 platform archives, found $count" >&2; exit 1; }
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           unzip -p "dist/DCC-Lite-${VERSION}-linux-amd64.zip" DCCLite > "$tmp/DCCLite"
@@ -116,11 +123,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  gtk:
-    # Optional Linux amd64 GTK window (built-in VLC picture). It needs cgo and the GTK/WebKitGTK development
-    # packages. It is checked on every run and kept as an artifact; it is NOT part of the release, whose Linux
-    # amd64 package is the Chromium window one.
-    runs-on: ubuntu-latest
+  linux-arm64:
+    # GTK needs cgo, so arm64 is built natively on an arm64 runner.
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -136,39 +141,91 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 
-      - name: Vet the GTK build
-        run: go vet -tags 'native gtk' ./src/dcclite ./src/vlc
+      - name: Vet the Linux window build
+        run: go vet -tags native ./src/dcclite ./src/vlc
 
-      - name: Build the GTK package
-        run: VERSION="$(tr -d '[:space:]' < VERSION)" bash build.sh linuxgtk/amd64
+      - name: Build the Linux arm64 package
+        run: VERSION="$(tr -d '[:space:]' < VERSION)" bash build.sh
 
-      - name: Validate the GTK package and native version
+      - name: Validate the package and native version
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
-          file="dist/DCC-Lite-${version}-linux-amd64.zip"
+          file="dist/DCC-Lite-${version}-linux-arm64.zip"
           [[ "$(unzip -Z1 "$file" | wc -l | tr -d ' ')" == "2" ]] && unzip -Z1 "$file" | grep -qx 'README.txt' || { echo "$file must contain the program and README.txt" >&2; exit 1; }
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           unzip -p "$file" DCCLite > "$tmp/DCCLite"
           chmod +x "$tmp/DCCLite"
-          "$tmp/DCCLite" --version | grep -F "DCC Lite ${version} (linux/amd64)"
+          "$tmp/DCCLite" --version | grep -F "DCC Lite ${version} (linux/arm64)"
 
-      - name: Upload GTK package
+      - name: Upload Linux arm64 package
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: DCC-Lite-linux-gtk-package
+          name: DCC-Lite-linux-arm64-package
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  linux-32bit:
+    # 386 and arm are cross built in a Debian container that has the 32-bit GTK libraries.
+    runs-on: ubuntu-latest
+    container: debian:bookworm
+    steps:
+      - name: Install build tools and 32-bit libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          dpkg --add-architecture i386
+          dpkg --add-architecture armhf
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git zip unzip curl pkg-config gcc gcc-multilib gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
+            libgtk-3-dev:i386 libwebkit2gtk-4.1-dev:i386 libgtk-3-dev:armhf libwebkit2gtk-4.1-dev:armhf
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          check-latest: false
+
+      - name: Build the Linux 386 and arm packages
+        shell: bash
+        run: VERSION="$(tr -d '[:space:]' < VERSION)" bash build.sh linuxgui/386 linuxgui/arm
+
+      - name: Validate the packages and the 386 native version
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          for cpu in 386 arm; do
+            file="dist/DCC-Lite-${version}-linux-${cpu}.zip"
+            [[ "$(unzip -Z1 "$file" | wc -l | tr -d ' ')" == "2" ]] && unzip -Z1 "$file" | grep -qx 'README.txt' || { echo "$file must contain the program and README.txt" >&2; exit 1; }
+          done
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          unzip -p "dist/DCC-Lite-${version}-linux-386.zip" DCCLite > "$tmp/DCCLite"
+          chmod +x "$tmp/DCCLite"
+          "$tmp/DCCLite" --version | grep -F "DCC Lite ${version} (linux/386)"
+
+      - name: Upload Linux 32-bit packages
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DCC-Lite-linux-32bit-packages
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
 
   macos:
-    # The macOS window (WKWebView + live TV through VLC.app) needs cgo and the system WebKit, so it is built on a
-    # Mac runner. It is NEW and has not been run on a real Mac yet: a failure here is reported but does not stop
-    # the other six packages from being released (the release then simply has no macOS package).
+    # A macOS failure does not block the other packages.
     runs-on: macos-latest
     continue-on-error: true
     steps:
@@ -211,10 +268,12 @@ jobs:
           retention-days: 14
 
   publish:
-    needs: [build, macos]
+    needs: [build, linux-arm64, linux-32bit, macos]
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
+      needs.linux-arm64.result == 'success' &&
+      needs.linux-32bit.result == 'success' &&
       needs.build.outputs.exists != 'true' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
     runs-on: ubuntu-latest
@@ -225,6 +284,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: DCC-Lite-release-packages
+          path: dist/
+
+      - name: Download Linux arm64 package
+        uses: actions/download-artifact@v4
+        with:
+          name: DCC-Lite-linux-arm64-package
+          path: dist/
+
+      - name: Download Linux 32-bit packages
+        uses: actions/download-artifact@v4
+        with:
+          name: DCC-Lite-linux-32bit-packages
           path: dist/
 
       - name: Download macOS packages (if they were built)

@@ -22,16 +22,25 @@ win7_go() {
   echo "$dir/bin/go"
 }
 
-# One package per system. linux/amd64 is the Chromium app window unless LINUX_AMD64=gtk.
-LINUX_AMD64="${LINUX_AMD64:-gui}"
-case "$LINUX_AMD64" in gtk|gui) ;; *) echo "LINUX_AMD64 must be gui or gtk" >&2; exit 1 ;; esac
-if [[ $LINUX_AMD64 == gtk ]]; then LINUX_AMD64_TARGET=linuxgtk/amd64; else LINUX_AMD64_TARGET=linuxgui/amd64; fi
-STANDARD=(windowsgui/amd64 windowsgui/386 "$LINUX_AMD64_TARGET" linuxgui/arm64 linuxgui/386 linuxgui/arm)
+# Every package has a window; it falls back to the default browser if the window cannot open.
+case "$(uname -m)" in x86_64|amd64) HOST=amd64 ;; aarch64|arm64) HOST=arm64 ;; *) HOST="" ;; esac
+if [[ $HOST == arm64 && $(uname -s) == Linux ]]; then
+  STANDARD=(linuxgui/arm64)
+else
+  STANDARD=(windowsgui/amd64 windowsgui/386 linuxgui/amd64)
+  # 386 and arm only when their cross toolchain and libraries are installed.
+  [[ $(uname -s) == Linux ]] && command -v arm-linux-gnueabihf-gcc >/dev/null \
+    && PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig pkg-config --exists gtk+-3.0 webkit2gtk-4.1 \
+    && STANDARD+=(linuxgui/arm)
+  [[ $(uname -s) == Linux ]] \
+    && PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig pkg-config --exists gtk+-3.0 webkit2gtk-4.1 \
+    && STANDARD+=(linuxgui/386)
+fi
 case "${1:-}" in
   ""|all) TARGETS=("${STANDARD[@]}"); [[ $(uname -s) == Darwin ]] && TARGETS+=(darwingui/arm64 darwingui/amd64) ;;
   mac)    TARGETS=(darwingui/arm64 darwingui/amd64) ;;
   windows7gui/*|windows7/*) echo "the Windows 7 builds were merged into windowsgui (Windows 7 to 11): use windowsgui/${1#*/}" >&2; exit 1 ;;
-  windows/*|linux/*|darwin/*) echo "browser-only packages are no longer built: use windowsgui/${1#*/} or linuxgui/${1#*/} (or linuxgtk/amd64); on a Mac use ./build.sh mac" >&2; exit 1 ;;
+  windows/*|linux/*|darwin/*) echo "browser-only packages are no longer built: use windowsgui/${1#*/} or linuxgui/${1#*/}; on a Mac use ./build.sh mac" >&2; exit 1 ;;
   *)   TARGETS=("$@") ;;
 esac
 
@@ -46,19 +55,29 @@ for target in "${TARGETS[@]}"; do
     isgui=1
   fi
   if [[ $os == linuxgui ]]; then
-    os=linux variant=gui tags="native"
+    os=linux variant=gui tags="native" cgo=1
+    [[ $(uname -s) == Linux ]] || { echo "linuxgui must be built on Linux (cgo, GTK and WebKitGTK)" >&2; exit 1; }
+    command -v pkg-config >/dev/null || { echo "pkg-config is required for linuxgui/$arch" >&2; exit 1; }
+    case $arch in
+      amd64|arm64)
+        command -v gcc >/dev/null || { echo "gcc is required for linuxgui/$arch" >&2; exit 1; }
+        [[ $arch == "$HOST" ]] || { echo "linuxgui/$arch must be built on a Linux $arch machine (cgo, no cross build)" >&2; exit 1; } ;;
+      386)
+        command -v gcc >/dev/null || { echo "gcc (with -m32 support, gcc-multilib) is required for linuxgui/386" >&2; exit 1; }
+        [[ $HOST == amd64 ]] || { echo "linuxgui/386 must be built on a Linux amd64 machine" >&2; exit 1; }
+        extra+=(CC="gcc -m32" PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig) ;;
+      arm)
+        command -v arm-linux-gnueabihf-gcc >/dev/null || { echo "gcc-arm-linux-gnueabihf is required for linuxgui/arm" >&2; exit 1; }
+        [[ $HOST == amd64 ]] || { echo "linuxgui/arm must be built on a Linux amd64 machine" >&2; exit 1; }
+        extra+=(CC=arm-linux-gnueabihf-gcc PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig) ;;
+      *) echo "linuxgui/$arch is not supported" >&2; exit 1 ;;
+    esac
+    env ${extra[@]+"${extra[@]}"} pkg-config --exists gtk+-3.0 gdk-x11-3.0 webkit2gtk-4.1 || { echo "linuxgui/$arch needs the GTK 3 and WebKitGTK 4.1 development packages for $arch" >&2; exit 1; }
   fi
   if [[ $os == darwingui ]]; then
     [[ $(uname -s) == Darwin ]] || { echo "darwingui must be built on a Mac (cgo and the system WebKit; no cross build)" >&2; exit 1; }
     command -v clang >/dev/null || { echo "clang is required for darwingui (xcode-select --install)" >&2; exit 1; }
     os=darwin variant=gui tags="native" cgo=1
-  fi
-  if [[ $os == linuxgtk ]]; then
-    for tool in gcc pkg-config; do command -v "$tool" >/dev/null || { echo "$tool is required for linuxgtk" >&2; exit 1; }; done
-    pkg-config --exists gtk+-3.0 webkit2gtk-4.1 || { echo "linuxgtk needs libgtk-3-dev and libwebkit2gtk-4.1-dev" >&2; exit 1; }
-    case "$(uname -m)" in x86_64|amd64) host=amd64 ;; aarch64|arm64) host=arm64 ;; *) host="" ;; esac
-    [[ $arch == "$host" ]] || { echo "linuxgtk/$arch must be built on a Linux $arch machine (cgo, no cross build)" >&2; exit 1; }
-    os=linux variant=gtk tags="native gtk" cgo=1
   fi
   [[ $arch == arm ]] && extra+=(GOARM="${GOARM:-7}")
   [[ $os == windows ]] && ext=.exe
@@ -68,12 +87,11 @@ for target in "${TARGETS[@]}"; do
   env CGO_ENABLED="$cgo" GOOS="$os" GOARCH="$arch" ${extra[@]+"${extra[@]}"} \
     "$go" build -trimpath -buildvcs=false ${tags:+-tags "$tags"} -ldflags "-s -w -buildid= $gui -X main.version=$VERSION -X main.variant=$variant" \
     -o "$stage/$exe$ext" ./src/dcclite
-  # Each package holds the program and a README.txt for its system (how to run and what to install).
   case $os in windows) readme=README-windows.txt ;; darwin) readme=README-macos.txt ;; *) readme=README-linux.txt ;; esac
   rm -f "$stage/README.txt" && cp "packaging/$readme" "$stage/README.txt"
   zip -qj9 "dist/$name.zip" "$stage/$exe$ext" "$stage/README.txt"
   if [[ -n $isgui && $os == windows ]]; then
-    # Optional full package for Windows 7/8: the program plus an unpacked WebView2 109 folder.
+    # Optional Windows 7/8 bundle with an unpacked WebView2 109 folder.
     case $arch in amd64) wv="${WEBVIEW2_X64_DIR:-}" ;; 386) wv="${WEBVIEW2_X86_DIR:-}" ;; *) wv="" ;; esac
     if [[ -n $wv ]]; then
       [[ -d $wv ]] || { echo "WebView2 folder not found: $wv" >&2; exit 1; }

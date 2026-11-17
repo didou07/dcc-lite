@@ -177,6 +177,7 @@ jobs:
     # 386 and arm are built inside a Debian container of the target CPU (arm runs under qemu).
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -200,13 +201,23 @@ jobs:
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
+          addhosts=()
+          deb_ip=""
+          for h in deb.debian.org go.dev dl.google.com; do
+            ip="$(getent ahostsv4 "$h" | awk 'NR==1{print $1}')"
+            [[ -n "$ip" ]] && addhosts+=(--add-host "$h:$ip")
+            [[ "$h" == deb.debian.org ]] && deb_ip="$ip"
+          done
+          echo "resolved on the host: ${addhosts[*]}"
           docker run --rm --network host --platform "${{ matrix.platform }}" -v "$PWD":/src -w /src \
+            "${addhosts[@]}" -e DEB_IP="$deb_ip" \
             -e VERSION="$version" -e CPU="${{ matrix.cpu }}" -e GOTAR="${{ matrix.gotar }}" -e GO_VERSION=1.27.3 \
             -e DCC_NATIVE=1 -e GOTOOLCHAIN=local -e GOFLAGS=-buildvcs=false \
             debian:bookworm bash -eo pipefail -c '
               echo "--- resolv.conf from the host:"; cat /etc/resolv.conf || true
               printf "nameserver 8.8.8.8\nnameserver 1.1.1.1\n" > /etc/resolv.conf
               getent hosts deb.debian.org || echo "DNS lookup still failing"
+              if (exec 3<>/dev/tcp/${DEB_IP}/80) 2>/dev/null; then echo "TCP connect from this container: ok"; else echo "TCP connect from this container: FAILED"; fi
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 ca-certificates curl zip unzip pkg-config gcc libc6-dev libgtk-3-dev libwebkit2gtk-4.1-dev
@@ -277,7 +288,6 @@ jobs:
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.linux-arm64.result == 'success' &&
-      needs.linux-32bit.result == 'success' &&
       needs.build.outputs.exists != 'true' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release))
     runs-on: ubuntu-latest
@@ -296,7 +306,8 @@ jobs:
           name: DCC-Lite-linux-arm64-package
           path: dist/
 
-      - name: Download Linux 32-bit packages
+      - name: Download Linux 32-bit packages (if they were built)
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           pattern: DCC-Lite-linux-32bit-*
@@ -331,12 +342,12 @@ jobs:
             echo "Release $tag already exists; refusing to replace published files." >&2
             exit 1
           fi
-          for pkg in windows-amd64 windows-386 linux-amd64 linux-arm64 linux-386 linux-arm; do
+          for pkg in windows-amd64 windows-386 linux-amd64 linux-arm64; do
             [[ -f "dist/DCC-Lite-${VERSION}-${pkg}.zip" ]] || { echo "Missing package: DCC-Lite-${VERSION}-${pkg}.zip" >&2; exit 1; }
           done
-          count="$(find dist -maxdepth 1 -name '*.zip' ! -name '*-bundle.zip' | wc -l | tr -d ' ')"
-          if [[ "$count" == "6" ]]; then echo "::warning::No macOS packages in this release (the macOS job did not produce them)."
-          elif [[ "$count" != "8" ]]; then echo "Expected 6 or 8 release packages, found $count." >&2; exit 1; fi
+          for pkg in linux-386 linux-arm darwin-arm64 darwin-amd64; do
+            [[ -f "dist/DCC-Lite-${VERSION}-${pkg}.zip" ]] || echo "::warning::No ${pkg} package in this release."
+          done
           flags=()
           [[ "$tag" == *-* ]] && flags+=(--prerelease)
           gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "DCC Lite $tag" --generate-notes "${flags[@]}"

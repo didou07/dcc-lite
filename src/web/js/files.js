@@ -790,6 +790,72 @@ function editorCursor() {
   const line = before.split("\n").length;
   $("#editorCursor").textContent = `Ln ${line}, Col ${before.length - before.lastIndexOf("\n")}`;
 }
+const editorLines = (() => {
+  const text = $("#editorText"), body = $("#editorBody"), gutter = $("#editorGutter"), nums = $("#editorNums"), toggle = $("#editorLineNumbers");
+  const mirror = document.createElement("div");
+  mirror.className = "editor-mirror"; mirror.setAttribute("aria-hidden", "true");
+  body.append(mirror);
+  let raf = 0, plainCount = 0;
+  const syncScroll = () => { nums.style.transform = text.scrollTop ? `translateY(${-text.scrollTop}px)` : ""; };
+  function wrappedRows(lines) {
+    const rows = new Array(lines.length).fill(1), style = getComputedStyle(text);
+    const width = text.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), lineHeight = parseFloat(style.lineHeight);
+    if (!(width > 0) || !(lineHeight > 0)) return rows;
+    mirror.style.width = `${width}px`;
+    const probe = document.createElement("span");
+    probe.style.whiteSpace = "pre"; probe.textContent = "0".repeat(50);
+    mirror.replaceChildren(probe);
+    const charWidth = probe.getBoundingClientRect().width / 50, cols = charWidth > 0 ? Math.floor(width / charWidth) : 0;
+    const measured = [], fragment = document.createDocumentFragment();
+    lines.forEach((line, index) => {
+      if (cols > 0 && line.length < cols && /^[\x20-\x7e]*$/.test(line)) return;
+      const row = document.createElement("div");
+      row.textContent = line || "\u200b";
+      fragment.append(row); measured.push(index);
+    });
+    mirror.replaceChildren(fragment);
+    const children = mirror.children;
+    measured.forEach((index, k) => { rows[index] = Math.max(1, Math.round(children[k].getBoundingClientRect().height / lineHeight)); });
+    mirror.replaceChildren();
+    return rows;
+  }
+  function render() {
+    raf = 0;
+    const on = toggle.checked;
+    gutter.hidden = !on;
+    if (!on || !text.clientWidth) return;
+    const wrapping = text.getAttribute("wrap") === "soft", value = text.value;
+    let count = 1;
+    for (let at = value.indexOf("\n"); at >= 0; at = value.indexOf("\n", at + 1)) count++;
+    let out;
+    if (!wrapping) {
+      if (count !== plainCount || !nums.dataset.plain) {
+        const list = new Array(count);
+        for (let i = 0; i < count; i++) list[i] = i + 1;
+        nums.textContent = list.join("\n"); plainCount = count; nums.dataset.plain = "1";
+      }
+    } else {
+      const rows = wrappedRows(value.split("\n")), list = [];
+      rows.forEach((n, i) => { list.push(i + 1); for (let r = 1; r < n; r++) list.push(""); });
+      nums.textContent = list.join("\n"); delete nums.dataset.plain;
+    }
+    gutter.style.width = `calc(${Math.max(3, String(count).length)}ch + calc(18px * var(--ui)))`;
+    syncScroll();
+  }
+  function update(now = false) {
+    if (now) { if (raf) cancelAnimationFrame(raf); render(); return; }
+    if (!raf) raf = requestAnimationFrame(render);
+  }
+  toggle.checked = store.get("editorLines", true);
+  toggle.addEventListener("change", () => { store.set("editorLines", toggle.checked); update(true); text.focus(); });
+  text.addEventListener("input", () => update());
+  text.addEventListener("scroll", syncScroll);
+  $("#editorWrap").addEventListener("change", () => update());
+  gutter.addEventListener("mousedown", (event) => { event.preventDefault(); text.focus(); });
+  gutter.addEventListener("wheel", (event) => { event.preventDefault(); text.scrollTop += event.deltaY; text.scrollLeft += event.deltaX; }, { passive: false });
+  if (window.ResizeObserver) new ResizeObserver(() => update()).observe(text);
+  return { update };
+})();
 function showEditor(kind, file, create) {
   Object.assign(editor, {
     kind, path: file.path, name: file.path.split("/").filter(Boolean).pop() || file.path, size: Number(file.size) || 0,
@@ -809,6 +875,7 @@ function showEditor(kind, file, create) {
   text.setSelectionRange(0, 0);
   text.scrollTop = 0;
   editorCursor();
+  editorLines.update(true);
 }
 function editorError(kind, error) {
   if (error?.code === "file_not_found") { toast(error.message, "error"); refreshPane(kind); return; }

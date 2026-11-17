@@ -136,11 +136,8 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 
 const maxScreenBytes = 16 << 20
 
-// grabAddresses are the screenshot addresses for the receiver's own web interface (chosen by the owner).
-// OpenWebif: /grab only. WebInterface: its own /screenshot address first (osd and
-// video switches, as the receiver page itself uses), then the older /grab.
 func grabAddresses(mode string, width int, kind string) []string {
-	if kind != "webinterface" {
+	if kind != "dreamos" {
 		return []string{fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width)}
 	}
 	layers := "osd=1&video=1"
@@ -152,6 +149,8 @@ func grabAddresses(mode string, width int, kind string) []string {
 	}
 	return []string{
 		"/screenshot?format=jpg&" + layers,
+		// dreamDroid's form: Dreambox images save the picture under "filename" before sending it.
+		fmt.Sprintf("/grab?format=jpg&filename=/tmp/dcc-lite-grab&r=%d", width),
 		fmt.Sprintf("/grab?format=jpg&r=%d", width),
 		fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width),
 	}
@@ -164,8 +163,6 @@ func isPicture(body []byte) bool {
 	return len(body) >= 8 && string(body[1:4]) == "PNG"
 }
 
-// grabOnce asks the receiver for one picture: /grab first; other addresses only on 404/405,
-// never after a real failure. The working address is remembered; OpenWebif devices use /grab only.
 func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, width int) ([]byte, *grabError) {
 	all := grabAddresses(mode, width, web.kind)
 	st.mu.Lock()
@@ -178,8 +175,8 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 	switch {
 	case found && idx < len(all):
 		order = []int{idx}
-	case web.kind == "webinterface":
-		// WebInterface: its own addresses in turn, moving on only after 404 or 400/412/415/501.
+	case web.kind == "dreamos":
+		// DreamOS: its own addresses in turn, moving on only after 404 or 400/412/415/501.
 		order = make([]int, len(all))
 		for i := range order {
 			order[i] = i
@@ -214,7 +211,7 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 			devLog.Warn("screenshot address refused", "base", web.base, "path", pathOnly(all[i]), "status", resp.StatusCode)
 			switch resp.StatusCode {
 			case http.StatusBadRequest, http.StatusPreconditionFailed, http.StatusUnsupportedMediaType, http.StatusNotImplemented:
-				if web.kind == "webinterface" && n < len(order)-1 {
+				if web.kind == "dreamos" && n < len(order)-1 {
 					continue // the request was refused, not crashed: another form of the address may be accepted
 				}
 			}
@@ -222,7 +219,7 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 			lastMsg = "The receiver sent an unusable picture."
 		case !isPicture(body):
 			lastMsg = "The receiver did not return a picture."
-			if web.kind == "webinterface" && n < len(order)-1 {
+			if web.kind == "dreamos" && n < len(order)-1 {
 				continue // the owner said it is the older interface: its pages may answer with text instead
 			}
 		default:

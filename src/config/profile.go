@@ -32,10 +32,7 @@ type Profile struct {
 	Password    string `json:"-"`
 	Enabled     bool   `json:"enabled"`
 	InsecureTLS bool   `json:"tls_insecure_skip_verify,omitempty"`
-	// WebKind is chosen by the owner: "openwebif" (JSON, /api/) or "webinterface" (the older Dreambox
-	// WebInterface: XML, /web/). The app never guesses
-	// or mixes the two. Profiles saved before this choice existed (empty) are treated as OpenWebif.
-	WebKind string `json:"web_kind,omitempty"`
+	WebKind     string `json:"web_kind,omitempty"`
 
 	Group    string `json:"group,omitempty"`     // folder name in the site list
 	Color    string `json:"color,omitempty"`     // one of SiteColors, or empty
@@ -70,10 +67,18 @@ func portOr(value, fallback int) int {
 	return fallback
 }
 
-// EffectiveWebKind is the web interface the receiver is asked through: always exactly one of the two.
+// NormalizeWebKind lower-cases the kind and maps the old name "webinterface" to "dreamos".
+func NormalizeWebKind(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "webinterface" {
+		return "dreamos"
+	}
+	return s
+}
+
 func (p Profile) EffectiveWebKind() string {
-	if p.WebKind == "webinterface" {
-		return "webinterface"
+	if NormalizeWebKind(p.WebKind) == "dreamos" {
+		return "dreamos"
 	}
 	return "openwebif"
 }
@@ -138,8 +143,8 @@ func (p Profile) Validate() error {
 	if p.InsecureTLS && p.Scheme != "https" {
 		return errors.New("accepting an untrusted TLS certificate requires HTTPS")
 	}
-	if p.WebKind != "" && p.WebKind != "openwebif" && p.WebKind != "webinterface" {
-		return errors.New("web interface must be OpenWebif or WebInterface")
+	if k := NormalizeWebKind(p.WebKind); k != "" && k != "openwebif" && k != "dreamos" {
+		return errors.New("web interface must be OpenWebif or DreamOS")
 	}
 	if len(p.Group) > 40 || hasControl(p.Group) {
 		return errors.New("group must be at most 40 characters without control characters")

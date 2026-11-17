@@ -62,8 +62,6 @@ func (s *Server) deviceDiagnose(w http.ResponseWriter, r *http.Request) {
 
 func timed(c *diagnoseCheck, began time.Time) { c.MS = time.Since(began).Milliseconds() }
 
-// diagnoseWeb runs the web-interface checks one after another (the receiver allows few parallel
-// requests): the interface itself, the channel list and the receiver picture.
 func diagnoseWeb(ctx context.Context, web deviceWeb) []diagnoseCheck {
 	iface := diagnoseCheck{ID: "web", Label: "Web interface"}
 	channels := diagnoseCheck{ID: "channels", Label: "Channel list"}
@@ -82,11 +80,11 @@ func diagnoseWeb(ctx context.Context, web deviceWeb) []diagnoseCheck {
 		iface.Hint = "Check the web user name and password."
 	case status == http.StatusPreconditionFailed:
 		iface.State, iface.Detail = "fail", fmt.Sprintf("HTTP %d: the web interface wants a session id.", status)
-		iface.Hint = "Set the web interface type to WebInterface."
+		iface.Hint = "Set the web interface type to DreamOS."
 	case status != http.StatusOK:
 		iface.State, iface.Detail = "fail", fmt.Sprintf("The web interface answered HTTP %d.", status)
-		if web.kind == "webinterface" {
-			iface.Hint = "Check that the WebInterface is running on this port."
+		if web.kind == "dreamos" {
+			iface.Hint = "Check that the DreamOS is running on this port."
 		} else {
 			iface.Hint = "Check that OpenWebif is running on this port."
 		}

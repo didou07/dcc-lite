@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# DCC Lite release build (run on Linux).
-# Usage: ./build.sh [all | target ...]  (default: 8 standard targets + windowsgui/amd64; all adds Windows 7)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -24,10 +22,16 @@ win7_go() {
   echo "$dir/bin/go"
 }
 
-STANDARD=(windows/amd64 windows/386 linux/amd64 linux/386 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windowsgui/amd64)
+# One package per system. linux/amd64 is the Chromium app window unless LINUX_AMD64=gtk.
+LINUX_AMD64="${LINUX_AMD64:-gui}"
+case "$LINUX_AMD64" in gtk|gui) ;; *) echo "LINUX_AMD64 must be gui or gtk" >&2; exit 1 ;; esac
+if [[ $LINUX_AMD64 == gtk ]]; then LINUX_AMD64_TARGET=linuxgtk/amd64; else LINUX_AMD64_TARGET=linuxgui/amd64; fi
+STANDARD=(windowsgui/amd64 windowsgui/386 "$LINUX_AMD64_TARGET" linuxgui/arm64 linuxgui/386 linuxgui/arm)
 case "${1:-}" in
-  "")  TARGETS=("${STANDARD[@]}") ;;
-  all) TARGETS=("${STANDARD[@]}" windows7/amd64 windows7/386) ;;
+  ""|all) TARGETS=("${STANDARD[@]}"); [[ $(uname -s) == Darwin ]] && TARGETS+=(darwingui/arm64 darwingui/amd64) ;;
+  mac)    TARGETS=(darwingui/arm64 darwingui/amd64) ;;
+  windows7gui/*|windows7/*) echo "the Windows 7 builds were merged into windowsgui (Windows 7 to 11): use windowsgui/${1#*/}" >&2; exit 1 ;;
+  windows/*|linux/*|darwin/*) echo "browser-only packages are no longer built: use windowsgui/${1#*/} or linuxgui/${1#*/} (or linuxgtk/amd64); on a Mac use ./build.sh mac" >&2; exit 1 ;;
   *)   TARGETS=("$@") ;;
 esac
 
@@ -36,23 +40,48 @@ trap 'rm -rf "$stage"' EXIT
 rm -rf dist && mkdir dist
 
 for target in "${TARGETS[@]}"; do
-  os="${target%/*}" arch="${target#*/}" go=go suffix="" ext="" variant="" exe="DCCLite" tags="" gui=""  extra=()
+  os="${target%/*}" arch="${target#*/}" cgo=0 go=go ext="" variant="" exe="DCCLite" tags="" gui="" isgui="" extra=()
   if [[ $os == windowsgui ]]; then
-    # Windows 10/11 app: WebView2 window plus live TV through the user's own VLC (still no cgo).
-    os=windows suffix=-gui variant=gui exe="DCCLite-GUI" tags="native" gui="-H windowsgui"
+    os=windows variant=gui tags="native" gui="-H windowsgui" go="${GO_WIN7:=$(win7_go)}" extra+=(GOTOOLCHAIN=local)
+    isgui=1
   fi
-  if [[ $os == windows7 ]]; then
-    os=windows suffix=-win7 variant=win7 go="${GO_WIN7:=$(win7_go)}" extra+=(GOTOOLCHAIN=local)
+  if [[ $os == linuxgui ]]; then
+    os=linux variant=gui tags="native"
+  fi
+  if [[ $os == darwingui ]]; then
+    [[ $(uname -s) == Darwin ]] || { echo "darwingui must be built on a Mac (cgo and the system WebKit; no cross build)" >&2; exit 1; }
+    command -v clang >/dev/null || { echo "clang is required for darwingui (xcode-select --install)" >&2; exit 1; }
+    os=darwin variant=gui tags="native" cgo=1
+  fi
+  if [[ $os == linuxgtk ]]; then
+    for tool in gcc pkg-config; do command -v "$tool" >/dev/null || { echo "$tool is required for linuxgtk" >&2; exit 1; }; done
+    pkg-config --exists gtk+-3.0 webkit2gtk-4.1 || { echo "linuxgtk needs libgtk-3-dev and libwebkit2gtk-4.1-dev" >&2; exit 1; }
+    case "$(uname -m)" in x86_64|amd64) host=amd64 ;; aarch64|arm64) host=arm64 ;; *) host="" ;; esac
+    [[ $arch == "$host" ]] || { echo "linuxgtk/$arch must be built on a Linux $arch machine (cgo, no cross build)" >&2; exit 1; }
+    os=linux variant=gtk tags="native gtk" cgo=1
   fi
   [[ $arch == arm ]] && extra+=(GOARM="${GOARM:-7}")
   [[ $os == windows ]] && ext=.exe
 
-  name="DCC-Lite-$VERSION-$os-$arch$suffix"
+  name="DCC-Lite-$VERSION-$os-$arch"
   echo "==> $name"
-  env CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" ${extra[@]+"${extra[@]}"} \
+  env CGO_ENABLED="$cgo" GOOS="$os" GOARCH="$arch" ${extra[@]+"${extra[@]}"} \
     "$go" build -trimpath -buildvcs=false ${tags:+-tags "$tags"} -ldflags "-s -w -buildid= $gui -X main.version=$VERSION -X main.variant=$variant" \
     -o "$stage/$exe$ext" ./src/dcclite
-  zip -qj9 "dist/$name.zip" "$stage/$exe$ext"
+  # Each package holds the program and a README.txt for its system (how to run and what to install).
+  case $os in windows) readme=README-windows.txt ;; darwin) readme=README-macos.txt ;; *) readme=README-linux.txt ;; esac
+  rm -f "$stage/README.txt" && cp "packaging/$readme" "$stage/README.txt"
+  zip -qj9 "dist/$name.zip" "$stage/$exe$ext" "$stage/README.txt"
+  if [[ -n $isgui && $os == windows ]]; then
+    # Optional full package for Windows 7/8: the program plus an unpacked WebView2 109 folder.
+    case $arch in amd64) wv="${WEBVIEW2_X64_DIR:-}" ;; 386) wv="${WEBVIEW2_X86_DIR:-}" ;; *) wv="" ;; esac
+    if [[ -n $wv ]]; then
+      [[ -d $wv ]] || { echo "WebView2 folder not found: $wv" >&2; exit 1; }
+      mkdir -p "$stage/bundle" && cp "$stage/$exe$ext" "$stage/bundle/" && cp -r "$wv" "$stage/bundle/WebView2"
+      (cd "$stage/bundle" && zip -qr9 "$OLDPWD/dist/$name-bundle.zip" .)
+      rm -rf "$stage/bundle"
+    fi
+  fi
   rm -f "$stage/$exe$ext"
 done
 

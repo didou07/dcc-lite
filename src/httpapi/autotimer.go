@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// The AutoTimer plugin publishes its own web API under /autotimer on the receiver's web interface.
-// Rules are listed as XML and changed with plain query parameters.
 const (
 	maxAutoTimerBytes = 4 << 20
 	maxAutoRules      = 500
@@ -238,6 +236,10 @@ func atEsc(s string) string { return strings.ReplaceAll(s, "%", "%25") }
 
 // autoTimerGet fetches one plugin URL; it reports a missing plugin as a clear error.
 func (s *Server) autoTimerGet(w http.ResponseWriter, r *http.Request, path string, timeout time.Duration) ([]byte, bool) {
+	return s.autoTimerGetAny(w, r, []string{path}, timeout)
+}
+
+func (s *Server) autoTimerGetAny(w http.ResponseWriter, r *http.Request, paths []string, timeout time.Duration) ([]byte, bool) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
 		return nil, false
@@ -245,7 +247,34 @@ func (s *Server) autoTimerGet(w http.ResponseWriter, r *http.Request, path strin
 	web := newDeviceWeb(profile, timeout)
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	status, body, err := web.getBounded(ctx, path, maxAutoTimerBytes)
+	var status int
+	var body []byte
+	var err error
+	memoKey := "autotimer:" + pathOnly(paths[0])
+	if web.kind == "dreamos" && len(paths) > 1 {
+		// The address that worked last time goes first (nothing is remembered for OpenWebif).
+		if want := legacyRecall(web.base, memoKey); want != "" {
+			for i, p := range paths {
+				if i > 0 && pathOnly(p) == want {
+					ordered := append([]string{p}, paths[:i]...)
+					paths = append(ordered, paths[i+1:]...)
+					break
+				}
+			}
+		}
+	}
+	for i, path := range paths {
+		if i > 0 && web.kind != "dreamos" {
+			break // OpenWebif has one address; the alternatives belong to the old DreamOS only
+		}
+		status, body, err = web.getBounded(ctx, path, maxAutoTimerBytes)
+		if err == nil && status != http.StatusNotFound && web.kind == "dreamos" && len(paths) > 1 {
+			legacyRemember(web.base, memoKey, pathOnly(path))
+		}
+		if err != nil || status != http.StatusNotFound {
+			break
+		}
+	}
 	if err == nil && status == http.StatusNotFound {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "The AutoTimer plugin is not installed or not active on this receiver.", "code": "no_autotimer"})
 		return nil, false
@@ -531,16 +560,16 @@ type atSimXML struct {
 
 // deviceAutoTimerPreview lists what the rules would record, without creating anything.
 func (s *Server) deviceAutoTimerPreview(w http.ResponseWriter, r *http.Request) {
-	path := "/autotimer/simulate"
+	suffix := ""
 	if raw := r.URL.Query().Get("id"); raw != "" {
 		id, err := strconv.Atoi(raw)
 		if err != nil || id < 0 {
 			writeError(w, http.StatusBadRequest, "which rule?")
 			return
 		}
-		path += "?id=" + strconv.Itoa(id)
+		suffix = "?id=" + strconv.Itoa(id)
 	}
-	body, ok := s.autoTimerGet(w, r, path, 120*time.Second)
+	body, ok := s.autoTimerGetAny(w, r, []string{"/autotimer/simulate" + suffix, "/autotimer/test" + suffix}, 120*time.Second)
 	if !ok {
 		return
 	}

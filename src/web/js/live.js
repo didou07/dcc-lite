@@ -15,6 +15,12 @@ const live = {
   deint: liveChoice(store.get("live.deint", "auto"), ["auto", "yadif", "off"], "auto"),
   caching: liveChoice(Number(store.get("live.caching", 1500)), [500, 1500, 3000], 1500),
   hw: store.get("live.hw", true) !== false, settingsDirty: false, popKind: "",
+  // How the picture meets the edges of the window (right-click menu or gear menu).
+  fit: liveChoice(store.get("live.fit", "fit"), ["fit", "fill", "stretch", "16:9", "4:3"], "fit"),
+  panelOn: store.get("live.panel", true) !== false, // the details panel (player, control words, card) beside the picture
+  fs: false, fsTimer: 0, // the player is shown over the whole screen (see liveFullSet)
+  cover: false,   // a long stall: the frozen picture steps aside so the waiting sign can be seen
+  waitSince: 0, waitTimer: 0,
 };
 const liveIsOn = () => live.on;
 const liveChannelName = () => $("#nowChannel").textContent || live.name || "channel";
@@ -33,12 +39,30 @@ function liveResetCW() { live.cwKey = ""; live.cw = []; live.cwHistory = []; liv
 
 // ---- State and layout ----
 
+// Shows how long the stream has been pending (after 4 s), so a slow start does not look frozen.
+const liveBusyStates = ["connecting", "buffering", "reconnecting"];
+function liveWaitTick() {
+  const node = $("#liveWait");
+  if (!live.on || !liveBusyStates.includes(live.state)) { liveWaitStop(); return; }
+  const seconds = Math.floor((Date.now() - live.waitSince) / 1000);
+  node.hidden = seconds < 4;
+  node.textContent = `${seconds} s`;
+  if (live.state === "buffering" && !live.cover && seconds >= 2) { live.cover = true; liveSyncNative(); }
+}
+function liveWaitStop() {
+  window.clearInterval(live.waitTimer); live.waitTimer = 0;
+  const node = $("#liveWait"); node.hidden = true; node.textContent = "";
+}
 function liveSetState(state, message = "", actions = false) {
   live.state = state;
   $("#liveBadge").dataset.state = state;
-  const busy = state === "connecting" || state === "buffering" || state === "reconnecting";
+  $("#liveCenter").dataset.state = state;
+  const busy = liveBusyStates.includes(state);
+  if (busy && !live.waitTimer) { live.waitSince = Date.now(); live.waitTimer = window.setInterval(liveWaitTick, 1000); }
+  else if (!busy) liveWaitStop();
+  if (state !== "buffering") live.cover = false;
   $("#liveCenter").hidden = !(busy || state === "error");
-  $("#liveSpin").hidden = !busy;
+  $("#liveSpin").toggleAttribute("hidden", !busy); // an SVG element has no .hidden property
   $("#liveMsg").textContent = message;
   $("#liveMsg").classList.toggle("bad", state === "error");
   $("#liveCenterActions").hidden = !actions;
@@ -63,11 +87,19 @@ function liveReconnect(reason) {
 // The native window follows the box: position, size and whether it may be seen at all.
 function liveBox() {
   const r = $("#liveVideo").getBoundingClientRect();
-  return { x: r.left, y: r.top, w: r.width, h: r.height, vw: window.innerWidth, vh: window.innerHeight };
+  let left = r.left, top = r.top, right = r.right, bottom = r.bottom;
+  if (window.dccLiveGtk && !live.fs) {
+    const view = $("#liveVideo").closest(".view");
+    if (view) {
+      const c = view.getBoundingClientRect();
+      left = Math.max(left, c.left); top = Math.max(top, c.top); right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+    }
+  }
+  return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top), vw: window.innerWidth, vh: window.innerHeight };
 }
 function liveMayShow() {
   return live.on && live.hasPicture && (live.state === "playing" || live.state === "buffering" || live.state === "paused")
-    && !live.popup && !document.hidden && view.current === "screen" && !document.querySelector("dialog[open]");
+    && !live.cover && !live.popup && !document.hidden && view.current === "screen" && !document.querySelector("dialog[open]");
 }
 function liveSyncNative(force = false) {
   if (!liveNative || !live.on) return;
@@ -95,7 +127,8 @@ function liveShowUI(on) {
     setRemoteOpen(store.get("remote.open", true) !== false);
   }
   $("#liveOverlay").hidden = !on;
-  $("#livePanel").hidden = !on;
+  $("#livePanel").hidden = !on || !live.panelOn;
+  liveSyncPanelBtn();
   $("#screenStage").classList.toggle("is-live", on);
   const toggle = $("#liveToggle");
   toggle.setAttribute("aria-pressed", String(on));
@@ -107,6 +140,19 @@ function liveShowUI(on) {
   else { $("#screenImg").hidden = !screenView.blob; $("#screenWait").hidden = !!screenView.blob; }
   liveSyncVolume();
   liveSyncPlay();
+}
+
+function liveSyncPanelBtn() {
+  const b = $("#livePanelBtn");
+  if (!b) return;
+  b.setAttribute("aria-pressed", String(live.panelOn));
+  b.title = live.panelOn ? "Hide the details panel" : "Show the details panel";
+}
+function liveTogglePanel() {
+  live.panelOn = !live.panelOn;
+  store.set("live.panel", live.panelOn);
+  $("#livePanel").hidden = !live.on || !live.panelOn;
+  liveSyncPanelBtn();
 }
 
 // ---- Starting and stopping ----
@@ -122,10 +168,12 @@ function liveStop() {
   live.on = false;
   live.ref = "";
   live.hasPicture = false;
+  live.cover = false;
   live.retries = 0;
   live.audio = [];
   live.boundsKey = "";
   livePopClose();
+  if (live.fs) liveFullSet(false);
   if (liveNative && wasOn) liveCall("stop").catch(() => { });
   $("#liveTech").textContent = "";
   $("#liveTracks").replaceChildren();
@@ -166,7 +214,7 @@ async function liveBegin() {
   liveSetState("connecting", "Connecting to the receiver…");
   liveSyncNative(true);
   try {
-    await liveCall("play", { profile: id, ref: live.ref, name: live.name, volume: live.volume, muted: live.muted, audioLang: live.audioLang, deinterlace: live.deint, caching: live.caching, hw: live.hw, ...liveBox() });
+    await liveCall("play", { profile: id, ref: live.ref, name: live.name, volume: live.volume, muted: live.muted, audioLang: live.audioLang, deinterlace: live.deint, caching: live.caching, hw: live.hw, fit: live.fit, ...liveBox() });
     liveRxAudio();
   } catch (error) {
     if (live.on) liveFail(liveMessage(error));
@@ -316,23 +364,48 @@ function liveAudioMenu() {
 const LIVE_DEINT = [["auto", "Auto", "VLC decides (default)"], ["yadif", "Yadif", "Always smooth interlaced channels"], ["off", "Off", "Never deinterlace"]];
 const LIVE_CACHE = [[500, "Low", "500 ms · faster zapping"], [1500, "Normal", "1.5 s"], [3000, "High", "3 s · for a weak network"]];
 
+const LIVE_FIT = [
+  ["fit", "Original shape", "The broadcast's own proportions (default)"],
+  ["fill", "Fill the window", "Zoom in; the edges are cut off"],
+  ["stretch", "Stretch to the window", "Widen the picture until it touches every side"],
+  ["16:9", "Force 16:9", "A wide picture"],
+  ["4:3", "Force 4:3", "A squarer picture"],
+];
+const livePopTitle = (text) => h("div", { class: "pop-title", text });
+const livePopItem = (checked, label, note, onClick, tip = "") => h("button", {
+  type: "button", role: "menuitemradio", "aria-checked": String(checked), title: tip, onClick,
+}, h("span", { class: "tick", text: checked ? "✓" : "" }), h("span", { class: "grow" }, h("b", { text: label }), note && h("small", { text: note })));
+const livePopAction = (label, onClick, hint = "") => h("button", { type: "button", role: "menuitem", onClick },
+  h("span", { class: "tick", "aria-hidden": "true" }), h("span", { class: "grow" }, h("b", { text: label })), hint && h("span", { class: "hint", text: hint }));
+
+// The picture's size in its window. It applies at once (no restart).
+function liveSetFit(mode) {
+  live.fit = mode;
+  store.set("live.fit", mode);
+  if (live.on) liveCall("fit", { mode }).catch(() => { });
+}
+const liveFitParts = (again) => [
+  livePopTitle("Video size"),
+  ...LIVE_FIT.map(([value, label, note]) => livePopItem(live.fit === value, label, note, () => { liveSetFit(value); again(); })),
+];
+function liveEngineParts(again) {
+  const change = (apply) => { apply(); live.settingsDirty = true; again(); };
+  return [
+    livePopTitle("Deinterlace"),
+    ...LIVE_DEINT.map(([value, label, note]) => livePopItem(live.deint === value, label, note, () => change(() => { live.deint = value; store.set("live.deint", value); }))),
+    livePopTitle("Buffering"),
+    ...LIVE_CACHE.map(([value, label, note]) => livePopItem(live.caching === value, label, note, () => change(() => { live.caching = value; store.set("live.caching", value); }))),
+    livePopTitle("Hardware decoding"),
+    livePopItem(live.hw, "On", "Uses the graphics card when it can (default)", () => change(() => { live.hw = true; store.set("live.hw", true); })),
+    livePopItem(!live.hw, "Off", "Software decoding", () => change(() => { live.hw = false; store.set("live.hw", false); })),
+  ];
+}
+
 function liveSettingsRender() {
   const pop = $("#livePop");
   if (!pop || live.popKind !== "settings") return;
-  const title = (text) => h("div", { class: "pop-title", text });
-  const item = (checked, label, note, onClick, tip = "") => h("button", {
-    type: "button", role: "menuitemradio", "aria-checked": String(checked), title: tip, onClick,
-  }, h("span", { class: "tick", text: checked ? "✓" : "" }), h("span", { class: "grow" }, h("b", { text: label }), note && h("small", { text: note })));
-  const change = (apply) => { apply(); live.settingsDirty = true; liveSettingsRender(); };
-  const parts = [
-    title("Deinterlace"),
-    ...LIVE_DEINT.map(([value, label, note]) => item(live.deint === value, label, note, () => change(() => { live.deint = value; store.set("live.deint", value); }))),
-    title("Buffering"),
-    ...LIVE_CACHE.map(([value, label, note]) => item(live.caching === value, label, note, () => change(() => { live.caching = value; store.set("live.caching", value); }))),
-    title("Hardware decoding"),
-    item(live.hw, "On", "Uses the graphics card when it can (default)", () => change(() => { live.hw = true; store.set("live.hw", true); })),
-    item(!live.hw, "Off", "Software decoding", () => change(() => { live.hw = false; store.set("live.hw", false); })),
-  ];
+  const title = livePopTitle, item = livePopItem;
+  const parts = [...liveFitParts(liveSettingsRender), ...liveEngineParts(liveSettingsRender)];
   if (live.rx.length > 1) {
     parts.push(title("Receiver audio"));
     for (const t of live.rx) {
@@ -354,6 +427,104 @@ function liveSettingsMenu() {
   liveSyncNative();
   liveSettingsRender();
   pop.querySelector('[aria-checked="true"]')?.focus();
+}
+
+// ---- Right-click menu and full screen ----
+
+async function liveFullSet(on) {
+  if (on === live.fs) return;
+  live.fs = on;
+  $("#screenStage").classList.toggle("fs-native", on);
+  $("#screenStage").classList.remove("fs-idle");
+  liveFsWake();
+  $("#liveFull use").setAttribute("href", on ? "#i-collapse" : "#i-expand");
+  $("#liveFull").setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
+  try { await liveCall("fullscreen", { on }); } catch (error) { live.fs = !on; $("#screenStage").classList.toggle("fs-native", !on); toast(liveMessage(error), "error"); return; }
+  // The window needs a moment to change size; the picture follows its box when it has settled.
+  for (const ms of [120, 450, 900]) window.setTimeout(() => liveSyncNative(true), ms);
+}
+// In full screen the bars go away after 3 s without movement and return when the mouse moves.
+function liveFsWake() {
+  const stage = $("#screenStage");
+  window.clearTimeout(live.fsTimer);
+  live.fsTimer = 0;
+  if (!live.fs) { stage.classList.remove("fs-idle"); return; }
+  if (stage.classList.contains("fs-idle")) { stage.classList.remove("fs-idle"); liveCall("cursor", { hide: false }).catch(() => { }); }
+  live.fsTimer = window.setTimeout(() => {
+    live.fsTimer = 0;
+    if (!live.fs || $("#livePop") || stage.querySelector(".live-bar:hover, .live-top:hover")) { liveFsWake(); return; }
+    stage.classList.add("fs-idle");
+    liveCall("cursor", { hide: true }).catch(() => { }); // the pointer over VLC's window is hidden by the app
+  }, 3000);
+}
+// true when the live player took the request (the caller then skips the browser's full screen).
+function liveFullToggle() {
+  if (!liveNative || !live.on) return false;
+  liveFullSet(!live.fs);
+  return true;
+}
+// Escape: close the open menu first, then leave full screen. true when something was closed.
+function liveEscape() {
+  if (!live.on) return false;
+  if ($("#livePop")) { livePopClose(); return true; }
+  if (live.fs) { liveFullSet(false); return true; }
+  return false;
+}
+function liveToggleMute() {
+  live.muted = !live.muted;
+  if (!live.muted && live.volume === 0) live.volume = 50;
+  livePushVolume();
+}
+async function liveSnapshot() {
+  if (!live.on || !live.hasPicture) { toast("Nothing to capture yet", "error"); return; }
+  try {
+    const data = await liveCall("snapshot", { name: liveChannelName() });
+    toast(data.path ? `Snapshot saved: ${data.path}` : "Snapshot saved");
+  } catch (error) { toast(liveMessage(error), "error"); }
+}
+
+function liveCtxPlace() {
+  const pop = $("#livePop");
+  if (!pop || !live.ctxAt) return;
+  const gap = 8, box = pop.getBoundingClientRect();
+  pop.style.left = `${Math.max(gap, Math.min(live.ctxAt.x, window.innerWidth - box.width - gap))}px`;
+  pop.style.top = `${Math.max(gap, Math.min(live.ctxAt.y, window.innerHeight - box.height - gap))}px`;
+}
+function liveCtxRender() {
+  const pop = $("#livePop");
+  if (!pop || live.popKind !== "ctx") return;
+  const then = (fn) => () => { livePopClose(); fn(); };
+  const parts = [
+    livePopAction(live.paused ? "Play" : "Pause", then(liveTogglePlay), "Space"),
+    livePopAction(live.muted || live.volume === 0 ? "Unmute" : "Mute", then(liveToggleMute)),
+    livePopAction(live.fs ? "Exit full screen" : "Full screen", then(liveFullToggle), "F"),
+    livePopAction("Save a snapshot", then(liveSnapshot)),
+    ...liveFitParts(liveCtxRender),
+  ];
+  if (live.audio.length > 1) {
+    parts.push(livePopTitle("Audio track"));
+    for (const t of live.audio) parts.push(livePopItem(t.id === live.audioCur, t.name, "", async () => { await liveSelectAudio(t.id); liveCtxRender(); }));
+  }
+  parts.push(h("div", { class: "pop-sep", role: "separator" }),
+    livePopAction("Player settings", then(liveSettingsMenu)),
+    livePopAction("Stop watching", then(liveStop), "L"));
+  const keep = pop.scrollTop;
+  pop.replaceChildren(...parts);
+  pop.scrollTop = keep;
+  liveCtxPlace();
+}
+function liveContextMenu(x, y) {
+  if ($("#livePop")) livePopClose();
+  const pop = h("div", { class: "live-pop live-ctx", id: "livePop", role: "menu", "aria-label": "Video options" });
+  pop.addEventListener("contextmenu", (event) => event.preventDefault());
+  // Inside the stage, so it is also on top when the stage fills the screen.
+  $("#screenStage").append(pop);
+  live.popKind = "ctx";
+  live.ctxAt = { x, y };
+  live.popup = true;               // the picture steps aside while the menu is open
+  liveSyncNative();
+  liveCtxRender();
+  pop.querySelector('[aria-checked="true"]')?.focus({ preventScroll: true });
 }
 
 async function liveRxAudio() {
@@ -482,26 +653,39 @@ if (liveNative) {
   $("#liveStop").addEventListener("click", liveStop);
   $("#livePlay").addEventListener("click", liveTogglePlay);
   $("#liveFull").addEventListener("click", () => $("#screenFull").click());
+  const once = (kind) => { const now = Date.now(); if (now - (live.last?.[kind] || 0) < 700) return false; (live.last ||= {})[kind] = now; return true; };
+  window.dccLiveMouse = (kind, x, y) => {
+    if (!live.on) return;
+    if (kind === "dbl") { if (once("dbl")) liveFullToggle(); }
+    else if (kind === "menu") { if (once("menu")) liveContextMenu(x, y); }
+    else if (kind === "move") liveFsWake();
+    else if (kind === "wheel") { const view = $("#liveVideo").closest(".view"); if (view) view.scrollBy({ top: y }); }
+  };
+  // The app looks at the mouse over the picture and queues what happened; collect it often.
+  let mouseBusy = false;
+  window.setInterval(async () => {
+    if (!live.on || mouseBusy) return;
+    mouseBusy = true;
+    try {
+      const data = await liveCall("mouse");
+      for (const e of data.events || []) window.dccLiveMouse(e.k, e.x, e.y);
+    } catch (error) { /* the next round asks again */ } finally { mouseBusy = false; }
+  }, 100);
+  for (const type of ["mousemove", "mousedown", "keydown", "wheel"]) $("#screenStage").addEventListener(type, () => { if (live.fs) liveFsWake(); }, { passive: true });
+  $("#liveVideo").addEventListener("dblclick", (event) => { if (!live.on || event.target.closest("button")) return; event.preventDefault(); if (once("dbl")) liveFullToggle(); });
+  $("#liveVideo").addEventListener("contextmenu", (event) => { if (!live.on) return; event.preventDefault(); if (once("menu")) liveContextMenu(event.clientX, event.clientY); });
   $("#liveRetry").addEventListener("click", () => { live.retries = 0; liveBegin(); });
   $("#liveAudioBtn").addEventListener("click", (event) => { event.stopPropagation(); liveAudioMenu(); });
   $("#liveSettingsBtn").addEventListener("click", (event) => { event.stopPropagation(); liveSettingsMenu(); });
-  $("#liveMute").addEventListener("click", () => {
-    live.muted = !live.muted;
-    if (!live.muted && live.volume === 0) live.volume = 50;
-    livePushVolume();
-  });
+  $("#liveMute").addEventListener("click", liveToggleMute);
   $("#liveVol").addEventListener("input", (event) => {
     live.volume = Math.round(Number(event.target.value) * 100);
     live.muted = live.volume === 0;
     livePushVolume();
   });
-  $("#liveSnap").addEventListener("click", async () => {
-    if (!live.on || !live.hasPicture) { toast("Nothing to capture yet", "error"); return; }
-    try {
-      const data = await liveCall("snapshot", { name: liveChannelName() });
-      toast(data.path ? `Snapshot saved: ${data.path}` : "Snapshot saved");
-    } catch (error) { toast(liveMessage(error), "error"); }
-  });
+  $("#liveSnap").addEventListener("click", liveSnapshot);
+  $("#livePanelBtn").addEventListener("click", liveTogglePanel);
+  $("#livePanelClose").addEventListener("click", liveTogglePanel);
 
   // Keep VLC's window on its box: whenever the page moves, resizes or covers it.
   new ResizeObserver(() => liveSyncNative()).observe($("#liveVideo"));
@@ -509,7 +693,7 @@ if (liveNative) {
   window.addEventListener("scroll", () => liveSyncNative(), true);
   document.addEventListener("visibilitychange", () => liveSyncNative());
   document.addEventListener("fullscreenchange", () => {
-    $("#liveFull use").setAttribute("href", document.fullscreenElement ? "#i-collapse" : "#i-expand");
+    $("#liveFull use").setAttribute("href", document.fullscreenElement || live.fs ? "#i-collapse" : "#i-expand");
     window.setTimeout(() => liveSyncNative(true), 120);
   });
   document.addEventListener("click", (event) => { if (!event.target.closest("#livePop, #liveAudioBtn, #liveSettingsBtn")) livePopClose(); });
@@ -518,7 +702,7 @@ if (liveNative) {
     if (document.querySelector("dialog[open]")) return;
     const target = event.target;
     if (target.closest?.("input, select, textarea, #channelPane, [contenteditable]")) return;
-    if (event.key === "Escape" && $("#livePop")) { livePopClose(); event.preventDefault(); return; }
+    if (event.key === "Escape" && liveEscape()) { event.preventDefault(); return; }
     if (event.key.toLowerCase() === "l") { event.preventDefault(); $("#liveToggle").click(); return; }
     if (event.key === " " && live.on && !target.closest?.("button, a")) { event.preventDefault(); liveTogglePlay(); }
   });

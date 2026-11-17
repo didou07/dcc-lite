@@ -136,8 +136,6 @@ func (s *Sanitizer) Text(text string) string {
 	return text
 }
 
-// Path masks the personal parts of a receiver file path (recording and file
-// names, deep folders) while keeping system folders and mount points readable.
 func (s *Sanitizer) Path(p string) string {
 	if !strings.HasPrefix(p, "/") {
 		return p

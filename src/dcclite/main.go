@@ -26,7 +26,6 @@ import (
 
 var version = "dev"
 
-// variant is "win7" for the Windows 7 build so it only ever updates to its own package.
 var variant = ""
 
 var (

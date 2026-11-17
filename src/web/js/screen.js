@@ -178,11 +178,6 @@ $("#screenSave").addEventListener("click", () => {
 $("#screenImg").addEventListener("load", () => { $("#screenSave").disabled = false; });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view.current === "screen") screenRestart(); });
 
-document.addEventListener("click", (event) => {
-  const opts = $("#screenOpts");
-  if (opts && opts.open && !opts.contains(event.target)) opts.open = false;
-});
-
 $("#liveTabs").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-tab]");
   if (!button) return;

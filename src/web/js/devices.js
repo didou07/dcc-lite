@@ -133,6 +133,7 @@ function renderDeviceGrid() {
   wrap.replaceChildren();
   wrap.dataset.mode = sites.mode;
   $("#deviceEmpty").hidden = devices.list.length > 0;
+  if (!devices.list.length && typeof loadEmptyNetworks === "function") loadEmptyNetworks();
   $("#devicesRefresh").disabled = !devices.list.length;
   $(".sites-head").hidden = !devices.list.length;
   const q = sites.query.trim().toLowerCase();
@@ -343,7 +344,7 @@ function openDeviceDialog(profile = null) {
   $("#devFtp").value = profile?.ftp_port || "";
   $("#devWeb").value = profile?.port || "";
   $("#devTelnet").value = profile?.telnet_port || "";
-  $("#devWebKind").value = profile?.web_kind || "openwebif";
+  $("#devWebKind").value = profile?.web_kind === "webinterface" ? "dreamos" : (profile?.web_kind || "openwebif");
   $(".advanced", $("#deviceDialog")).open = Boolean(profile && (profile.ftp_port || profile.telnet_port || profile.port || profile.scheme === "https"));
   $("#deviceError").hidden = true;
   openDialog($("#deviceDialog"));

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,8 +29,6 @@ import (
 	"github.com/didou07/dcc-lite/src/vlc"
 )
 
-// The Windows app: the same interface as the browser one, shown in a WebView2 window, with live TV
-// played by the user's own VLC in a native window laid over the page's video box.
 const nativeBuild = true
 
 var nativeLog = logx.For("native")
@@ -53,6 +52,22 @@ var (
 	procGetMessage     = user32.NewProc("GetMessageW")
 	procTranslateMsg   = user32.NewProc("TranslateMessage")
 	procDispatchMsg    = user32.NewProc("DispatchMessageW")
+
+	procGetCursorPos       = user32.NewProc("GetCursorPos")
+	procGetAsyncKeyState   = user32.NewProc("GetAsyncKeyState")
+	procCreateCursor       = user32.NewProc("CreateCursor")
+	procLoadCursor         = user32.NewProc("LoadCursorW")
+	procSendMessage        = user32.NewProc("SendMessageW")
+	procSetClassLongPtr    = user32.NewProc(classLongName())
+	procWindowFromPoint    = user32.NewProc("WindowFromPoint")
+	procGetAncestor        = user32.NewProc("GetAncestor")
+	procGetDoubleClickTime = user32.NewProc("GetDoubleClickTime")
+	procGetSystemMetrics   = user32.NewProc("GetSystemMetrics")
+	procSetWindowLong      = user32.NewProc("SetWindowLongW")
+	procGetWindowPlacement = user32.NewProc("GetWindowPlacement")
+	procSetWindowPlacement = user32.NewProc("SetWindowPlacement")
+	procMonitorFromWindow  = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfo     = user32.NewProc("GetMonitorInfoW")
 )
 
 const (
@@ -76,10 +91,51 @@ const (
 	swpNoOwnerZ    = 0x0200
 	mbIconInfo     = 0x40
 	mbIconError    = 0x10
+
+	vkLButton     = 0x01
+	vkRButton     = 0x02
+	smSwapButton  = 23
+	idcArrow      = 32512
+	wmSetCursor   = 0x0020
+	gclpHCursor   = ^uintptr(11) // -12
+	wmMouseMove   = 0x0200
+	wmLButtonDown = 0x0201
+	wmRButtonDown = 0x0204
+	wmRButtonUp   = 0x0205
+	gaRoot        = 2
+	smCxDoubleClk = 36
+	smCyDoubleClk = 37
+
+	gwlStyle             = ^uintptr(15) // -16
+	wsOverlappedWindow   = 0x00CF0000
+	swpFrameChanged      = 0x0020
+	swpNoOwnerZOrder     = 0x0200
+	monitorDefaultNearer = 2
 )
 
 type winRect struct{ Left, Top, Right, Bottom int32 }
+
+// SetClassLongPtrW does not exist in 32-bit Windows, where SetClassLongW is the same call.
+func classLongName() string {
+	if bits.UintSize == 64 {
+		return "SetClassLongPtrW"
+	}
+	return "SetClassLongW"
+}
+
 type winPoint struct{ X, Y int32 }
+
+// winPlacement is WINDOWPLACEMENT and monitorInfo is MONITORINFO.
+type winPlacement struct {
+	Length, Flags, ShowCmd uint32
+	MinPos, MaxPos         winPoint
+	Normal                 winRect
+}
+type monitorInfo struct {
+	Size          uint32
+	Monitor, Work winRect
+	Flags         uint32
+}
 type winMsg struct {
 	Hwnd    uintptr
 	Message uint32
@@ -104,8 +160,32 @@ func messageBox(text string, icon uintptr) {
 
 func nativeNotice(text string) { messageBox(text, mbIconInfo) }
 
-// webView2Installed looks for the Edge WebView2 Runtime. Without it the window cannot open, and the
-// library leaves an empty window behind, so it is checked before anything is created.
+func fixedRuntime(dataDir string) string {
+	var roots []string
+	if exe, err := os.Executable(); err == nil {
+		roots = append(roots, filepath.Dir(exe))
+	}
+	roots = append(roots, dataDir)
+	for _, root := range roots {
+		for _, name := range []string{"WebView2", "webview2-runtime", "WebView2Runtime"} {
+			base := filepath.Join(root, name)
+			if _, err := os.Stat(filepath.Join(base, "msedgewebview2.exe")); err == nil {
+				return base
+			}
+			subs, _ := os.ReadDir(base)
+			for _, s := range subs {
+				if s.IsDir() {
+					dir := filepath.Join(base, s.Name())
+					if _, err := os.Stat(filepath.Join(dir, "msedgewebview2.exe")); err == nil {
+						return dir
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func webView2Installed() bool {
 	const id = `{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`
 	places := []struct {
@@ -145,11 +225,20 @@ func nativeClose() {
 	}
 }
 
+func browserFallback(d nativeDeps) error {
+	openBrowser(d.URL)
+	messageBox(msg("fallback")+"\n\n"+d.URL, mbIconInfo)
+	return nil
+}
+
 // runNative shows the window and returns when it is closed.
 func runNative(d nativeDeps) error {
-	if !webView2Installed() {
-		messageBox(msg("webview2"), mbIconError)
-		return errors.New("WebView2 Runtime is not installed")
+	if dir := fixedRuntime(d.DataDir); dir != "" {
+		_ = os.Setenv("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", dir)
+		nativeLog.Info("using the WebView2 runtime shipped with the app", "folder", dir)
+	} else if !webView2Installed() {
+		nativeLog.Warn("no WebView2 runtime found; opening the interface in the default browser", "url", d.URL)
+		return browserFallback(d)
 	}
 	_, _, _ = procSetDPIAware.Call() // crisp text on scaled displays; must come before the window exists
 
@@ -161,8 +250,8 @@ func runNative(d nativeDeps) error {
 		},
 	})
 	if view == nil {
-		messageBox(msg("window"), mbIconError)
-		return errors.New("webview window could not be created")
+		nativeLog.Warn("the WebView2 window could not be created; opening the interface in the default browser", "url", d.URL)
+		return browserFallback(d)
 	}
 	nativeMu.Lock()
 	nativeView = view
@@ -180,8 +269,6 @@ func runNative(d nativeDeps) error {
 	go live.watchdog()
 	defer live.close()
 
-	// Marks the page as running inside this window (and says which address it is meant to be on), so
-	// the page can explain itself if the player bridge below does not reach it.
 	view.Init(fmt.Sprintf(`window.__dccGui = %q;`, strings.TrimRight(d.URL, "/")))
 	if err := view.Bind("dccLive", live.handle); err != nil {
 		return err
@@ -215,6 +302,7 @@ type playArgs struct {
 	Deinterlace string `json:"deinterlace"` // auto, yadif or off
 	Caching     int    `json:"caching"`     // buffering in milliseconds
 	Hardware    *bool  `json:"hw"`          // hardware decoding; nil or true = on
+	Fit         string `json:"fit"`         // fit, fill, stretch, 16:9 or 4:3
 	boxArgs
 }
 
@@ -260,6 +348,19 @@ type nativeLive struct {
 	audioApplied bool
 	opts         vlc.PlayOptions // the player settings of the running channel
 	snap         stateOut
+	fit          string      // how the picture fills its window (vlc.Fit...)
+	fitTimer     *time.Timer // debounces a re-fit after the box changed size
+	lastVW       float64     // the page's viewport size at the last box, to turn screen pixels back into CSS pixels
+	lastVH       float64
+	cursorHidden atomic.Bool
+	events       []mouseEvent // mouse events for the page, newest last
+	evMu         sync.Mutex
+	evLogs       int
+	mouseLogs    int
+	fsFlag       atomic.Bool // fsOn, readable from the mouse hook
+	fsOn         bool        // the window is borderless over the whole screen; used on the window thread only
+	fsStyle      uintptr
+	fsPlace      winPlacement
 	boxLogs      int
 	closed       atomic.Bool
 	resizingTill atomic.Int64
@@ -307,8 +408,6 @@ func (n *nativeLive) withPlayer(f func(p *vlc.Player)) {
 	go f(p)
 }
 
-// ensureChild creates the picture window. It must have no owner and no parent: either one ties its
-// thread's input queue to the page window's and a VLC stall would freeze the whole interface.
 func (n *nativeLive) ensureChild() error {
 	n.childMu.Lock() // the start-up call and the first play must not each make a window
 	defer n.childMu.Unlock()
@@ -336,6 +435,7 @@ func (n *nativeLive) ensureChild() error {
 			return
 		}
 		done <- result{h: h}
+		go n.watchMouse()
 		var msg winMsg
 		for {
 			r, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
@@ -365,8 +465,6 @@ func (n *nativeLive) iconic() bool {
 	return r != 0
 }
 
-// applyBox records where the page wants the picture and moves the window there. The page measures
-// in CSS pixels of its own viewport, so the scale is worked out from the real client area.
 func (n *nativeLive) applyBox(b boxArgs, show bool) {
 	n.mu.Lock()
 	child := n.child
@@ -394,12 +492,16 @@ func (n *nativeLive) applyBox(b boxArgs, show bool) {
 			"client", fmt.Sprintf("%dx%d", rc.Right-rc.Left, rc.Bottom-rc.Top), "placed", fmt.Sprintf("%d,%d %dx%d", l.x, l.y, l.w, l.h), "show", l.show)
 	}
 	n.mu.Lock()
+	resized := l.w != n.last.w || l.h != n.last.h
 	n.last = l
+	n.lastVW, n.lastVH = b.VW, b.VH
 	n.mu.Unlock()
 	n.place(true)
+	if resized {
+		n.refit()
+	}
 }
 
-// place moves the picture window to the last requested box; posted asynchronously (another thread owns it).
 func (n *nativeLive) place(force bool) {
 	n.mu.Lock()
 	host, l, prev := n.child, n.last, n.applied
@@ -425,8 +527,6 @@ func (n *nativeLive) place(force bool) {
 		cur.show = false
 	}
 	if !force && cur == prev {
-		// Nothing moved, but another program may have come to the front: keep the picture just
-		// above the page window and under whatever covers it.
 		if cur.show {
 			n.stack(host)
 		}
@@ -438,8 +538,6 @@ func (n *nativeLive) place(force bool) {
 	if cur.show != prev.show {
 		nativeLog.Info("video window", "show", cur.show, "screen", fmt.Sprintf("%d,%d %dx%d", cur.x, cur.y, cur.w, cur.h))
 	}
-	// The stacking order is set in the same call as the move. Raising the window first and fixing the
-	// order afterwards made the picture flash over other programs every time it was repositioned.
 	flags := uintptr(swpNoActivate | swpHideWindow | swpAsyncPos | swpNoZOrder)
 	var after uintptr
 	if cur.show {
@@ -459,8 +557,6 @@ func (n *nativeLive) place(force bool) {
 	}
 }
 
-// insertAfter says which window the picture window has to be placed behind so that it sits directly
-// above the page window. change is false when it already does.
 func (n *nativeLive) insertAfter(host uintptr) (after uintptr, change bool) {
 	above, _, _ := procGetWindow.Call(n.parent, gwHwndPrev)
 	if above == host {
@@ -483,6 +579,268 @@ func (n *nativeLive) stack(host uintptr) {
 		return
 	}
 	_, _, _ = procSetWindowPos.Call(host, after, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpNoOwnerZ|swpAsyncPos)
+}
+
+type mouseEvent struct {
+	Kind string  `json:"k"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+
+func doubleClickTime() time.Duration {
+	r, _, _ := procGetDoubleClickTime.Call()
+	if r < 100 || r > 5000 {
+		r = 500
+	}
+	return time.Duration(r) * time.Millisecond
+}
+
+func absInt32(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func (n *nativeLive) overPicture(pt winPoint) bool {
+	n.mu.Lock()
+	a, host := n.applied, n.child
+	n.mu.Unlock()
+	if host == 0 || !a.show || pt.X < a.x || pt.Y < a.y || pt.X >= a.x+a.w || pt.Y >= a.y+a.h {
+		return false
+	}
+	var w uintptr
+	if bits.UintSize == 64 {
+		packed := uint64(uint32(pt.X)) | uint64(uint32(pt.Y))<<32 // POINT travels as one 64-bit value
+		w, _, _ = procWindowFromPoint.Call(uintptr(packed))
+	} else {
+		w, _, _ = procWindowFromPoint.Call(uintptr(pt.X), uintptr(pt.Y))
+	}
+	if w == 0 {
+		return false
+	}
+	root, _, _ := procGetAncestor.Call(w, gaRoot)
+	if root != host && root != n.parent {
+		if n.mouseLogs < 4 {
+			n.mouseLogs++
+			nativeLog.Info("the picture window is not under the mouse", "under", fmt.Sprintf("%x", w), "root", fmt.Sprintf("%x", root), "picture", fmt.Sprintf("%x", host))
+		}
+		return false
+	}
+	return true
+}
+
+// cssPoint turns a screen point into the page's own CSS pixels.
+func (n *nativeLive) cssPoint(pt winPoint) (float64, float64) {
+	n.mu.Lock()
+	vw, vh := n.lastVW, n.lastVH
+	n.mu.Unlock()
+	var origin winPoint
+	_, _, _ = procClientToScreen.Call(n.parent, uintptr(unsafe.Pointer(&origin)))
+	var rc winRect
+	_, _, _ = procGetClientRect.Call(n.parent, uintptr(unsafe.Pointer(&rc)))
+	x, y := float64(pt.X-origin.X), float64(pt.Y-origin.Y)
+	if cw, ch := float64(rc.Right-rc.Left), float64(rc.Bottom-rc.Top); cw > 0 && ch > 0 && vw > 0 && vh > 0 {
+		x, y = x*vw/cw, y*vh/ch
+	}
+	return math.Round(x), math.Round(y)
+}
+
+func (n *nativeLive) pushMouse(kind string, pt winPoint) {
+	x, y := n.cssPoint(pt)
+	n.evMu.Lock()
+	defer n.evMu.Unlock()
+	if kind == "move" { // only the newest position matters
+		for i := range n.events {
+			if n.events[i].Kind == "move" {
+				n.events = append(n.events[:i], n.events[i+1:]...)
+				break
+			}
+		}
+	} else if n.evLogs < 6 {
+		n.evLogs++
+		nativeLog.Info("mouse over the picture", "event", kind)
+	}
+	n.events = append(n.events, mouseEvent{Kind: kind, X: x, Y: y})
+	if len(n.events) > 32 {
+		n.events = n.events[len(n.events)-32:]
+	}
+}
+
+func (n *nativeLive) takeMouse() []mouseEvent {
+	n.evMu.Lock()
+	defer n.evMu.Unlock()
+	out := n.events
+	n.events = nil
+	return out
+}
+
+func keyDown(vk uintptr) bool {
+	r, _, _ := procGetAsyncKeyState.Call(vk)
+	return r&0x8000 != 0
+}
+
+func (n *nativeLive) watchMouse() {
+	var lastAt time.Time
+	var lastPt, lastPos winPoint
+	var prevL, prevR, rightBegan bool
+	for !n.closed.Load() {
+		n.mu.Lock()
+		show := n.applied.show
+		n.mu.Unlock()
+		if !show {
+			prevL, prevR, rightBegan = false, false, false
+			time.Sleep(60 * time.Millisecond)
+			continue
+		}
+		var pt winPoint
+		_, _, _ = procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+		left, right := uintptr(vkLButton), uintptr(vkRButton)
+		if sw, _, _ := procGetSystemMetrics.Call(smSwapButton); sw != 0 {
+			left, right = right, left // the buttons are swapped in the mouse settings
+		}
+		l, r := keyDown(left), keyDown(right)
+		inside := n.overPicture(pt)
+		if pt != lastPos {
+			lastPos = pt
+			if inside && n.fsFlag.Load() {
+				if n.cursorHidden.Load() {
+					n.setCursorHidden(false)
+				}
+				n.pushMouse("move", pt)
+			}
+		}
+		if l && !prevL {
+			now := time.Now()
+			cx, _, _ := procGetSystemMetrics.Call(smCxDoubleClk)
+			cy, _, _ := procGetSystemMetrics.Call(smCyDoubleClk)
+			switch {
+			case !inside:
+				lastAt = time.Time{}
+			case !lastAt.IsZero() && now.Sub(lastAt) <= doubleClickTime() &&
+				absInt32(pt.X-lastPt.X) <= int32(cx/2)+2 && absInt32(pt.Y-lastPt.Y) <= int32(cy/2)+2:
+				lastAt = time.Time{}
+				n.pushMouse("dbl", pt)
+			default:
+				lastAt, lastPt = now, pt
+			}
+		}
+		if r && !prevR {
+			rightBegan = inside
+		}
+		if !r && prevR && rightBegan {
+			rightBegan = false
+			if inside {
+				n.pushMouse("menu", pt)
+			}
+		}
+		prevL, prevR = l, r
+		time.Sleep(15 * time.Millisecond)
+	}
+}
+
+func (n *nativeLive) setCursorHidden(hide bool) {
+	n.mu.Lock()
+	host := n.child
+	n.mu.Unlock()
+	if host == 0 {
+		return
+	}
+	cur := uintptr(0)
+	if hide {
+		andMask := make([]byte, 128)
+		for i := range andMask {
+			andMask[i] = 0xFF
+		}
+		xorMask := make([]byte, 128)
+		var inst windows.Handle
+		_ = windows.GetModuleHandleEx(0, nil, &inst)
+		cur, _, _ = procCreateCursor.Call(uintptr(inst), 0, 0, 32, 32, uintptr(unsafe.Pointer(&andMask[0])), uintptr(unsafe.Pointer(&xorMask[0])))
+	} else {
+		cur, _, _ = procLoadCursor.Call(0, idcArrow)
+	}
+	if cur == 0 {
+		return
+	}
+	n.cursorHidden.Store(hide)
+	inner, _, _ := procGetWindow.Call(host, gwChild)
+	for _, w := range []uintptr{host, inner} {
+		if w == 0 {
+			continue
+		}
+		_, _, _ = procSetClassLongPtr.Call(w, gclpHCursor, cur)
+		_, _, _ = procSendMessage.Call(w, wmSetCursor, w, 1|0x0200<<16) // HTCLIENT, WM_MOUSEMOVE
+	}
+}
+
+// ---- Full screen ----
+
+func (n *nativeLive) setFullscreen(on bool) {
+	n.view.Dispatch(func() {
+		hwnd := n.parent
+		if on == n.fsOn {
+			return
+		}
+		if on {
+			mon, _, _ := procMonitorFromWindow.Call(hwnd, monitorDefaultNearer)
+			mi := monitorInfo{Size: uint32(unsafe.Sizeof(monitorInfo{}))}
+			if r, _, _ := procGetMonitorInfo.Call(mon, uintptr(unsafe.Pointer(&mi))); r == 0 {
+				return
+			}
+			n.fsPlace = winPlacement{Length: uint32(unsafe.Sizeof(winPlacement{}))}
+			_, _, _ = procGetWindowPlacement.Call(hwnd, uintptr(unsafe.Pointer(&n.fsPlace)))
+			style, _, _ := procGetWindowLong.Call(hwnd, gwlStyle)
+			n.fsStyle = style
+			_, _, _ = procSetWindowLong.Call(hwnd, gwlStyle, style&^uintptr(wsOverlappedWindow))
+			_, _, _ = procSetWindowPos.Call(hwnd, 0, uintptr(mi.Monitor.Left), uintptr(mi.Monitor.Top),
+				uintptr(mi.Monitor.Right-mi.Monitor.Left), uintptr(mi.Monitor.Bottom-mi.Monitor.Top),
+				swpNoOwnerZOrder|swpFrameChanged)
+			n.fsOn = true
+			n.fsFlag.Store(true)
+			return
+		}
+		_, _, _ = procSetWindowLong.Call(hwnd, gwlStyle, n.fsStyle)
+		_, _, _ = procSetWindowPlacement.Call(hwnd, uintptr(unsafe.Pointer(&n.fsPlace)))
+		_, _, _ = procSetWindowPos.Call(hwnd, 0, 0, 0, 0, 0,
+			swpNoMove|swpNoSize|swpNoZOrder|swpNoOwnerZ|swpNoActivate|swpFrameChanged)
+		n.fsOn = false
+		n.fsFlag.Store(false)
+		if n.cursorHidden.Load() {
+			go n.setCursorHidden(false)
+		}
+	})
+}
+
+// ---- Fit: how the picture fills its window ----
+
+func validFit(mode string) string {
+	switch mode {
+	case vlc.FitFill, vlc.FitStretch, vlc.Fit169, vlc.Fit43:
+		return mode
+	}
+	return vlc.FitOriginal
+}
+
+// applyFit gives the running picture the current fit for the window's present size.
+func (n *nativeLive) applyFit() {
+	n.mu.Lock()
+	mode, w, h := n.fit, n.last.w, n.last.h
+	n.mu.Unlock()
+	n.withPlayer(func(p *vlc.Player) { p.SetFit(mode, int(w), int(h)) })
+}
+
+// refit repeats the fit a moment after the window stopped changing size: only fill and stretch
+// depend on the window's shape.
+func (n *nativeLive) refit() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.fit != vlc.FitFill && n.fit != vlc.FitStretch {
+		return
+	}
+	if n.fitTimer != nil {
+		n.fitTimer.Stop()
+	}
+	n.fitTimer = time.AfterFunc(200*time.Millisecond, n.applyFit)
 }
 
 func (n *nativeLive) follow() {
@@ -533,8 +891,6 @@ func jsonString(v any) (string, error) {
 	return string(b), err
 }
 
-// handle is the one function the page can call: dccLive(op, json) -> json. It runs on the window's
-// thread and must return quickly without touching VLC.
 func (n *nativeLive) handle(op, raw string) (string, error) {
 	start := time.Now()
 	n.pageAlive.Store(start.UnixNano())
@@ -567,6 +923,7 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 		n.started, n.errMsg, n.startedAt = false, "", time.Now()
 		n.volume, n.muted, n.audioLang, n.audioApplied = a.Volume, a.Muted, a.AudioLang, false
 		n.opts = playOptions(a)
+		n.fit = validFit(a.Fit)
 		n.snap = stateOut{State: "opening", AudioCurrent: -1}
 		n.mu.Unlock()
 		go n.startPlayback(gen, a.Profile, ref, child)
@@ -578,6 +935,36 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 			return "", err
 		}
 		n.applyBox(b, b.Visible)
+		return "{}", nil
+
+	case "fit":
+		var a struct{ Mode string }
+		if err := json.Unmarshal([]byte(raw), &a); err != nil {
+			return "", err
+		}
+		n.mu.Lock()
+		n.fit = validFit(a.Mode)
+		n.mu.Unlock()
+		n.applyFit()
+		return "{}", nil
+
+	case "mouse":
+		return jsonString(map[string]any{"events": n.takeMouse()})
+
+	case "cursor":
+		var a struct{ Hide bool }
+		if err := json.Unmarshal([]byte(raw), &a); err != nil {
+			return "", err
+		}
+		n.setCursorHidden(a.Hide && n.fsFlag.Load())
+		return "{}", nil
+
+	case "fullscreen":
+		var a struct{ On bool }
+		if err := json.Unmarshal([]byte(raw), &a); err != nil {
+			return "", err
+		}
+		n.setFullscreen(a.On)
 		return "{}", nil
 
 	case "stop":
@@ -748,8 +1135,6 @@ func (n *nativeLive) poll() {
 	tick := time.NewTicker(300 * time.Millisecond)
 	defer tick.Stop()
 	lastState := ""
-	// Freeze detection: VLC keeps saying "playing" while a stuck stream shows the same picture, so the
-	// stream's own clock is watched too. It counts only once it has been seen to move.
 	var trackAt, movedAt time.Time
 	var lastT int64 = -1
 	var moved, deintDone bool
@@ -829,6 +1214,10 @@ func (n *nativeLive) poll() {
 			if !deintDone && out.Width > 0 { // the first frame exists: now the deinterlace choice can be applied
 				deintDone = true
 				p.ApplyDeinterlace()
+				n.mu.Lock()
+				mode, fw, fh := n.fit, n.last.w, n.last.h
+				n.mu.Unlock()
+				p.SetFit(mode, int(fw), int(fh))
 			}
 		} else {
 			movedAt = now // paused, buffering or opening: the clock starts again

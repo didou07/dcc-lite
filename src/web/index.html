@@ -213,7 +213,14 @@
       <svg class="ic xl"><use href="#i-devices"/></svg>
       <h2>Add your first device</h2>
       <p>Default login: <code>root</code> / <code>dreambox</code>.</p>
-      <button class="btn primary" id="deviceAddEmpty" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add device</button>
+      <div class="empty-actions">
+        <button class="btn primary" id="deviceAddEmpty" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add device</button>
+        <button class="btn" id="deviceScanEmpty" type="button" title="Search the local network for receivers"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Find devices</button>
+      </div>
+      <div class="empty-nets" id="deviceEmptyNets" hidden>
+        <p class="small">Your networks. Click one to scan it.</p>
+        <div class="empty-ranges" id="deviceEmptyRanges" data-no-i18n></div>
+      </div>
     </div>
   </section>
 
@@ -610,9 +617,7 @@
       <h2 id="screenTitle">Live screen</h2><code id="screenSub" class="ellipsis"></code>
     </div>
     <div class="screen-tools">
-      <details class="screen-opts" id="screenOpts">
-        <summary class="btn sm" title="Picture settings"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>Picture</summary>
-        <div class="screen-opts-pop">
+      <div class="screen-opts" id="screenOpts">
         <label class="field-inline">Show
           <select id="screenMode"><option value="all">Video + menus</option><option value="video">Video only</option><option value="osd">Menus only</option></select>
         </label>
@@ -621,8 +626,7 @@
         </label>
         <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Auto-refresh every</label>
           <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
-        </div>
-      </details>
+      </div>
       <span class="spacer"></span>
       <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic" aria-hidden="true"><use href="#i-remote"/></svg>Remote</button>
       <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Channels</button>
@@ -671,8 +675,9 @@
             </div>
             <div class="live-viewport" id="liveVideo">
             <div class="live-center" id="liveCenter" hidden>
-              <div class="live-spin" id="liveSpin" aria-hidden="true"></div>
+              <svg class="live-spin" id="liveSpin" viewBox="0 0 48 48" aria-hidden="true"><circle class="trk" cx="24" cy="24" r="20"/><circle class="arc" cx="24" cy="24" r="20"/></svg>
               <p id="liveMsg" role="status" aria-live="polite"></p>
+              <small class="live-wait" id="liveWait" hidden></small>
               <div class="live-center-actions" id="liveCenterActions" hidden>
                 <button class="btn sm primary" id="liveRetry" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Try again</button>
               </div>
@@ -685,6 +690,7 @@
               <button class="live-btn live-audio-btn" id="liveAudioBtn" type="button" title="Audio track" aria-label="Audio track" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><span id="liveAudioLabel"></span></button>
               <button class="live-btn" id="liveSettingsBtn" type="button" title="Player settings" aria-label="Player settings" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg></button>
               <span class="spacer"></span>
+              <button class="live-btn" id="livePanelBtn" type="button" title="Hide the details panel" aria-label="Details panel" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></button>
               <button class="live-btn" id="liveSnap" type="button" title="Save a snapshot" aria-label="Save a snapshot"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>
               <button class="live-btn" id="liveFull" type="button" title="Full screen (F)" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
               <button class="live-btn" id="liveStop" type="button" title="Stop watching (L)" aria-label="Stop"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>
@@ -692,6 +698,7 @@
           </div>
         </div>
         <section class="live-panel" id="livePanel" data-tab="player" aria-label="Live channel details" hidden>
+          <button class="icon-btn live-panel-close" id="livePanelClose" type="button" title="Hide this panel" aria-label="Hide this panel"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
           <div class="seg live-tabs" id="liveTabs" role="tablist" aria-label="Details">
             <button type="button" role="tab" data-tab="player" aria-selected="true">Player</button>
             <button type="button" role="tab" data-tab="cw" aria-selected="false">Control words</button>
@@ -824,7 +831,7 @@
     <label class="field"><span>Web interface</span>
       <select id="devWebKind">
         <option value="openwebif">OpenWebif</option>
-        <option value="webinterface">WebInterface</option>
+        <option value="dreamos">DreamOS</option>
       </select>
     </label>
     <details class="advanced" id="devPorts">
@@ -999,6 +1006,7 @@
       <div class="ap-row"><span class="ap-l">Edges</span><div class="seg ap-seg" data-ap="edge" role="radiogroup"><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="default" aria-checked="false">Normal</button><button type="button" role="radio" data-v="strong" aria-checked="false">Strong</button></div></div>
       <div class="ap-row"><span class="ap-l">Corners</span><div class="seg ap-seg" data-ap="radius" role="radiogroup"><button type="button" role="radio" data-v="sharp" aria-checked="false">Sharp</button><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="round" aria-checked="false">Round</button></div></div>
       <div class="ap-row"><span class="ap-l">Density</span><div class="seg ap-seg" data-ap="density" role="radiogroup"><button type="button" role="radio" data-v="compact" aria-checked="false">Compact</button><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="roomy" aria-checked="false">Roomy</button></div></div>
+      <div class="ap-row"><span class="ap-l">Interface size</span><div class="seg ap-seg" data-ap="scale" role="radiogroup"><button type="button" role="radio" data-v="0.85" aria-checked="false">85%</button><button type="button" role="radio" data-v="1" aria-checked="false">100%</button><button type="button" role="radio" data-v="1.15" aria-checked="false">115%</button><button type="button" role="radio" data-v="1.3" aria-checked="false">130%</button><button type="button" role="radio" data-v="1.5" aria-checked="false">150%</button></div></div>
       <div class="ap-row"><span class="ap-l">Icon weight</span><div class="seg ap-seg" data-ap="icons" role="radiogroup"><button type="button" role="radio" data-v="thin" aria-checked="false">Thin</button><button type="button" role="radio" data-v="default" aria-checked="false">Regular</button><button type="button" role="radio" data-v="bold" aria-checked="false">Bold</button></div></div>
       <div class="ap-row"><span class="ap-l">Font</span><div class="seg ap-seg" data-ap="font" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="system" aria-checked="false">System</button><button type="button" role="radio" data-v="rounded" aria-checked="false">Rounded</button><button type="button" role="radio" data-v="serif" aria-checked="false">Serif</button></div></div>
       <div class="ap-row"><span class="ap-l">Animations</span><div class="seg ap-seg" data-ap="motion" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">On</button><button type="button" role="radio" data-v="reduced" aria-checked="false">Off</button></div></div>
@@ -1148,10 +1156,14 @@
       <label class="check"><input type="checkbox" id="findCase"> Match case</label>
       <span id="findInfo" class="muted small" role="status" aria-live="polite"></span>
     </div>
-    <textarea id="editorText" class="editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File content"></textarea>
+    <div class="editor-body" id="editorBody">
+      <div class="editor-gutter" id="editorGutter" aria-hidden="true" data-no-i18n><pre class="editor-nums" id="editorNums">1</pre></div>
+      <textarea id="editorText" class="editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File content"></textarea>
+    </div>
     <div class="editor-foot">
       <span id="editorStatus" class="editor-status" role="status" aria-live="polite"></span>
       <span id="editorCursor" class="editor-cursor"></span>
+      <label class="check"><input type="checkbox" id="editorLineNumbers" checked> Line numbers</label>
       <label class="check"><input type="checkbox" id="editorWrap"> Wrap lines</label>
     </div>
     <div class="dialog-actions">

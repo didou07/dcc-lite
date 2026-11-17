@@ -332,7 +332,7 @@ func decodeDeviceKey(p *Profile, key, value string) error {
 	case "enabled":
 		p.Enabled, err = iniParseBool(value)
 	case "webkind":
-		p.WebKind = strings.ToLower(value)
+		p.WebKind = NormalizeWebKind(value)
 	case "insecuretls":
 		p.InsecureTLS, err = iniParseBool(value)
 	case "group":

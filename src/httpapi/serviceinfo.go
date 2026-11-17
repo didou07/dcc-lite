@@ -123,7 +123,7 @@ func (s *Server) deviceServiceInfo(w http.ResponseWriter, r *http.Request) {
 	add(&ids, "Service reference", ref)
 
 	var ecm []infoPair
-	if status, body, err := web.getBounded(ctx, "/file?action=download&file="+url.QueryEscape("/tmp/ecm.info"), 8192); err == nil && status == http.StatusOK {
+	if status, body, err := web.getBounded(ctx, web.fileAddress("/tmp/ecm.info"), 8192); err == nil && status == http.StatusOK {
 		if text := string(body); !strings.HasPrefix(text, "File '") {
 			ecm = parseECM(text)
 		}

@@ -18,9 +18,6 @@ import (
 	"github.com/didou07/dcc-lite/src/logx"
 )
 
-// Restore points: channel-list copies saved automatically before a change to the receiver.
-// One folder per device in the app data folder, same .zip layout as a manual backup.
-
 var snapLog = logx.For("restore-points")
 
 const (

@@ -191,9 +191,6 @@ func writeWebFailure(w http.ResponseWriter, web deviceWeb, status int, body []by
 	return false
 }
 
-// press sends a command. For an /api/ address a missing one (404/405/501, or a page that is not JSON) is
-// always reported as 404. A receiver set to WebInterface is never asked for an /api/ address: viaLegacy
-// translates it to the /web/ twin, or reports that the feature needs OpenWebif.
 func (d deviceWeb) press(ctx context.Context, pathAndQuery string) (int, []byte, error) {
 	api := strings.HasPrefix(pathAndQuery, "/api/")
 	status, body, err := d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.pressRaw(ctx, pathAndQuery) })
@@ -211,11 +208,8 @@ func (d deviceWeb) press(ctx context.Context, pathAndQuery string) (int, []byte,
 	return status, body, nil
 }
 
-// pressFallback sends an /api/ command in the receiver's own dialect: OpenWebif gets /api/..., a receiver
-// set to WebInterface gets the same command at /web/... (remote control, message, zap and the like are
-// the same names there). Never both.
 func (d deviceWeb) pressFallback(ctx context.Context, apiPath string) (int, []byte, error) {
-	if d.kind == "webinterface" {
+	if d.kind == "dreamos" {
 		return d.press(ctx, "/web/"+strings.TrimPrefix(apiPath, "/api/"))
 	}
 	return d.press(ctx, apiPath)

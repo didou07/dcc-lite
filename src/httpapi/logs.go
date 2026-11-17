@@ -125,8 +125,6 @@ func (s *Server) putLogConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.logConfig())
 }
 
-// reportSanitizer lists everything the user typed in (devices, hosts, accounts)
-// so the downloaded report can be shared without exposing it.
 func (s *Server) reportSanitizer() *logx.Sanitizer {
 	var terms []logx.Term
 	for _, p := range s.app.Profiles.List() {

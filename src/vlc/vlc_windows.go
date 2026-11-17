@@ -65,7 +65,7 @@ var required = []string{
 }
 
 // optional procs are used when this VLC has them; a missing one never stops VLC from loading.
-var optional = []string{"libvlc_video_set_deinterlace"}
+var optional = []string{"libvlc_video_set_deinterlace", "libvlc_video_set_aspect_ratio", "libvlc_video_set_crop_geometry"}
 
 // Load finds VLC, loads libvlc.dll from it and starts a libvlc instance.
 func Load() (*Lib, error) {
@@ -160,6 +160,15 @@ type PlayOptions struct {
 	Deinterlace string // "auto" (VLC decides), "yadif" or "off"
 	NoHardware  bool   // decode in software
 }
+
+// Video fit modes: how the picture meets the edges of its window.
+const (
+	FitOriginal = "fit"     // the broadcast's own proportions, black bars where needed (default)
+	FitFill     = "fill"    // zoom until the window is full; the overflow is cut off
+	FitStretch  = "stretch" // stretch the picture to the window's shape
+	Fit169      = "16:9"
+	Fit43       = "4:3"
+)
 
 // Deinterlace modes.
 const (
@@ -269,8 +278,42 @@ func (p *Player) Play(mrl string, opt PlayOptions) error {
 	return nil
 }
 
-// ApplyDeinterlace tells the running picture pipeline to deinterlace (or not), once the first
-// frame exists. Automatic mode needs nothing: it is what VLC does by itself.
+func (p *Player) SetFit(mode string, w, h int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mp == 0 {
+		return
+	}
+	set := func(name, value string) {
+		if p.lib.procs[name] == 0 {
+			return
+		}
+		if value == "" {
+			p.lib.call(name, p.mp, 0) // NULL: back to VLC's own choice
+			return
+		}
+		if c, err := cstr(value); err == nil {
+			p.lib.call(name, p.mp, uintptr(unsafe.Pointer(c)))
+			runtime.KeepAlive(c)
+		}
+	}
+	ratio := ""
+	if w > 0 && h > 0 {
+		ratio = fmt.Sprintf("%d:%d", w, h)
+	}
+	aspect, crop := "", ""
+	switch mode {
+	case FitFill:
+		crop = ratio
+	case FitStretch:
+		aspect = ratio
+	case Fit169, Fit43:
+		aspect = mode
+	}
+	set("libvlc_video_set_crop_geometry", crop)
+	set("libvlc_video_set_aspect_ratio", aspect)
+}
+
 func (p *Player) ApplyDeinterlace() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -288,8 +331,6 @@ func (p *Player) ApplyDeinterlace() {
 	}
 }
 
-// Time is how far the stream has played, in milliseconds, or -1 when VLC has no answer. While a
-// live picture is really running it keeps growing; when the picture freezes it stops.
 func (p *Player) Time() int64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()

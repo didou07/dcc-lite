@@ -269,8 +269,6 @@ func (f *LocalFS) ReplaceTemp(tempPath, targetRelative string, overwrite bool) e
 	return os.Rename(tempPath, target)
 }
 
-// Copy duplicates srcRelative onto dstRelative in the local root; directories are copied recursively,
-// symbolic links are rejected, and ctx is checked between entries so a cancelled request stops.
 func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, overwrite bool) error {
 	srcAbsolute, srcClean, err := f.Resolve(srcRelative, false)
 	if err != nil {

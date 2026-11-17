@@ -905,7 +905,8 @@ $("#termFind").addEventListener("keydown", (event) => {
 $("#termFind").addEventListener("input", () => { const tab = activeTab(); if (tab) tab.findRow = -1; });
 
 const scan = { busy: false };
-async function openScanDialog() {
+async function openScanDialog(presetRange = "", autoStart = false) {
+  if (typeof presetRange !== "string") presetRange = "";
   $("#scanError").hidden = true;
   $("#scanStatus").textContent = "";
   $("#scanResults").replaceChildren();
@@ -915,8 +916,31 @@ async function openScanDialog() {
     $("#scanRanges").replaceChildren(...ranges.map((range) => Object.assign(document.createElement("option"), { value: range })));
     if (!$("#scanRange").value && ranges.length) $("#scanRange").value = ranges[0];
   } catch { }
+  if (presetRange) $("#scanRange").value = presetRange;
   $("#scanRange").focus();
+  if (autoStart && $("#scanRange").value.trim() && !scan.busy) $("#scanForm").requestSubmit();
 }
+const emptyNets = { loaded: false, loading: false };
+async function loadEmptyNetworks() {
+  const box = $("#deviceEmptyNets"), list = $("#deviceEmptyRanges");
+  if (emptyNets.loading) return;
+  if (emptyNets.loaded) { box.hidden = !list.children.length; return; }
+  emptyNets.loading = true;
+  try {
+    const { ranges } = await api("/api/v1/network/ranges");
+    list.replaceChildren(...(ranges || []).map((range) => {
+      const button = document.createElement("button");
+      button.type = "button"; button.className = "btn sm"; button.textContent = range;
+      button.title = `Scan ${range}`;
+      button.addEventListener("click", () => openScanDialog(range, true));
+      return button;
+    }));
+    emptyNets.loaded = true;
+    box.hidden = !list.children.length;
+  } catch { box.hidden = true; }
+  finally { emptyNets.loading = false; }
+}
+$("#deviceScanEmpty").addEventListener("click", () => openScanDialog());
 function renderScanResults(hosts) {
   const known = new Set(devices.list.map((device) => device.host));
   const list = $("#scanResults");
@@ -956,7 +980,7 @@ function renderScanResults(hosts) {
     list.append(item);
   }
 }
-$("#devicesScan").addEventListener("click", openScanDialog);
+$("#devicesScan").addEventListener("click", () => openScanDialog());
 $("#scanClose").addEventListener("click", () => $("#scanDialog").close());
 $("#scanForm").addEventListener("submit", async (event) => {
   event.preventDefault();

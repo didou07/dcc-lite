@@ -1,4 +1,4 @@
-//go:build !(windows && native)
+//go:build !(windows && native) && !(linux && native) && !(darwin && native)
 
 package main
 

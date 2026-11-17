@@ -4,8 +4,6 @@ package updater
 
 import "os"
 
-// swap moves the running executable aside (Windows allows renaming, not
-// overwriting, a running program) and puts the new one in its place.
 func swap(exe, newExe string) error {
 	old := exe + ".old"
 	_ = os.Remove(old)

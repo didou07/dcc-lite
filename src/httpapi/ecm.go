@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -105,8 +104,6 @@ func ecmCAID(text string) int {
 	return 0
 }
 
-// deviceLiveECM reports the decryption details of the channel on the receiver: card, reader,
-// ECM time and the current control words, read from the emulator's ecm.info.
 func (s *Server) deviceLiveECM(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -115,7 +112,7 @@ func (s *Server) deviceLiveECM(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 8*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	status, body, err := web.getBounded(ctx, "/file?action=download&file="+url.QueryEscape("/tmp/ecm.info"), 8192)
+	status, body, err := web.getBounded(ctx, web.fileAddress("/tmp/ecm.info"), 8192)
 	if err != nil || status == http.StatusUnauthorized || status == http.StatusForbidden {
 		if writeWebStatus(w, web, status, err) {
 			return

@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// Report builds the downloadable text report, masking personal data with the sanitizer (nil: by shape only).
 func (h *Hub) Report(info map[string]string, q Query, san *Sanitizer) string {
 	if san == nil {
 		san = NewSanitizer()

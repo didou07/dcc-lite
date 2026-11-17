@@ -223,7 +223,7 @@ func profileFromRequest(input profileRequest) config.Profile {
 		p.Scheme = "https"
 	}
 	p.InsecureTLS = input.TLSInsecureSkipVerify
-	p.WebKind = strings.ToLower(strings.TrimSpace(input.WebKind))
+	p.WebKind = config.NormalizeWebKind(input.WebKind)
 	if p.WebKind == "" {
 		p.WebKind = "openwebif"
 	}

@@ -80,6 +80,7 @@ function remoteBind() {
     const button = event.target.closest(".rk");
     if (!button) return;
     if (remote.holdFired) { remote.holdFired = false; return; }
+    if (button.dataset.key === "history" && !event.shiftKey && typeof zapBack === "function" && zapBack()) return;
     sendRemoteKey(button.dataset.key, event.shiftKey, button);
   });
   holder.addEventListener("contextmenu", (event) => { if (event.target.closest(".rk")) event.preventDefault(); });

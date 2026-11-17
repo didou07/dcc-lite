@@ -1,6 +1,6 @@
 package httpapi
 
-// Older WebInterface (DreamOS) only; never runs for receivers set to OpenWebif.
+// Older DreamOS (DreamOS) only; never runs for receivers set to OpenWebif.
 
 import (
 	"context"
@@ -15,9 +15,6 @@ import (
 	"time"
 )
 
-// DreamOS WebInterface "extended security": its /web/ addresses may need a sessionid (else HTTP 412),
-// obtained from /web/session and passed as sessionid=.
-
 type sessionEntry struct {
 	id string
 	at time.Time
@@ -28,44 +25,37 @@ var webSessions sync.Map // device base -> sessionEntry
 var sessionIDPattern = regexp.MustCompile(`(?is)sessionid[^>]*>\s*([^<\s]+)\s*<`)
 var sessionArgPattern = regexp.MustCompile(`([?&])sessionid=[^&]*&?`)
 
-// wantsSession: only a receiver the owner set to WebInterface ever gets a session id.
+// wantsSession: only a receiver the owner set to DreamOS ever gets a session id.
 func (d deviceWeb) wantsSession(pathAndQuery string) bool {
-	if d.kind != "webinterface" {
+	if d.kind != "dreamos" {
 		return false
 	}
 	p := pathOnly(pathAndQuery)
 	switch {
 	case p == "/web/session":
 		return false
-	case strings.HasPrefix(p, "/web/"):
-		return true
+	// dreamDroid puts the session id on every request except /grab (and OpenWebif-only /api, /public).
+	case strings.HasPrefix(p, "/grab"), strings.HasPrefix(p, "/public"), strings.HasPrefix(p, "/api/"):
+		return false
 	}
-	return strings.HasPrefix(p, "/grab") || strings.HasPrefix(p, "/screenshot") ||
-		strings.HasPrefix(p, "/opkg") || strings.HasPrefix(p, "/ipkg")
+	return true
 }
 
-// webUnsupportedError: this receiver is set to WebInterface, which has no such feature.
+// webUnsupportedError: this receiver is set to DreamOS, which has no such feature.
 type webUnsupportedError struct{ feature string }
 
 func (e *webUnsupportedError) Error() string {
-	return e.feature + " needs OpenWebif; this receiver is set to WebInterface"
+	return e.feature + " needs OpenWebif; this receiver is set to DreamOS"
 }
 
-// webifLacks names what the older WebInterface does not offer, or "" when the address is fine to ask for.
-// Everything under /api/ is OpenWebif's; a WebInterface receiver is only asked for /web/ addresses
-// (the /api/ ones that have a /web/ twin are translated in legacywebif.go before they get here).
 func (d deviceWeb) webifLacks(pathAndQuery string) string {
-	if d.kind != "webinterface" {
+	if d.kind != "dreamos" {
 		return ""
 	}
 	p := pathOnly(pathAndQuery)
 	switch {
 	case strings.HasPrefix(p, "/api/"):
 		return strings.TrimPrefix(p, "/api/")
-	case strings.HasPrefix(p, "/autotimer"):
-		return "AutoTimer"
-	case strings.HasPrefix(p, "/epgrefresh"):
-		return "EPG refresh"
 	}
 	return ""
 }
@@ -100,18 +90,91 @@ func (d deviceWeb) fetchSession(ctx context.Context) (string, error) {
 		return "", errors.New("/web/session gave no session id")
 	}
 	if _, known := webSessions.Load(d.base); !known {
-		devLog.Info("receiver wants a session id (WebInterface extended security), using one", "base", d.base)
+		devLog.Info("receiver wants a session id (DreamOS extended security), using one", "base", d.base)
 	}
 	webSessions.Store(d.base, sessionEntry{id: id, at: time.Now()})
 	return id, nil
 }
 
-// get requests an address; on HTTP 412 it fetches a session id and retries once.
+var webPostPaths sync.Map // device base + "|" + path -> true
+
+func (d deviceWeb) canPost(pathAndQuery string) bool {
+	if d.kind != "dreamos" {
+		return false
+	}
+	p := pathOnly(pathAndQuery)
+	if p == "/web/session" {
+		return false
+	}
+	return strings.HasPrefix(p, "/web/") || strings.HasPrefix(p, "/autotimer") ||
+		strings.HasPrefix(p, "/epgrefresh") || strings.HasPrefix(p, "/bouqueteditor")
+}
+
+func (d deviceWeb) post(ctx context.Context, pathAndQuery string) (*http.Response, error) {
+	path, rawQuery, _ := strings.Cut(pathAndQuery, "?")
+	args, _ := url.ParseQuery(sessionArgPattern.ReplaceAllString(rawQuery, "$1"))
+	args.Del("sessionid")
+	send := func(withQuery bool) (*http.Response, error) {
+		form := url.Values{}
+		for k, v := range args {
+			form[k] = v
+		}
+		if v, ok := webSessions.Load(d.base); ok {
+			form.Set("sessionid", v.(sessionEntry).id)
+		}
+		target := path
+		if withQuery && len(args) > 0 {
+			target += "?" + args.Encode()
+		}
+		return d.sendOnce(ctx, http.MethodPost, target, form.Encode())
+	}
+	attempt := func(withQuery bool) (*http.Response, error) {
+		resp, err := send(withQuery)
+		if err != nil || resp.StatusCode != http.StatusPreconditionFailed {
+			return resp, err
+		}
+		_ = resp.Body.Close()
+		if _, serr := d.fetchSession(ctx); serr != nil {
+			devLog.Warn("could not get a session id from the receiver", "base", d.base, "error", serr)
+		}
+		return send(withQuery)
+	}
+	resp, err := attempt(true)
+	if err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+		return resp, err
+	}
+	_ = resp.Body.Close()
+	return attempt(false)
+}
+
 func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response, error) {
 	if what := d.webifLacks(pathAndQuery); what != "" {
 		return nil, &webUnsupportedError{what}
 	}
-	// Only old /web/ addresses may carry a session id (and /grab when the owner chose WebInterface).
+	if !d.canPost(pathAndQuery) {
+		return d.getSession(ctx, pathAndQuery)
+	}
+	key := d.base + "|" + pathOnly(pathAndQuery)
+	if _, known := webPostPaths.Load(key); known {
+		return d.post(ctx, pathAndQuery)
+	}
+	resp, err := d.getSession(ctx, pathAndQuery)
+	if err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+		return resp, err
+	}
+	_ = resp.Body.Close()
+	resp, err = d.post(ctx, pathAndQuery)
+	if err == nil && resp.StatusCode != http.StatusMethodNotAllowed {
+		if _, dup := webPostPaths.LoadOrStore(key, true); !dup {
+			devLog.Info("receiver wants POST for this DreamOS address", "base", d.base, "path", pathOnly(pathAndQuery))
+		}
+	}
+	return resp, err
+}
+
+// getSession requests an address; on HTTP 412 it fetches a session id and retries once.
+func (d deviceWeb) getSession(ctx context.Context, pathAndQuery string) (*http.Response, error) {
+	// Only old /web/ addresses may carry a session id (and /grab when the owner chose DreamOS).
 	if !d.wantsSession(pathAndQuery) {
 		return d.getOnce(ctx, pathAndQuery)
 	}
@@ -131,4 +194,11 @@ func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response
 		return d.getOnce(ctx, base) // hand back the receiver's own answer
 	}
 	return d.getOnce(ctx, withSessionID(base, id))
+}
+
+func (d deviceWeb) fileAddress(file string) string {
+	if d.kind == "dreamos" {
+		return "/file?file=" + url.QueryEscape(file)
+	}
+	return "/file?action=download&file=" + url.QueryEscape(file)
 }

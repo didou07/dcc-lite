@@ -25,7 +25,7 @@ type deviceWeb struct {
 	user   string
 	pass   string
 	client *http.Client
-	kind   string // "openwebif" or "webinterface": what the owner said the receiver runs (never guessed)
+	kind   string // "openwebif" or "dreamos": what the owner said the receiver runs (never guessed)
 }
 
 func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
@@ -79,9 +79,21 @@ func (b *slotBody) Close() error {
 }
 
 func (d deviceWeb) getOnce(ctx context.Context, pathAndQuery string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.base+pathAndQuery, nil)
+	return d.sendOnce(ctx, http.MethodGet, pathAndQuery, "")
+}
+
+// sendOnce makes one request. A non-empty form is sent as an urlencoded POST/GET body.
+func (d deviceWeb) sendOnce(ctx context.Context, method, pathAndQuery, form string) (*http.Response, error) {
+	var body io.Reader
+	if form != "" {
+		body = strings.NewReader(form)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, d.base+pathAndQuery, body)
 	if err != nil {
 		return nil, err
+	}
+	if form != "" {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	if d.pass != "" {
 		req.SetBasicAuth(d.user, d.pass)
@@ -172,7 +184,15 @@ func webNoteFailure(base string, err error) {
 	webFailures.Store(base, &webFailure{until: time.Now().Add(pause), err: err, streak: streak})
 }
 
+var webLastOK sync.Map
+
+func webAnsweredRecently(base string) bool {
+	v, ok := webLastOK.Load(base)
+	return ok && time.Since(v.(time.Time)) < 30*time.Minute
+}
+
 func webNoteSuccess(base string) {
+	webLastOK.Store(base, time.Now())
 	webFailuresMu.Lock()
 	if v, ok := webFailures.Load(base); ok {
 		devLog.Info("device web interface is answering again", "base", base, "after_failures", v.(*webFailure).streak)
@@ -246,11 +266,11 @@ func (d deviceWeb) probe() probeResult {
 func (d deviceWeb) unreachable(err error) string {
 	var lacks *webUnsupportedError
 	if errors.As(err, &lacks) {
-		return "This receiver is set to WebInterface, which has no " + lacks.feature + "."
+		return "This receiver is set to DreamOS, which has no " + lacks.feature + "."
 	}
 	var bad *legacyBadReply
 	if errors.As(err, &bad) {
-		return "The receiver's WebInterface could not answer: " + bad.msg + "."
+		return "The receiver's DreamOS could not answer: " + bad.msg + "."
 	}
 	at := strings.TrimPrefix(strings.TrimPrefix(d.base, "http://"), "https://")
 	switch errKind(err) {
@@ -264,6 +284,13 @@ func (d deviceWeb) unreachable(err error) string {
 		return "The receiver at " + at + " did not reply in time."
 	case "refused", "reset":
 		p := d.probe()
+		if webAnsweredRecently(d.base) {
+			// This port worked a moment ago, so it is not the wrong port: the receiver is restarting or off.
+			if p.telnet || p.ftp {
+				return "The receiver's web interface is restarting or not answering right now."
+			}
+			return "The receiver at " + at + " is restarting, switched off or not answering."
+		}
 		if len(p.webPorts) > 0 {
 			return "Nothing answers on port " + strconv.Itoa(d.port) + ", but the web interface seems to be on port " + strconv.Itoa(p.webPorts[0]) + ". Change the web port."
 		}

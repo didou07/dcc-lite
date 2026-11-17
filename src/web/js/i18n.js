@@ -4,6 +4,8 @@
   const KEY = "dcclite.lang";
   const NAMES = { en: "English", ar: "العربية", fr: "Français", es: "Español", de: "Deutsch", tr: "Türkçe", ru: "Русский", zh: "中文" };
   const RTL = new Set(["ar", "he", "fa", "ur"]);
+  const MIRROR_LAYOUT = false;
+  const dirFor = (code) => (MIRROR_LAYOUT && RTL.has(code) ? "rtl" : "ltr");
   const data = window.DCC_I18N_DATA || {};
   const ATTRS = ["title", "placeholder", "aria-label"];
   const SKIP = "script,style,textarea,pre,code,.xterm,[data-no-i18n]";
@@ -68,7 +70,7 @@
     lang = code;
     try { localStorage.setItem(KEY, code); } catch { }
     document.documentElement.lang = code;
-    document.documentElement.dir = RTL.has(code) ? "rtl" : "ltr";
+    document.documentElement.dir = dirFor(code);
     walk(document.body);
   }
   function picker() {
@@ -91,7 +93,7 @@
     add(code, dict) { data[code] = { ...(data[code] || {}), ...dict }; delete tpl[code]; if (code === lang) { walk(document.body); document.title = lookup(document.title); } },
   };
   document.documentElement.lang = lang;
-  document.documentElement.dir = RTL.has(lang) ? "rtl" : "ltr";
+  document.documentElement.dir = dirFor(lang);
   const init = () => { picker(); start(); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

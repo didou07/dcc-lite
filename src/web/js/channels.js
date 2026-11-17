@@ -29,6 +29,7 @@ function channelsReset() {
   ch.epg.clear();
   ch.bouquets = [];
   ch.currentRef = "";
+  ch.zapPrev = "";
   ch.standby = null;
   $("#channelList").replaceChildren();
   $("#channelBouquet").replaceChildren();
@@ -56,7 +57,6 @@ function channelsEnter() {
   channelsStop();
   pollCurrent(true);
   ch.tick = window.setInterval(renderNow, 1000);
-  ch.epgTimer = window.setInterval(() => loadEPG(true), 60000);
 }
 
 // The chosen bouquet is remembered per receiver and per TV / radio list.
@@ -130,7 +130,7 @@ function renderChannels() {
     const active = c.ref === ch.currentRef;
     return h("button", { class: `ch-item${active ? " current" : ""}`, type: "button", role: "option", "aria-selected": String(active), dataset: { ref: c.ref }, title: c.name, onClick: () => zapTo(c) },
       h("span", { class: "ch-num", text: c.number || "" }), piconNode(c, c.name),
-      h("span", { class: "ch-text" }, h("span", { class: "ch-name ellipsis", text: c.name }), h("span", { class: "ch-epg ellipsis", hidden: true }), h("span", { class: "ch-prog", hidden: true }, h("span"))),
+      h("span", { class: "ch-text" }, h("span", { class: "ch-name ellipsis", text: c.name })),
       h("span", { class: "ch-acts" },
         h("span", { class: "ch-pc", role: "presentation", title: "Programme guide of this channel", onClick: (event) => { event.stopPropagation(); openGuide("epg", c); } }, icon("calendar")),
         h("span", { class: "ch-pc", role: "presentation", title: "Watch on this computer", onClick: (event) => { event.stopPropagation(); watchOnPC(c); } }, icon("play"))));
@@ -142,47 +142,20 @@ function renderChannels() {
   list.replaceChildren(...nodes);
   const current = list.querySelector(".ch-item.current");
   if (current) current.scrollIntoView({ block: "nearest" });
-  paintEPG();
-  loadEPG(false);
 }
 
-function epgFor(ref) {
-  for (const data of ch.epg.values()) {
-    const e = data.events[ref];
-    if (e) return { e, nowAt: data.now + (Date.now() - data.at) / 1000 };
-  }
-  return null;
+function zapBack() {
+  if (!ch.profileID || !ch.zapPrev) return false;
+  const entry = ch.bouquets.flatMap((b) => b.channels || []).find((c) => !c.marker && c.ref === ch.zapPrev);
+  if (!entry) return false;
+  zapTo(entry);
+  return true;
 }
-function paintEPG() {
-  for (const row of $$("#channelList .ch-item")) {
-    const found = epgFor(row.dataset.ref);
-    const line = row.querySelector(".ch-epg"), bar = row.querySelector(".ch-prog");
-    if (!line || !bar) continue;
-    const running = found && found.e.duration > 0 && found.nowAt >= found.e.begin && found.nowAt < found.e.begin + found.e.duration;
-    line.hidden = !running;
-    bar.hidden = !running;
-    if (!running) continue;
-    line.textContent = found.e.title;
-    bar.firstChild.style.width = `${Math.max(0, Math.min(100, ((found.nowAt - found.e.begin) / found.e.duration) * 100)).toFixed(1)}%`;
-  }
-}
-async function loadEPG(force) {
-  const id = ch.profileID, ref = ch.bouquetRef;
-  if (!id || !ref || ch.filter.trim() || $("#channelPane").hidden) return;
-  const have = ch.epg.get(ref);
-  if (!force && have && Date.now() - have.at < 60000) return;
-  try {
-    const data = await api(profileURL(id, `epgnow?bouquet=${encodeURIComponent(ref)}`));
-    if (id !== ch.profileID) return;
-    ch.epg.set(ref, { at: Date.now(), now: data.now || Math.floor(Date.now() / 1000), events: data.events || {} });
-    if (ref === ch.bouquetRef) paintEPG();
-  } catch { }
-}
-
 async function zapTo(entry) {
   const id = ch.profileID;
   if (!id || entry.marker) return;
   const token = ++ch.zapping;
+  if (ch.currentRef && ch.currentRef !== entry.ref) ch.zapPrev = ch.currentRef;
   ch.currentRef = entry.ref;
   ch.event = null;
   for (const node of $$("#channelList .ch-item")) {
@@ -226,7 +199,10 @@ function renderNow() {
   const e = ch.event;
   const time = $("#nowTime"), bar = $("#nowProgress");
   if (!e || !e.duration) { time.textContent = ""; bar.style.width = "0"; return; }
-  const elapsed = Math.min(e.duration, e.duration - e.remaining + (Date.now() - ch.eventAt) / 1000);
+  let elapsed;
+  if (Number.isFinite(e.remaining)) elapsed = Math.min(e.duration, e.duration - e.remaining + (Date.now() - ch.eventAt) / 1000);
+  else if (Number.isFinite(e.begin) && e.begin > 0) elapsed = Math.min(e.duration, Math.max(0, Date.now() / 1000 - e.begin)); // DreamOS sends no "remaining"
+  else { time.textContent = ""; bar.style.width = "0"; return; }
   bar.style.width = `${Math.max(0, Math.min(100, (elapsed / e.duration) * 100)).toFixed(1)}%`;
   time.textContent = `${fmtClock(elapsed)} / ${fmtClock(e.duration)}`;
 }
@@ -240,6 +216,7 @@ async function pollCurrent(now = false) {
       const info = await api(profileURL(id, "current"));
       if (id !== ch.profileID) return;
       if (info.ref && info.ref !== ch.currentRef) {
+        if (ch.currentRef) ch.zapPrev = ch.currentRef;
         ch.currentRef = info.ref;
         if (!ch.filter && !ch.bouquets.find((b) => b.ref === ch.bouquetRef)?.channels.some((c) => c.ref === info.ref)) {
           const holder = ch.bouquets.find((b) => b.channels.some((c) => c.ref === info.ref));
@@ -303,11 +280,12 @@ $("#channelHide").addEventListener("click", () => setChannelsOpen(false));
 $("#channelShow").addEventListener("click", () => setChannelsOpen(true));
 
 $("#screenFull").addEventListener("click", async () => {
+  if (typeof liveFullToggle === "function" && liveFullToggle()) return; // live TV takes the whole window itself
   const stage = $("#screenStage");
   try { if (document.fullscreenElement === stage) await document.exitFullscreen(); else await stage.requestFullscreen(); }
   catch { toast("Full screen is not available in this window", "error"); }
 });
-$("#screenStage").addEventListener("dblclick", () => $("#screenFull").click());
+$("#screenStage").addEventListener("dblclick", (event) => { if (!event.target.closest(".live-overlay")) $("#screenFull").click(); });
 
 const KEY_MAP = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "ok", Escape: "exit", PageUp: "chup", PageDown: "chdown", "+": "volup", "=": "volup", "-": "voldown", m: "mute", i: "info", e: "epg" };
 document.addEventListener("keydown", (event) => {
@@ -316,6 +294,7 @@ document.addEventListener("keydown", (event) => {
   const target = event.target;
   if (target.closest?.("input, select, textarea, #channelPane, [contenteditable]")) return;
   if (target.closest?.("button") && (event.key === "Enter" || event.key === " ")) return;
+  if (event.key === "Escape" && typeof liveEscape === "function" && liveEscape()) { event.preventDefault(); return; }
   if (event.key.toLowerCase() === "f") { event.preventDefault(); $("#screenFull").click(); return; }
   const key = KEY_MAP[event.key] || KEY_MAP[event.key.toLowerCase()];
   if (!key) return;

@@ -42,7 +42,6 @@ func (s *Server) enabledProfile(w http.ResponseWriter, r *http.Request) (config.
 	return profile, true
 }
 
-// getBounded reads a receiver reply; a missing /api/ address falls back to the older WebInterface (legacywebif.go).
 func (d deviceWeb) getBounded(ctx context.Context, pathAndQuery string, limit int64) (int, []byte, error) {
 	return d.viaLegacy(ctx, pathAndQuery, func() (int, []byte, error) { return d.getBoundedRaw(ctx, pathAndQuery, limit) })
 }

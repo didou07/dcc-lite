@@ -7,9 +7,6 @@ import (
 	"time"
 )
 
-// ReadText and WriteText mirror Manager.ReadText/WriteText for files on the
-// local filesystem, so the same text editor UI works for both panels.
-
 func (f *LocalFS) ReadText(relative string) (TextFile, error) {
 	absolute, clean, err := f.Resolve(relative, false)
 	if err != nil {

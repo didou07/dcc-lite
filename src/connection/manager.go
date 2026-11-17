@@ -86,8 +86,6 @@ func (m *Manager) superseded(profileID string, sequence uint64) bool {
 	return m.sequence[profileID] != sequence
 }
 
-// logResult writes a device check at info/warn level only when its state changed,
-// so periodic "Check all" runs do not fill the log with identical lines.
 func (m *Manager) logResult(ctx context.Context, profile config.Profile, status Status) {
 	m.mu.Lock()
 	previous, known := m.logged[profile.ID]

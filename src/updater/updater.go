@@ -198,14 +198,7 @@ func (u *Updater) SetAuto(auto bool) error {
 }
 
 func (u *Updater) assetName() string {
-	suffix := ""
-	switch u.opt.Variant {
-	case "win7":
-		suffix = "-win7"
-	case "gui":
-		suffix = "-gui"
-	}
-	return fmt.Sprintf("DCC-Lite-%s-%s-%s%s.zip", "%s", runtime.GOOS, runtime.GOARCH, suffix)
+	return fmt.Sprintf("DCC-Lite-%s-%s-%s.zip", "%s", runtime.GOOS, runtime.GOARCH)
 }
 
 func (u *Updater) trusted(raw string) bool {
@@ -449,12 +442,9 @@ func (u *Updater) download(ctx context.Context, rawURL, dest, wantSum string) er
 	return nil
 }
 
-// binaryName is the executable inside a release package (the Windows app has its own file name).
-func binaryName(variant string) string {
+// binaryName is the executable inside a release package: the same name in every package.
+func binaryName(_ string) string {
 	name := "DCCLite"
-	if variant == "gui" {
-		name = "DCCLite-GUI"
-	}
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
@@ -468,10 +458,24 @@ func extractBinary(zipPath, dest, variant string) error {
 	}
 	defer zr.Close()
 	exeName := binaryName(variant)
-	if len(zr.File) != 1 || zr.File[0].Name != exeName || zr.File[0].UncompressedSize64 > maxBinary {
+	// The package holds the program and, besides it, a README.txt; anything else is refused.
+	var exe *zip.File
+	for _, f := range zr.File {
+		switch f.Name {
+		case exeName:
+			if exe != nil {
+				return errors.New("update package has an unexpected layout")
+			}
+			exe = f
+		case "README.txt":
+		default:
+			return errors.New("update package has an unexpected layout")
+		}
+	}
+	if exe == nil || exe.UncompressedSize64 > maxBinary {
 		return errors.New("update package has an unexpected layout")
 	}
-	rc, err := zr.File[0].Open()
+	rc, err := exe.Open()
 	if err != nil {
 		return err
 	}

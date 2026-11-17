@@ -1,9 +1,5 @@
 package httpapi
 
-// WebInterface dialect: answers the app's /api/ requests from the older WebInterface
-// ("WebInterface": /web/, XML). Used only for receivers the owner set to WebInterface;
-// OpenWebif receivers never reach it.
-
 import (
 	"bytes"
 	"context"
@@ -60,7 +56,44 @@ func init() {
 	add("/api/tunersignal", legacySignal)
 	add("/api/timerlist", legacyTimers)
 	add("/api/movielist", legacyMovies)
-	for _, name := range []string{"epgnow", "epgservice", "epgsearch"} {
+	// epgnow: some images only have /web/epgnownext (dreamDroid uses it from DreamOS 1.7.0).
+	add("/api/epgnow", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+		if legacyRecall(d.base, "epgnow") == "/web/epgnownext" {
+			if alt, aerr := legacyEvents(ctx, d, "/web/epgnownext", q); aerr == nil {
+				return alt, nil
+			}
+			legacyForget(d.base, "epgnow") // it stopped answering: ask both again next time
+		}
+		out, err := legacyEvents(ctx, d, "/web/epgnow", q)
+		if err == nil {
+			legacyRemember(d.base, "epgnow", "/web/epgnow")
+			return out, nil
+		}
+		var bad *legacyBadReply
+		if errors.As(err, &bad) {
+			if alt, aerr := legacyEvents(ctx, d, "/web/epgnownext", q); aerr == nil {
+				legacyRemember(d.base, "epgnow", "/web/epgnownext")
+				return alt, nil
+			}
+		}
+		return out, err
+	})
+	add("/api/epgsimilar", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+		return legacyEvents(ctx, d, "/web/epgsimilar", q)
+	})
+	add("/api/signal", legacySignal)
+	add("/api/getaudiotracks", legacyAudioTracks)
+	add("/api/recordnow", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+		// OpenWebif says infinite=1; the old interface says recordnow=infinite|current.
+		nq := url.Values{}
+		if v := q.Get("infinite"); v == "1" || strings.EqualFold(v, "true") {
+			nq.Set("recordnow", "infinite")
+		} else {
+			nq.Set("recordnow", "current")
+		}
+		return legacyResult(ctx, d, "/web/recordnow", nq)
+	})
+	for _, name := range []string{"epgservice", "epgsearch"} {
 		web := "/web/" + name
 		add("/api/"+name, func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 			return legacyEvents(ctx, d, web, q)
@@ -69,7 +102,7 @@ func init() {
 	add("/api/epgbouquet", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 		return legacyEvents(ctx, d, "/web/epgmulti", q)
 	})
-	// Documented WebInterface twins whose name or answer differs only slightly.
+	// Documented DreamOS twins whose name or answer differs only slightly.
 	add("/api/timertogglestatus", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 		return legacyResult(ctx, d, "/web/timeronoff", q)
 	})
@@ -79,6 +112,15 @@ func init() {
 			return legacyResult(ctx, d, web, q)
 		})
 	}
+	add("/api/message", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+		return legacyResult(ctx, d, "/web/message", q)
+	})
+	add("/api/sleeptimer", legacySleepTimer)
+	add("/api/getlocations", legacyLocations)
+	add("/api/moviemove", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+		return legacyResult(ctx, d, "/web/moviemove", q)
+	})
+	add("/api/currenttime", legacyCurrentTime)
 	for _, name := range []string{"servicelistreload", "timeradd", "timeraddbyeventid", "timerdelete", "timercleanup", "moviedelete"} {
 		web := "/web/" + name
 		add("/api/"+name, func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
@@ -97,11 +139,8 @@ func legacyRouteFor(pathAndQuery string) (*legacyRoute, url.Values) {
 	return route, q
 }
 
-// viaLegacy is called around a request for an /api/ address. The owner's choice decides, with no probing:
-// OpenWebif receivers get the /api/ address as it is; WebInterface receivers get
-// the matching /web/ address, or a clear "not available" when it has none.
 func (d deviceWeb) viaLegacy(ctx context.Context, pathAndQuery string, do func() (int, []byte, error)) (int, []byte, error) {
-	if d.kind != "webinterface" || !strings.HasPrefix(pathAndQuery, "/api/") {
+	if d.kind != "dreamos" || !strings.HasPrefix(pathAndQuery, "/api/") {
 		return do()
 	}
 	route, q := legacyRouteFor(pathAndQuery)
@@ -117,7 +156,7 @@ func (d deviceWeb) viaLegacy(ctx context.Context, pathAndQuery string, do func()
 		return 0, nil, err
 	}
 	if legacyWarnDue(d.base, route.name) {
-		devLog.Warn("WebInterface could not answer", "base", d.base, "route", route.name, "reason", bad.msg)
+		devLog.Warn("DreamOS could not answer", "base", d.base, "route", route.name, "reason", bad.msg)
 	}
 	return 0, nil, bad
 }
@@ -200,7 +239,7 @@ const (
 func legacyServices(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 	radio := q.Get("type") == "radio"
 	var bouquets []xBouquet
-	if !radio {
+	if !radio && legacyRecall(d.base, "services") != "per-bouquet" {
 		// One request for everything, where the receiver offers it.
 		var all struct {
 			Bouquets []xBouquet `xml:"e2bouquet"`
@@ -209,6 +248,7 @@ func legacyServices(ctx context.Context, d deviceWeb, q url.Values) ([]byte, err
 			for _, b := range all.Bouquets {
 				if len(b.Services) > 0 {
 					bouquets = all.Bouquets
+					legacyRemember(d.base, "services", "getallservices")
 					break
 				}
 			}
@@ -251,6 +291,7 @@ func legacyServices(ctx context.Context, d deviceWeb, q url.Values) ([]byte, err
 			return nil, &legacyBadReply{"the receiver listed no bouquets"}
 		}
 		if len(heads) > legacyMaxLists {
+			devLog.Warn("DreamOS bouquet list cut", "base", d.base, "bouquets", len(heads), "kept", legacyMaxLists)
 			heads = heads[:legacyMaxLists]
 		}
 		for _, h := range heads {
@@ -269,6 +310,9 @@ func legacyServices(ctx context.Context, d deviceWeb, q url.Values) ([]byte, err
 				continue
 			}
 			bouquets = append(bouquets, xBouquet{Ref: ref, Name: h.Name, Services: list.Services})
+		}
+		if !radio && len(bouquets) > 0 {
+			legacyRemember(d.base, "services", "per-bouquet") // getallservices gave nothing: do not ask it again for a while
 		}
 	}
 	type sub struct {
@@ -463,8 +507,6 @@ func legacyPower(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error)
 
 // legacyResult answers the commands that only say whether they worked (<e2simplexmlresult>).
 func legacyResult(ctx context.Context, d deviceWeb, webPath string, q url.Values) ([]byte, error) {
-	// The WebInterface answers in three shapes: <e2simplexmlresult> with e2state/e2statetext, <e2message> with
-	// e2result/e2resulttext, or a bare <e2result>Success</e2result>.
 	var res struct {
 		State      string `xml:"e2state"`
 		Text       string `xml:"e2statetext"`
@@ -488,34 +530,73 @@ func legacyResult(ctx context.Context, d deviceWeb, webPath string, q url.Values
 }
 
 // legacyAbout answers /api/about with what the old interface knows about the receiver.
+type legacyAboutData struct {
+	Device string `xml:"e2devicename"`
+	Model  string `xml:"e2model"` // /web/about of the official DreamOS plugin
+	Nim    []struct {
+		Name string `xml:"name"`
+		Type string `xml:"type"`
+	} `xml:"e2tunerinfo>e2nim"`
+	Image    string `xml:"e2imageversion"`
+	Enigma   string `xml:"e2enigmaversion"`
+	WebIf    string `xml:"e2webifversion"`
+	Frontend []struct {
+		Name  string `xml:"e2name"`
+		Model string `xml:"e2model"`
+	} `xml:"e2frontends>e2frontend"`
+	Nics []struct {
+		MAC string `xml:"e2mac"`
+	} `xml:"e2network>e2interface"`
+	Disks []struct {
+		ModelA string `xml:"model,attr"`
+		CapA   string `xml:"capacity,attr"`
+		FreeA  string `xml:"free,attr"`
+		Model  string `xml:"e2model"`
+		Cap    string `xml:"e2capacity"`
+		Free   string `xml:"e2free"`
+		CModel string `xml:"model"`
+		CCap   string `xml:"capacity"`
+		CFree  string `xml:"free"`
+	} `xml:"e2hddinfo"`
+	Hdds []struct {
+		Model string `xml:"e2model"`
+		Cap   string `xml:"e2capacity"`
+		Free  string `xml:"e2free"`
+	} `xml:"e2hdds>e2hdd"`
+}
+
+func (a legacyAboutData) empty() bool {
+	return a.Device == "" && a.Model == "" && a.Image == "" && a.Enigma == ""
+}
+
 func legacyAbout(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error) {
-	var about struct {
-		About struct {
-			Device   string `xml:"e2devicename"`
-			Image    string `xml:"e2imageversion"`
-			Enigma   string `xml:"e2enigmaversion"`
-			Frontend []struct {
-				Name  string `xml:"e2name"`
-				Model string `xml:"e2model"`
-			} `xml:"e2frontends>e2frontend"`
-			Nics []struct {
-				MAC string `xml:"e2mac"`
-			} `xml:"e2network>e2interface"`
-			Disks []struct {
-				ModelA string `xml:"model,attr"`
-				CapA   string `xml:"capacity,attr"`
-				FreeA  string `xml:"free,attr"`
-				Model  string `xml:"e2model"`
-				Cap    string `xml:"e2capacity"`
-				Free   string `xml:"e2free"`
-			} `xml:"e2hddinfo"`
-		} `xml:"e2about"`
+	var a legacyAboutData
+	var info struct {
+		legacyAboutData
 	}
-	if err := d.legacyXML(ctx, "/web/about", 1<<20, &about); err != nil {
-		return nil, err
+	var derr error
+	if legacyRecall(d.base, "about") != "/web/about" {
+		derr = d.legacyXML(ctx, "/web/deviceinfo", 1<<20, &info)
 	}
-	a := about.About
-	if a.Device == "" && a.Image == "" && a.Enigma == "" {
+	if derr == nil && !info.legacyAboutData.empty() {
+		a = info.legacyAboutData
+		legacyRemember(d.base, "about", "/web/deviceinfo")
+	} else {
+		var about struct {
+			About legacyAboutData `xml:"e2about"`
+		}
+		if err := d.legacyXML(ctx, "/web/about", 1<<20, &about); err != nil {
+			if derr != nil {
+				return nil, derr // the receiver's answer to the address it is expected to have
+			}
+			return nil, err
+		}
+		a = about.About
+		if !a.empty() {
+			legacyRemember(d.base, "about", "/web/about")
+		}
+	}
+	if a.empty() {
 		return nil, &legacyBadReply{"the receiver described nothing about itself"}
 	}
 	first := func(a, b string) string {
@@ -534,6 +615,15 @@ func legacyAbout(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error)
 			tuners = append(tuners, map[string]any{"name": label})
 		}
 	}
+	for _, n := range a.Nim {
+		if name := strings.TrimSpace(n.Name); name != "" {
+			label := name
+			if t := strings.TrimSpace(n.Type); t != "" {
+				label += ": " + t
+			}
+			tuners = append(tuners, map[string]any{"name": label})
+		}
+	}
 	ifaces := []map[string]any{}
 	for _, n := range a.Nics {
 		if m := strings.TrimSpace(n.MAC); m != "" {
@@ -541,10 +631,9 @@ func legacyAbout(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error)
 		}
 	}
 	hdd := []map[string]any{}
-	for _, h := range a.Disks {
-		model, capacity, free := first(h.ModelA, h.Model), first(h.CapA, h.Cap), first(h.FreeA, h.Free)
+	addDisk := func(model, capacity, free string) {
 		if model == "" && capacity == "" {
-			continue
+			return
 		}
 		text := capacity
 		if free != "" {
@@ -552,11 +641,34 @@ func legacyAbout(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error)
 		}
 		hdd = append(hdd, map[string]any{"model": model, "friendlycapacity": text})
 	}
-	info := map[string]any{
-		"model": strings.TrimSpace(a.Device), "imagever": strings.TrimSpace(a.Image),
+	for _, h := range a.Disks {
+		addDisk(first(h.ModelA, first(h.Model, h.CModel)), first(h.CapA, first(h.Cap, h.CCap)), first(h.FreeA, first(h.Free, h.CFree)))
+	}
+	for _, h := range a.Hdds {
+		addDisk(strings.TrimSpace(h.Model), strings.TrimSpace(h.Cap), strings.TrimSpace(h.Free))
+	}
+	out := map[string]any{
+		"model": first(a.Device, a.Model), "imagever": strings.TrimSpace(a.Image),
 		"enigmaver": strings.TrimSpace(a.Enigma), "tuners": tuners, "ifaces": ifaces, "hdd": hdd,
 	}
-	return asJSON(map[string]any{"result": true, "info": info})
+	if v := strings.TrimSpace(a.WebIf); v != "" {
+		out["webifver"] = v
+	}
+	return asJSON(map[string]any{"result": true, "info": out})
+}
+
+func legacyCurrentTime(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error) {
+	var ct struct {
+		Time string `xml:",chardata"`
+	}
+	if err := d.legacyXML(ctx, "/web/currenttime", 4<<10, &ct); err != nil {
+		return nil, err
+	}
+	t := strings.TrimSpace(ct.Time)
+	if t == "" {
+		return nil, &legacyBadReply{"the receiver gave no time"}
+	}
+	return asJSON(map[string]any{"result": true, "time": t})
 }
 
 // legacySignal answers /api/tunersignal.
@@ -648,4 +760,67 @@ func legacyMovies(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error
 		})
 	}
 	return asJSON(map[string]any{"result": true, "directory": keep.Get("dirname"), "bookmarks": []string{}, "movies": movies})
+}
+
+// legacySleepTimer answers /api/sleeptimer from /web/sleeptimer (<e2sleeptimer>).
+func legacySleepTimer(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+	var st struct {
+		Enabled string `xml:"e2enabled"`
+		Minutes string `xml:"e2minutes"`
+		Action  string `xml:"e2action"`
+		Text    string `xml:"e2text"`
+	}
+	if err := d.legacyXML(ctx, withQuery("/web/sleeptimer", q), 64<<10, &st); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(st.Enabled) == "" && strings.TrimSpace(st.Minutes) == "" {
+		return nil, &legacyBadReply{"the receiver gave no sleep timer state"}
+	}
+	return asJSON(map[string]any{
+		"enabled": xmlBool(st.Enabled), "minutes": num(st.Minutes),
+		"action": strings.TrimSpace(st.Action), "message": strings.TrimSpace(st.Text),
+	})
+}
+
+// legacyLocations answers /api/getlocations from /web/getlocations (<e2locations><e2location>).
+func legacyLocations(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error) {
+	var l struct {
+		Locations []string `xml:"e2location"`
+	}
+	if err := d.legacyXML(ctx, "/web/getlocations", 256<<10, &l); err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, v := range l.Locations {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return asJSON(map[string]any{"result": true, "locations": out})
+}
+
+func legacyAudioTracks(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error) {
+	var l struct {
+		Tracks []struct {
+			Description string `xml:"e2audiotrackdescription"`
+			ID          string `xml:"e2audiotrackid"`
+			PID         string `xml:"e2audiotrackpid"`
+			Active      string `xml:"e2audiotrackactive"`
+		} `xml:"e2audiotrack"`
+	}
+	if err := d.legacyXML(ctx, "/web/getaudiotracks", 256<<10, &l); err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(l.Tracks))
+	for i, t := range l.Tracks {
+		idx := i
+		if strings.TrimSpace(t.ID) != "" {
+			idx = int(num(t.ID))
+		}
+		out = append(out, map[string]any{
+			"index": idx, "description": strings.TrimSpace(t.Description),
+			"pid": num(t.PID), "active": xmlBool(t.Active),
+		})
+	}
+	return asJSON(map[string]any{"result": true, "tracklist": out})
 }

@@ -8,8 +8,6 @@ import (
 	"os/user"
 )
 
-// restrictToOwner limits path to the current user via icacls (os.Chmod does not affect Windows ACLs).
-// bestEffortPerms: a failure (FAT/exFAT or network drive) must not stop the app.
 const bestEffortPerms = true
 
 func restrictToOwner(path string, isDir bool) error {

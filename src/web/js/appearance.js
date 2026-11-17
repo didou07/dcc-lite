@@ -2,11 +2,12 @@
 (() => {
   const KEY = "dcclite.appearance";
   const root = document.documentElement;
-  const DEFAULTS = { accent: "green", accentHex: "", folder: "gold", folderHex: "", tone: "neutral", btn: "outline", edge: "default", radius: "sharp", density: "compact", icons: "thin", font: "system", motion: "reduced", v: 3 };
+  const DEFAULTS = { accent: "green", accentHex: "", folder: "gold", folderHex: "", tone: "neutral", btn: "outline", edge: "default", radius: "sharp", density: "compact", scale: "1", icons: "thin", font: "system", motion: "reduced", v: 3 };
   const ACCENTS = { blue: [217, 88], violet: [262, 72], rose: [336, 78], green: [146, 62], slate: [215, 20], red: [0, 72] };
   const FOLDERS = { teal: [187, 72], violet: [262, 72], green: [146, 62], slate: [215, 20], gold: [48, 78] };
   const ATTRS = ["tone", "btn", "edge", "radius", "density", "icons", "font", "motion"];
 
+  const SCALES = ["0.85", "1", "1.15", "1.3", "1.5"];
   let state = { ...DEFAULTS };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
@@ -18,6 +19,8 @@
     }
   } catch { }
   if (state.radius === "default") state.radius = "sharp"; // sharp corners are the default look
+  if (!SCALES.includes(String(state.scale))) state.scale = "1";
+  state.scale = String(state.scale);
 
   function hexToHS(hex) {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return null;
@@ -33,6 +36,7 @@
   function apply() {
     for (const a of ATTRS) { if (state[a] && state[a] !== "default" && !(a === "btn" && state.btn === "outline")) root.dataset[a] = state[a]; else delete root.dataset[a]; }
     if (!root.dataset.radius) root.dataset.radius = "sharp";
+    root.style.setProperty("--ui", SCALES.includes(String(state.scale)) ? String(state.scale) : "1");
     // accent
     let hs = state.accentHex ? hexToHS(state.accentHex) : ACCENTS[state.accent];
     if (hs) { root.dataset.accent = "custom"; root.style.setProperty("--acc-h", String(hs[0])); root.style.setProperty("--acc-s", `${hs[1]}%`); }

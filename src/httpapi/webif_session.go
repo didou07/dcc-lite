@@ -32,10 +32,10 @@ func (d deviceWeb) wantsSession(pathAndQuery string) bool {
 	}
 	p := pathOnly(pathAndQuery)
 	switch {
-	case p == "/web/session":
+	case p == "/web/session", p == "/web/strings.js", strings.HasSuffix(p, ".m3u"):
 		return false
-	// dreamDroid puts the session id on every request except /grab (and OpenWebif-only /api, /public).
-	case strings.HasPrefix(p, "/grab"), strings.HasPrefix(p, "/public"), strings.HasPrefix(p, "/api/"):
+	case strings.HasPrefix(p, "/grab"), strings.HasPrefix(p, "/screenshot"),
+		strings.HasPrefix(p, "/public"), strings.HasPrefix(p, "/api/"):
 		return false
 	}
 	return true
@@ -71,7 +71,7 @@ func withSessionID(pathAndQuery, id string) string {
 
 // fetchSession asks the receiver for a session id and remembers it.
 func (d deviceWeb) fetchSession(ctx context.Context) (string, error) {
-	resp, err := d.getOnce(ctx, "/web/session")
+	resp, err := d.sendOnce(ctx, http.MethodPost, "/web/session", "sessionid=0")
 	if err != nil {
 		return "", err
 	}
@@ -106,15 +106,15 @@ func (d deviceWeb) canPost(pathAndQuery string) bool {
 	if p == "/web/session" {
 		return false
 	}
-	return strings.HasPrefix(p, "/web/") || strings.HasPrefix(p, "/autotimer") ||
-		strings.HasPrefix(p, "/epgrefresh") || strings.HasPrefix(p, "/bouqueteditor")
+	return (strings.HasPrefix(p, "/web/") && p != "/web/strings.js" && !strings.HasSuffix(p, ".m3u")) ||
+		p == "/autotimer" || strings.HasPrefix(p, "/autotimer/")
 }
 
 func (d deviceWeb) post(ctx context.Context, pathAndQuery string) (*http.Response, error) {
 	path, rawQuery, _ := strings.Cut(pathAndQuery, "?")
 	args, _ := url.ParseQuery(sessionArgPattern.ReplaceAllString(rawQuery, "$1"))
 	args.Del("sessionid")
-	send := func(withQuery bool) (*http.Response, error) {
+	send := func() (*http.Response, error) {
 		form := url.Values{}
 		for k, v := range args {
 			form[k] = v
@@ -122,29 +122,17 @@ func (d deviceWeb) post(ctx context.Context, pathAndQuery string) (*http.Respons
 		if v, ok := webSessions.Load(d.base); ok {
 			form.Set("sessionid", v.(sessionEntry).id)
 		}
-		target := path
-		if withQuery && len(args) > 0 {
-			target += "?" + args.Encode()
-		}
-		return d.sendOnce(ctx, http.MethodPost, target, form.Encode())
+		return d.sendOnce(ctx, http.MethodPost, path, form.Encode())
 	}
-	attempt := func(withQuery bool) (*http.Response, error) {
-		resp, err := send(withQuery)
-		if err != nil || resp.StatusCode != http.StatusPreconditionFailed {
-			return resp, err
-		}
-		_ = resp.Body.Close()
-		if _, serr := d.fetchSession(ctx); serr != nil {
-			devLog.Warn("could not get a session id from the receiver", "base", d.base, "error", serr)
-		}
-		return send(withQuery)
-	}
-	resp, err := attempt(true)
-	if err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+	resp, err := send()
+	if err != nil || resp.StatusCode != http.StatusPreconditionFailed {
 		return resp, err
 	}
 	_ = resp.Body.Close()
-	return attempt(false)
+	if _, err = d.fetchSession(ctx); err != nil {
+		devLog.Warn("could not get a session id from the receiver", "base", d.base, "error", err)
+	}
+	return send()
 }
 
 func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response, error) {
@@ -158,18 +146,15 @@ func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response
 	if _, known := webPostPaths.Load(key); known {
 		return d.post(ctx, pathAndQuery)
 	}
-	resp, err := d.getSession(ctx, pathAndQuery)
+	resp, err := d.post(ctx, pathAndQuery)
 	if err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+		if err == nil {
+			webPostPaths.LoadOrStore(key, true)
+		}
 		return resp, err
 	}
 	_ = resp.Body.Close()
-	resp, err = d.post(ctx, pathAndQuery)
-	if err == nil && resp.StatusCode != http.StatusMethodNotAllowed {
-		if _, dup := webPostPaths.LoadOrStore(key, true); !dup {
-			devLog.Info("receiver wants POST for this DreamOS address", "base", d.base, "path", pathOnly(pathAndQuery))
-		}
-	}
-	return resp, err
+	return d.getSession(ctx, pathAndQuery)
 }
 
 // getSession requests an address; on HTTP 412 it fetches a session id and retries once.

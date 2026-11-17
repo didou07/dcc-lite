@@ -56,27 +56,8 @@ func init() {
 	add("/api/tunersignal", legacySignal)
 	add("/api/timerlist", legacyTimers)
 	add("/api/movielist", legacyMovies)
-	// epgnow: some images only have /web/epgnownext (dreamDroid uses it from DreamOS 1.7.0).
 	add("/api/epgnow", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
-		if legacyRecall(d.base, "epgnow") == "/web/epgnownext" {
-			if alt, aerr := legacyEvents(ctx, d, "/web/epgnownext", q); aerr == nil {
-				return alt, nil
-			}
-			legacyForget(d.base, "epgnow") // it stopped answering: ask both again next time
-		}
-		out, err := legacyEvents(ctx, d, "/web/epgnow", q)
-		if err == nil {
-			legacyRemember(d.base, "epgnow", "/web/epgnow")
-			return out, nil
-		}
-		var bad *legacyBadReply
-		if errors.As(err, &bad) {
-			if alt, aerr := legacyEvents(ctx, d, "/web/epgnownext", q); aerr == nil {
-				legacyRemember(d.base, "epgnow", "/web/epgnownext")
-				return alt, nil
-			}
-		}
-		return out, err
+		return legacyEvents(ctx, d, "/web/epgnownext", q)
 	})
 	add("/api/epgsimilar", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 		return legacyEvents(ctx, d, "/web/epgsimilar", q)
@@ -230,90 +211,63 @@ type xBouquet struct {
 }
 
 const (
-	legacyTVRoot    = `1:7:1:0:0:0:0:0:0:0:(type == 1) || (type == 17) || (type == 195) || (type == 25) FROM BOUQUET "bouquets.tv" ORDER BY bouquet`
-	legacyRadioRoot = `1:7:2:0:0:0:0:0:0:0:(type == 2) FROM BOUQUET "bouquets.radio" ORDER BY bouquet`
-	legacyMaxLists  = 120
+	legacyTVRoot    = `1:7:1:0:0:0:0:0:0:0:(type == 1) || (type == 17) || (type == 22) || (type == 25) || (type == 31) || (type == 134) || (type == 195) FROM BOUQUET "bouquets.tv" ORDER BY bouquet`
+	legacyRadioRoot = `1:7:2:0:0:0:0:0:0:0:(type == 2) || (type == 10) FROM BOUQUET "bouquets.radio" ORDER BY bouquet`
+	legacyMaxLists  = 256
 )
 
 // legacyServices answers /api/getallservices: every bouquet with its channels.
 func legacyServices(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 	radio := q.Get("type") == "radio"
 	var bouquets []xBouquet
-	if !radio && legacyRecall(d.base, "services") != "per-bouquet" {
-		// One request for everything, where the receiver offers it.
-		var all struct {
-			Bouquets []xBouquet `xml:"e2bouquet"`
+	roots := []string{legacyTVRoot, ""}
+	if radio {
+		roots = []string{legacyRadioRoot, ""}
+	}
+	var heads []xSvc
+	for _, root := range roots {
+		path := "/web/getservices"
+		if root != "" {
+			path += "?sRef=" + url.QueryEscape(root)
 		}
-		if err := d.legacyXML(ctx, "/web/getallservices", maxChannelListBytes, &all); err == nil {
-			for _, b := range all.Bouquets {
-				if len(b.Services) > 0 {
-					bouquets = all.Bouquets
-					legacyRemember(d.base, "services", "getallservices")
-					break
-				}
-			}
-		} else {
+		var list struct {
+			Services []xSvc `xml:"e2service"`
+		}
+		if err := d.legacyXML(ctx, path, maxChannelListBytes, &list); err != nil {
 			var bad *legacyBadReply
 			if !errors.As(err, &bad) {
 				return nil, err
 			}
+			continue
+		}
+		if len(list.Services) > 0 {
+			heads = list.Services
+			break
 		}
 	}
-	if len(bouquets) == 0 {
-		roots := []string{""}
-		if radio {
-			roots = []string{legacyRadioRoot}
-		} else {
-			roots = append(roots, legacyTVRoot)
+	if len(heads) == 0 {
+		return nil, &legacyBadReply{"the receiver listed no bouquets"}
+	}
+	if len(heads) > legacyMaxLists {
+		devLog.Warn("DreamOS bouquet list cut", "base", d.base, "bouquets", len(heads), "kept", legacyMaxLists)
+		heads = heads[:legacyMaxLists]
+	}
+	for _, h := range heads {
+		ref := strings.TrimSpace(h.Ref)
+		if ref == "" {
+			continue
 		}
-		var heads []xSvc
-		for _, root := range roots {
-			path := "/web/getservices"
-			if root != "" {
-				path += "?sRef=" + url.QueryEscape(root)
-			}
-			var list struct {
-				Services []xSvc `xml:"e2service"`
-			}
-			if err := d.legacyXML(ctx, path, maxChannelListBytes, &list); err != nil {
-				var bad *legacyBadReply
-				if !errors.As(err, &bad) {
-					return nil, err
-				}
-				continue
-			}
-			if len(list.Services) > 0 {
-				heads = list.Services
-				break
-			}
+		var list struct {
+			Services []xSvc `xml:"e2service"`
 		}
-		if len(heads) == 0 {
-			return nil, &legacyBadReply{"the receiver listed no bouquets"}
-		}
-		if len(heads) > legacyMaxLists {
-			devLog.Warn("DreamOS bouquet list cut", "base", d.base, "bouquets", len(heads), "kept", legacyMaxLists)
-			heads = heads[:legacyMaxLists]
-		}
-		for _, h := range heads {
-			ref := strings.TrimSpace(h.Ref)
-			if ref == "" {
-				continue
+		if err := d.legacyXML(ctx, "/web/getservices?sRef="+url.QueryEscape(ref), maxChannelListBytes, &list); err != nil {
+			var bad *legacyBadReply
+			if !errors.As(err, &bad) {
+				return nil, err
 			}
-			var list struct {
-				Services []xSvc `xml:"e2service"`
-			}
-			if err := d.legacyXML(ctx, "/web/getservices?sRef="+url.QueryEscape(ref), maxChannelListBytes, &list); err != nil {
-				var bad *legacyBadReply
-				if !errors.As(err, &bad) {
-					return nil, err
-				}
-				continue
-			}
-			bouquets = append(bouquets, xBouquet{Ref: ref, Name: h.Name, Services: list.Services})
+			continue
 		}
-		if !radio && len(bouquets) > 0 {
-			legacyRemember(d.base, "services", "per-bouquet") // getallservices gave nothing: do not ask it again for a while
-		}
+		bouquets = append(bouquets, xBouquet{Ref: ref, Name: h.Name, Services: list.Services})
 	}
 	type sub struct {
 		Ref  string `json:"servicereference"`

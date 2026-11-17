@@ -135,7 +135,7 @@ function liveShowUI(on) {
   toggle.querySelector("span").textContent = on ? "Stop live" : "Watch live";
   toggle.querySelector("use").setAttribute("href", on ? "#i-stop" : "#i-live");
   for (const id of ["#screenPause", "#screenRefresh"]) $(id).disabled = on;
-  $("#screenSave").disabled = on || !screenView.blob;
+  $("#screenSave").disabled = !on && !screenView.blob;
   if (on) { $("#screenImg").hidden = true; $("#screenWait").hidden = true; }
   else { $("#screenImg").hidden = !screenView.blob; $("#screenWait").hidden = !!screenView.blob; }
   liveSyncVolume();
@@ -187,6 +187,7 @@ function liveStart() {
   if (!id) { toast("Pick a device first", "error"); return; }
   if (!ch.currentRef) { toast("Pick a channel first"); return; }
   if (live.on) return;
+  screenView.controller?.abort();
   live.on = true;
   live.retries = 0;
   live.ref = "";

@@ -37,7 +37,7 @@ async function screenSetPicture(blob, gen) {
   screenView.blob = blob;
   const img = $("#screenImg");
   img.src = url;
-  img.hidden = false;
+  img.hidden = typeof liveIsOn === "function" && liveIsOn();
   $("#screenWait").hidden = true;
   if (previous) window.setTimeout(() => URL.revokeObjectURL(previous), 1000);
   screenView.stamps.push(performance.now());
@@ -114,6 +114,18 @@ function screenRestartNow() {
   screenView.wake?.();
 }
 
+function screenSetWidthOptions(device) {
+  const dreamOS = ["dreamos", "webinterface"].includes(String(device?.web_kind || "").toLowerCase());
+  const select = $("#screenWidth");
+  const allowed = new Set($("#screenMode").value === "osd" ? ["720", "1280", "1920"] : ["1280"]);
+  for (const option of select.options) {
+    const unsupported = dreamOS && !allowed.has(option.value);
+    option.hidden = unsupported;
+    option.disabled = unsupported;
+  }
+  if (dreamOS && !allowed.has(select.value)) select.value = "1280";
+}
+
 function screenEnter() {
   const device = currentDevice();
   if (!device) {
@@ -129,10 +141,12 @@ function screenEnter() {
   screenStop();
   Object.assign(screenView, { profileID: device.id, paused: false, stamps: [], failures: 0, lastStart: -1e9, running: true, once: true });
   $("#screenSub").textContent = `${device.name} · ${device.host}`;
-  for (const [key, select, fallback] of [["screen.mode", "#screenMode", "all"], ["screen.width", "#screenWidth", "720"]]) {
-    const saved = String(store.get(key, fallback));
-    $(select).value = [...$(select).options].some((o) => o.value === saved) ? saved : fallback;
-  }
+  const savedMode = String(store.get("screen.mode", "all"));
+  $("#screenMode").value = ["all", "video", "osd"].includes(savedMode) ? savedMode : "all";
+  screenSetWidthOptions(device);
+  const savedWidth = String(store.get("screen.width", "720"));
+  const widthFallback = ["dreamos", "webinterface"].includes(String(device.web_kind || "").toLowerCase()) ? "1280" : "720";
+  $("#screenWidth").value = [...$("#screenWidth").options].some((o) => o.value === savedWidth && !o.disabled) ? savedWidth : widthFallback;
   $("#screenAuto").checked = store.get("screen.auto", false) === true;
   $("#screenSpeed").value = String(Math.min(3600, Math.max(1, Number(store.get("screen.seconds", 30)) || 30)));
   $("#screenSpeed").disabled = !$("#screenAuto").checked;
@@ -149,9 +163,16 @@ function screenEnter() {
   channelsEnter();
 }
 
-for (const [select, key] of [["#screenMode", "screen.mode"], ["#screenWidth", "screen.width"]]) {
-  $(select).addEventListener("change", () => { store.set(key, $(select).value); screenRestartNow(); });
-}
+$("#screenMode").addEventListener("change", () => {
+  store.set("screen.mode", $("#screenMode").value);
+  screenSetWidthOptions(currentDevice());
+  store.set("screen.width", $("#screenWidth").value);
+  screenRestartNow();
+});
+$("#screenWidth").addEventListener("change", () => {
+  store.set("screen.width", $("#screenWidth").value);
+  screenRestartNow();
+});
 $("#screenSpeed").addEventListener("change", () => {
   const seconds = Math.min(3600, Math.max(1, Math.round(Number($("#screenSpeed").value)) || 30));
   $("#screenSpeed").value = String(seconds);
@@ -170,12 +191,38 @@ $("#screenPause").addEventListener("click", () => {
   setPauseLabel(screenView.paused);
   if (screenView.paused) screenShowStats("paused"); else screenRestartNow();
 });
-$("#screenSave").addEventListener("click", () => {
-  if (!screenView.blob) return;
-  const d = new Date();
-  downloadBlob(screenView.blob, `screen-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}.jpg`);
+async function screenSavePicture() {
+  const button = $("#screenSave");
+  const gen = screenView.gen;
+  const profileID = screenView.profileID;
+  const captureNow = (typeof liveIsOn === "function" && liveIsOn()) || !screenView.blob;
+  button.disabled = true;
+  try {
+    let blob = screenView.blob;
+    if (captureNow) {
+      const response = await fetchChecked(screenQuery(), { cache: "no-store" });
+      blob = await response.blob();
+      if (gen !== screenView.gen || profileID !== screenView.profileID) return;
+      if (!blob.size) throw new Error("The receiver returned an empty picture.");
+      if (!(await screenSetPicture(blob, gen))) return;
+      screenShowError("");
+      screenShowStats();
+    }
+    if (!blob) throw new Error("The receiver has not returned a picture yet.");
+    const d = new Date();
+    const ext = blob.type.toLowerCase().includes("png") ? "png" : "jpg";
+    downloadBlob(blob, `screen-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}.${ext}`);
+  } catch (error) {
+    if (error.name !== "AbortError") toastError(error);
+  } finally {
+    button.disabled = !screenView.profileID || (!(typeof liveIsOn === "function" && liveIsOn()) && !screenView.blob);
+  }
+}
+
+$("#screenSave").addEventListener("click", screenSavePicture);
+$("#screenImg").addEventListener("load", () => {
+  $("#screenSave").disabled = !screenView.profileID || (!(typeof liveIsOn === "function" && liveIsOn()) && !screenView.blob);
 });
-$("#screenImg").addEventListener("load", () => { $("#screenSave").disabled = false; });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && view.current === "screen") screenRestart(); });
 
 $("#liveTabs").addEventListener("click", (event) => {

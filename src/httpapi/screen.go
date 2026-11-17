@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -136,31 +138,68 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 
 const maxScreenBytes = 16 << 20
 
+func dreamOSScreenSupported(mode string, width int) bool {
+	switch mode {
+	case "all", "video":
+		return width == 1280
+	case "osd":
+		return width == 720 || width == 1280 || width == 1920
+	default:
+		return false
+	}
+}
+
+func dreamOSResolution(width int) (string, bool) {
+	switch width {
+	case 720:
+		return "720x576", true
+	case 1280:
+		return "1280x720", true
+	case 1920:
+		return "1920x1080", true
+	default:
+		return "", false
+	}
+}
+
+func dreamOSFreezeFramePath(mode string, width int) (string, bool) {
+	if !dreamOSScreenSupported(mode, width) {
+		return "", false
+	}
+	resolution, ok := dreamOSResolution(width)
+	if !ok {
+		return "", false
+	}
+	method := "auto"
+	if mode == "all" {
+		method = "ffmpeg"
+	}
+	return fmt.Sprintf("/freezeframe?screenshot=%s&resolution=%s&format=png&method=%s&refresh=&grab=Download", mode, resolution, method), true
+}
+
 func grabAddresses(mode string, width int, kind string) []string {
 	if kind != "dreamos" {
 		return []string{fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width)}
 	}
-	layers := "osd=1&video=1"
-	switch mode {
-	case "video":
-		layers = "video=1"
-	case "osd":
-		layers = "osd=1"
-	}
+	filename := url.QueryEscape("/tmp/" + strconv.FormatInt(time.Now().UnixMilli(), 10))
+	freezeFrame, _ := dreamOSFreezeFramePath(mode, width)
 	return []string{
-		"/screenshot?format=jpg&" + layers,
-		// dreamDroid's form: Dreambox images save the picture under "filename" before sending it.
-		fmt.Sprintf("/grab?format=jpg&filename=/tmp/dcc-lite-grab&r=%d", width),
-		fmt.Sprintf("/grab?format=jpg&r=%d", width),
-		fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width),
+		freezeFrame,
+		"/screenshot?format=png&filename=" + filename,
+		"/screenshot?display=",
+		"/grab?format=jpg&filename=" + filename,
 	}
+}
+
+func isPNG(body []byte) bool {
+	return len(body) >= 8 && string(body[:8]) == "\x89PNG\r\n\x1a\n"
 }
 
 func isPicture(body []byte) bool {
 	if len(body) >= 3 && body[0] == 0xFF && body[1] == 0xD8 && body[2] == 0xFF {
 		return true
 	}
-	return len(body) >= 8 && string(body[1:4]) == "PNG"
+	return isPNG(body)
 }
 
 func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, width int) ([]byte, *grabError) {
@@ -171,16 +210,14 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 	}
 	idx, found := st.idx, st.found
 	st.mu.Unlock()
-	order := []int{0} // OpenWebif: /grab and nothing else
-	switch {
-	case found && idx < len(all):
-		order = []int{idx}
-	case web.kind == "dreamos":
-		// DreamOS: its own addresses in turn, moving on only after 404 or 400/412/415/501.
+	order := []int{0}
+	if web.kind == "dreamos" {
 		order = make([]int, len(all))
 		for i := range order {
 			order[i] = i
 		}
+	} else if found && idx < len(all) {
+		order = []int{idx}
 	}
 	var lastMsg string
 	for n, i := range order {
@@ -219,8 +256,8 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 			lastMsg = "The receiver sent an unusable picture."
 		case !isPicture(body):
 			lastMsg = "The receiver did not return a picture."
-			if web.kind == "dreamos" && n < len(order)-1 {
-				continue // the owner said it is the older interface: its pages may answer with text instead
+			if web.kind == "dreamos" && !strings.HasPrefix(all[i], "/freezeframe?") && n < len(order)-1 {
+				continue
 			}
 		default:
 			st.mu.Lock()
@@ -265,6 +302,10 @@ func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 		width = n
 	}
 	web := newDeviceWeb(profile, grabTimeout)
+	if web.kind == "dreamos" && !dreamOSScreenSupported(mode, width) {
+		writeError(w, http.StatusBadRequest, "Verified DreamOS options: Video or All at 1280 px; OSD at 720, 1280 or 1920 px.")
+		return
+	}
 	body, gerr := fetchGrab(r.Context(), web, mode, width)
 	if gerr != nil {
 		if r.Context().Err() != nil {
@@ -275,7 +316,7 @@ func (s *Server) deviceScreen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctype := "image/jpeg"
-	if body[0] == 0x89 {
+	if isPNG(body) {
 		ctype = "image/png"
 	}
 	w.Header().Set("Content-Type", ctype)

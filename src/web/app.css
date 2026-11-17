@@ -2352,8 +2352,8 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 
 /* Picture settings menu */
 
-/* While watching live, hide what only belongs to the still picture */
-#view-screen:has(.screen-stage.is-live) :is(#screenPause, #screenSave, #screenRefresh, #screenOpts, .screen-foot) { display: none; }
+/* Keep the receiver screenshot action available while the video player is running. */
+#view-screen:has(.screen-stage.is-live) :is(#screenPause, #screenRefresh, #screenOpts, .screen-foot) { display: none; }
 
 /* Desktop: everything fits in the window; each panel scrolls by itself */
 @media (min-width: 1100px) and (min-height: 560px) {

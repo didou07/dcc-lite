@@ -171,58 +171,47 @@ jobs:
           retention-days: 14
 
   linux-32bit:
-    # 386 and arm are cross built in a Debian container, one CPU per job (the two WebKitGTK dev packages conflict).
+    # 386 and arm are built inside a Debian container of the target CPU (arm runs under qemu).
     runs-on: ubuntu-latest
-    container: debian:bookworm
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
           - cpu: "386"
-            deb: i386
-            toolchain: gcc gcc-multilib
+            platform: linux/386
+            gotar: linux-386
           - cpu: arm
-            deb: armhf
-            toolchain: gcc gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
+            platform: linux/arm/v7
+            gotar: linux-armv6l
     steps:
-      - name: Install build tools and libraries
-        shell: bash
-        run: |
-          set -euo pipefail
-          dpkg --add-architecture ${{ matrix.deb }}
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates git zip unzip curl pkg-config ${{ matrix.toolchain }} \
-            libgtk-3-dev:${{ matrix.deb }} libwebkit2gtk-4.1-dev:${{ matrix.deb }}
-
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: '1.27.3'
-          check-latest: false
+      - name: Enable qemu for arm
+        if: matrix.cpu == 'arm'
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm
 
       - name: Build the Linux ${{ matrix.cpu }} package
-        shell: bash
-        run: VERSION="$(tr -d '[:space:]' < VERSION)" bash build.sh linuxgui/${{ matrix.cpu }}
-
-      - name: Validate the package
-        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
-          file="dist/DCC-Lite-${version}-linux-${{ matrix.cpu }}.zip"
-          [[ "$(unzip -Z1 "$file" | wc -l | tr -d ' ')" == "2" ]] && unzip -Z1 "$file" | grep -qx 'README.txt' || { echo "$file must contain the program and README.txt" >&2; exit 1; }
-          if [[ "${{ matrix.cpu }}" == "386" ]]; then
-            tmp="$(mktemp -d)"
-            trap 'rm -rf "$tmp"' EXIT
-            unzip -p "$file" DCCLite > "$tmp/DCCLite"
-            chmod +x "$tmp/DCCLite"
-            "$tmp/DCCLite" --version | grep -F "DCC Lite ${version} (linux/386)"
-          fi
+          docker run --rm --platform "${{ matrix.platform }}" -v "$PWD":/src -w /src \
+            -e VERSION="$version" -e CPU="${{ matrix.cpu }}" -e GOTAR="${{ matrix.gotar }}" -e GO_VERSION=1.27.3 \
+            -e DCC_NATIVE=1 -e GOTOOLCHAIN=local -e GOFLAGS=-buildvcs=false \
+            debian:bookworm bash -euo pipefail -c '
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                ca-certificates curl zip unzip pkg-config gcc libc6-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+              curl -fsSL "https://go.dev/dl/go${GO_VERSION}.${GOTAR}.tar.gz" | tar -C /usr/local -xz
+              export PATH="$PATH:/usr/local/go/bin"
+              bash build.sh "linuxgui/${CPU}"
+              file="dist/DCC-Lite-${VERSION}-linux-${CPU}.zip"
+              [[ "$(unzip -Z1 "$file" | wc -l | tr -d " ")" == "2" ]] && unzip -Z1 "$file" | grep -qx README.txt
+              unzip -p "$file" DCCLite > /tmp/DCCLite && chmod +x /tmp/DCCLite
+              /tmp/DCCLite --version | grep -F "DCC Lite ${VERSION} (linux/${CPU})"
+            '
 
       - name: Upload the package
         if: github.event_name != 'pull_request'

@@ -58,21 +58,20 @@ for target in "${TARGETS[@]}"; do
     os=linux variant=gui tags="native" cgo=1
     [[ $(uname -s) == Linux ]] || { echo "linuxgui must be built on Linux (cgo, GTK and WebKitGTK)" >&2; exit 1; }
     command -v pkg-config >/dev/null || { echo "pkg-config is required for linuxgui/$arch" >&2; exit 1; }
-    case $arch in
-      amd64|arm64)
-        command -v gcc >/dev/null || { echo "gcc is required for linuxgui/$arch" >&2; exit 1; }
-        [[ $arch == "$HOST" ]] || { echo "linuxgui/$arch must be built on a Linux $arch machine (cgo, no cross build)" >&2; exit 1; } ;;
-      386)
-        command -v gcc >/dev/null || { echo "gcc (with -m32 support, gcc-multilib) is required for linuxgui/386" >&2; exit 1; }
-        [[ $HOST == amd64 ]] || { echo "linuxgui/386 must be built on a Linux amd64 machine" >&2; exit 1; }
-        extra+=(CC="gcc -m32" PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig) ;;
-      arm)
-        command -v arm-linux-gnueabihf-gcc >/dev/null || { echo "gcc-arm-linux-gnueabihf is required for linuxgui/arm" >&2; exit 1; }
-        [[ $HOST == amd64 ]] || { echo "linuxgui/arm must be built on a Linux amd64 machine" >&2; exit 1; }
-        extra+=(CC=arm-linux-gnueabihf-gcc PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig) ;;
-      *) echo "linuxgui/$arch is not supported" >&2; exit 1 ;;
-    esac
-    env ${extra[@]+"${extra[@]}"} pkg-config --exists gtk+-3.0 gdk-x11-3.0 webkit2gtk-4.1 || { echo "linuxgui/$arch needs the GTK 3 and WebKitGTK 4.1 development packages for $arch" >&2; exit 1; }
+    command -v gcc >/dev/null || { echo "gcc is required for linuxgui/$arch" >&2; exit 1; }
+    # DCC_NATIVE=1: building inside a container of the target CPU (no cross compiler needed).
+    if [[ -z ${DCC_NATIVE:-} ]]; then
+      case $arch in
+        amd64|arm64) [[ $arch == "$HOST" ]] || { echo "linuxgui/$arch must be built on a Linux $arch machine (cgo, no cross build)" >&2; exit 1; } ;;
+        386) [[ $HOST == amd64 ]] || { echo "linuxgui/386 must be built on a Linux amd64 machine" >&2; exit 1; }
+             extra+=(CC="gcc -m32" PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig) ;;
+        arm) command -v arm-linux-gnueabihf-gcc >/dev/null || { echo "gcc-arm-linux-gnueabihf is required for linuxgui/arm" >&2; exit 1; }
+             [[ $HOST == amd64 ]] || { echo "linuxgui/arm must be built on a Linux amd64 machine" >&2; exit 1; }
+             extra+=(CC=arm-linux-gnueabihf-gcc PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig) ;;
+        *) echo "linuxgui/$arch is not supported" >&2; exit 1 ;;
+      esac
+    fi
+    env ${extra[@]+"${extra[@]}"} pkg-config --exists gtk+-3.0 gdk-x11-3.0 webkit2gtk-4.1 || { echo "linuxgui/$arch needs the GTK 3 and WebKitGTK 4.1 development packages" >&2; exit 1; }
   fi
   if [[ $os == darwingui ]]; then
     [[ $(uname -s) == Darwin ]] || { echo "darwingui must be built on a Mac (cgo and the system WebKit; no cross build)" >&2; exit 1; }

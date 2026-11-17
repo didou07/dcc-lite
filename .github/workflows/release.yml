@@ -175,7 +175,8 @@ jobs:
 
   linux-32bit:
     # 386 and arm are built inside a Debian container of the target CPU (arm runs under qemu).
-    runs-on: ubuntu-latest
+    # ubuntu-24.04 on purpose: the ubuntu-26.04 kernel has no 32-bit socket syscall (ENOSYS), so 32-bit programs cannot use the network there.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     continue-on-error: true
     strategy:
@@ -201,23 +202,10 @@ jobs:
         run: |
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
-          addhosts=()
-          deb_ip=""
-          for h in deb.debian.org go.dev dl.google.com; do
-            ip="$(getent ahostsv4 "$h" | awk 'NR==1{print $1}')"
-            [[ -n "$ip" ]] && addhosts+=(--add-host "$h:$ip")
-            [[ "$h" == deb.debian.org ]] && deb_ip="$ip"
-          done
-          echo "resolved on the host: ${addhosts[*]}"
-          docker run --rm --network host --platform "${{ matrix.platform }}" -v "$PWD":/src -w /src \
-            "${addhosts[@]}" -e DEB_IP="$deb_ip" \
+          docker run --rm --platform "${{ matrix.platform }}" -v "$PWD":/src -w /src \
             -e VERSION="$version" -e CPU="${{ matrix.cpu }}" -e GOTAR="${{ matrix.gotar }}" -e GO_VERSION=1.27.3 \
             -e DCC_NATIVE=1 -e GOTOOLCHAIN=local -e GOFLAGS=-buildvcs=false \
             debian:bookworm bash -eo pipefail -c '
-              echo "--- resolv.conf from the host:"; cat /etc/resolv.conf || true
-              printf "nameserver 8.8.8.8\nnameserver 1.1.1.1\n" > /etc/resolv.conf
-              getent hosts deb.debian.org || echo "DNS lookup still failing"
-              if (exec 3<>/dev/tcp/${DEB_IP}/80) 2>/dev/null; then echo "TCP connect from this container: ok"; else echo "TCP connect from this container: FAILED"; fi
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 ca-certificates curl zip unzip pkg-config gcc libc6-dev libgtk-3-dev libwebkit2gtk-4.1-dev

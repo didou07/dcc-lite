@@ -37,7 +37,25 @@
     return result;
   }
 
-  const api = { parseDccScripts };
+  function serializeDccScripts(items) {
+    const used = new Set(["userscripts"]);
+    const names = [], sections = [];
+    for (const item of items || []) {
+      const command = String(item?.command ?? "").replace(/[\0\r\n]/g, " ").trim();
+      if (!command || command.length > MAX_COMMAND) continue;
+      const base = String(item?.name ?? "Command")
+        .replace(/[\[\]=\0\r\n]/g, "-")
+        .trim().replace(/^[;#\s]+/, "").slice(0, MAX_NAME).trim() || "Command";
+      let name = base, suffix = 2;
+      while (used.has(name.toLowerCase())) name = `${base.slice(0, MAX_NAME - String(suffix).length - 3)} (${suffix++})`;
+      used.add(name.toLowerCase());
+      names.push(`${name}=1`);
+      sections.push(`[${name}]\r\nline1=${command}`);
+    }
+    return `[UserScripts]\r\n${names.join("\r\n")}\r\n\r\n${sections.join("\r\n\r\n")}\r\n`;
+  }
+
+  const api = { parseDccScripts, serializeDccScripts };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else globalThis.DccImport = api;
 })();

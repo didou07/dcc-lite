@@ -81,7 +81,7 @@ async function screenLoop(gen) {
       if (error.fatal) { screenView.running = false; return; }
       delay = Math.min(20000, 2000 * screenView.failures);
     }
-    if (!$("#screenAuto").checked) continue;
+    if (!$("#screenAuto").checked || screenView.once) continue;
     await screenSleep(Math.max(250, delay - (performance.now() - began)));
   }
 }
@@ -114,16 +114,9 @@ function screenRestartNow() {
   screenView.wake?.();
 }
 
-function screenSetWidthOptions(device) {
-  const dreamOS = ["dreamos", "webinterface"].includes(String(device?.web_kind || "").toLowerCase());
-  const select = $("#screenWidth");
-  const allowed = new Set($("#screenMode").value === "osd" ? ["720", "1280", "1920"] : ["1280"]);
-  for (const option of select.options) {
-    const unsupported = dreamOS && !allowed.has(option.value);
-    option.hidden = unsupported;
-    option.disabled = unsupported;
-  }
-  if (dreamOS && !allowed.has(select.value)) select.value = "1280";
+function screenSetWidthOptions() {
+  // every width is offered: the old interface's /screenshot address scales to any size
+  for (const option of $("#screenWidth").options) { option.hidden = false; option.disabled = false; }
 }
 
 function screenEnter() {
@@ -152,6 +145,7 @@ function screenEnter() {
   $("#screenSpeed").disabled = !$("#screenAuto").checked;
   setPauseLabel(false);
   setRemoteOpen(store.get("remote.open", true) !== false);
+  remoteLoadProfile(device);
   setChannelsOpen(store.get("channels.open", true) !== false);
   remoteError("");
   $("#screenSave").disabled = true;

@@ -88,6 +88,9 @@ for target in "${TARGETS[@]}"; do
     -o "$stage/$exe$ext" ./src/dcclite
   case $os in windows) readme=README-windows.txt ;; darwin) readme=README-macos.txt ;; *) readme=README-linux.txt ;; esac
   rm -f "$stage/README.txt" && cp "packaging/$readme" "$stage/README.txt"
+  if [[ $os == windows ]]; then
+    "$go" run src/dcclite/embed_windows_icon.go "$stage/$exe$ext" packaging/DCCLite.ico
+  fi
   zip -qj9 "dist/$name.zip" "$stage/$exe$ext" "$stage/README.txt"
   if [[ -n $isgui && $os == windows ]]; then
     # Optional Windows 7/8 bundle with an unpacked WebView2 109 folder.

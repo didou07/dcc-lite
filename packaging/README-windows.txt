@@ -1,7 +1,7 @@
 DCC Lite - Windows (amd64 = 64-bit, 386 = 32-bit)
 
 Run:
-  Unzip anywhere and double-click DCCLite.exe.
+  Unzip the package and double-click DCCLite.exe.
   (SmartScreen warning: More info > Run anyway.)
 
 Needed:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/didou07/dcc-lite/src/config"
+	"github.com/didou07/dcc-lite/src/terminal"
 )
 
 var remoteKeys = map[string]int{
@@ -33,8 +37,9 @@ var remoteKeys = map[string]int{
 }
 
 type remoteKeyRequest struct {
-	Key  string `json:"key"`
-	Long bool   `json:"long,omitempty"`
+	Key      string `json:"key"`
+	Long     bool   `json:"long,omitempty"`
+	Hardware bool   `json:"hardware,omitempty"`
 }
 
 func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
@@ -52,10 +57,24 @@ func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	code, known := remoteKeys[strings.ToLower(strings.TrimSpace(input.Key))]
+	keyName := strings.TrimSpace(input.Key)
+	code, known := remoteKeys[strings.ToLower(keyName)]
+	if !known {
+		code, known = linuxKeys[strings.ToUpper(keyName)]
+	}
 	if !known {
 		writeError(w, http.StatusBadRequest, "unknown remote key")
 		return
+	}
+	if input.Hardware {
+		hctx, hcancel := context.WithTimeout(r.Context(), 12*time.Second)
+		err := injectHardwareKey(hctx, profile, code, input.Long)
+		hcancel()
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "via": "input-device"})
+			return
+		}
+		devLog.Warn("hardware key injection failed, using the web interface", "host", profile.Host, "error", err)
 	}
 	web := newDeviceWeb(profile, 8*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
@@ -65,7 +84,7 @@ func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
 	if input.Long {
 		suffix += "&type=long"
 	}
-	status, body, err := web.pressFallback(ctx, "/api/remotecontrol"+suffix)
+	status, body, err := web.pressRemote(ctx, "/api/remotecontrol"+suffix)
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}
@@ -98,12 +117,16 @@ func (s *Server) deviceRemoteText(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	web := newDeviceWeb(profile, 8*time.Second)
-	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
 	query := url.Values{}
 	query.Set("text", strings.ReplaceAll(text, "%", "%25"))
-	status, body, err := web.pressFallback(ctx, "/api/remotecontrol?"+query.Encode())
+	status, body, err := web.pressRemote(ctx, "/api/remotecontrol?"+query.Encode())
+	if err == nil && remoteRefused(status, body) && len(text) <= 64 {
+		// Some images ignore text=; type the characters one by one instead.
+		status, body, err = web.typeAscii(ctx, text)
+	}
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}
@@ -146,7 +169,7 @@ func (s *Server) deviceMessage(w http.ResponseWriter, r *http.Request) {
 	query.Set("text", text)
 	query.Set("type", "1")
 	query.Set("timeout", strconv.Itoa(seconds))
-	status, body, err := web.pressFallback(ctx, "/api/message?"+query.Encode())
+	status, body, err := web.pressRemote(ctx, "/api/message?"+query.Encode())
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}
@@ -249,4 +272,118 @@ func (d deviceWeb) pressRaw(ctx context.Context, pathAndQuery string) (int, []by
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	return resp.StatusCode, body, nil
+}
+
+func (d deviceWeb) pressRemote(ctx context.Context, apiPath string) (int, []byte, error) {
+	status, body, err := d.pressFallback(ctx, apiPath)
+	if err != nil || !webUnsupported(status) {
+		return status, body, err
+	}
+	alt := apiPath
+	if d.kind != "dreamos" {
+		alt = "/web/" + strings.TrimPrefix(apiPath, "/api/")
+	}
+	altStatus, altBody, altErr := d.pressRaw(ctx, alt)
+	if altErr != nil || altStatus != http.StatusOK {
+		return status, body, err
+	}
+	if _, _, isXML := xmlResult(altBody); !isXML && !looksJSON(bytes.TrimSpace(altBody)) {
+		return status, body, err // a web page, not a remote answer
+	}
+	return altStatus, altBody, nil
+}
+
+func remoteRefused(status int, body []byte) bool {
+	if webUnsupported(status) {
+		return true
+	}
+	if status != http.StatusOK {
+		return false
+	}
+	if state, _, ok := xmlResult(body); ok && !state {
+		return true
+	}
+	var reply struct {
+		Result *bool `json:"result"`
+	}
+	return json.Unmarshal(body, &reply) == nil && reply.Result != nil && !*reply.Result
+}
+
+func (d deviceWeb) typeAscii(ctx context.Context, text string) (int, []byte, error) {
+	status, body := http.StatusOK, []byte(nil)
+	for i := 0; i < len(text); i++ {
+		var err error
+		status, body, err = d.pressRemote(ctx, "/api/remotecontrol?command="+strconv.Itoa(int(text[i]))+"&type=ascii")
+		if err != nil || status != http.StatusOK || remoteRefused(status, body) {
+			return status, body, err
+		}
+	}
+	return status, body, nil
+}
+
+var dreamboxModel = regexp.MustCompile(`\b(dm\s?-?\d{3,4}|dream\s?(box|one|two))`)
+
+func remoteFamily(kind, brand, model, image string) string {
+	text := strings.ToLower(strings.Join([]string{brand, model, image}, " "))
+	switch {
+	case kind == "dreamos" || dreamboxModel.MatchString(text):
+		return "dreambox"
+	case strings.Contains(text, "vuplus") || strings.Contains(text, "vu+") || strings.HasPrefix(strings.TrimSpace(strings.ToLower(brand)), "vu"):
+		return "vu"
+	case strings.Contains(text, "gigablue") || strings.HasPrefix(strings.TrimSpace(strings.ToLower(brand)), "gb"):
+		return "gigablue"
+	}
+	return "standard"
+}
+
+func (s *Server) deviceRemoteProfile(w http.ResponseWriter, r *http.Request) {
+	profile, ok := s.enabledProfile(w, r)
+	if !ok {
+		return
+	}
+	web := newDeviceWeb(profile, 6*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+	var brand, model, image, build, boxtype string
+	if status, about, err := getJSONMap(ctx, web, "/api/about"); err == nil && status == http.StatusOK {
+		info := asMap(about["info"])
+		brand, model = jsonText(info["brand"]), jsonText(info["model"])
+		build, boxtype = jsonText(info["machinebuild"]), jsonText(info["boxtype"])
+		image = jsonText(info["friendlyimagedistro"])
+		if image == "" {
+			image = jsonText(info["imagedistro"])
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"kind": web.kind, "family": remoteFamily(web.kind, brand, model, image),
+		"brand": brand, "model": model, "image": image, "machinebuild": build, "boxtype": boxtype,
+	})
+}
+
+func hardwareKeyCommand(code int, long bool) string {
+	py := `import os,struct,time,re;` +
+		`b=open('/proc/bus/input/devices').read().split('\n\n');` +
+		`d=[re.search(r'event[0-9]+',x).group() for x in b if re.search(r'Name=.*(remote|rc)',x,re.I) and re.search(r'event[0-9]+',x)];` +
+		`f=os.open('/dev/input/'+(d[0] if d else 'event0'),os.O_WRONLY);` +
+		`w=lambda t,c,v:os.write(f,struct.pack('llHHi',int(time.time()),0,t,c,v));` +
+		`w(1,` + strconv.Itoa(code) + `,1);w(0,0,0);`
+	if long {
+		py += `[(time.sleep(0.12),w(1,` + strconv.Itoa(code) + `,2),w(0,0,0)) for i in range(9)];`
+	} else {
+		py += `time.sleep(0.08);`
+	}
+	py += `w(1,` + strconv.Itoa(code) + `,0);w(0,0,0)`
+	return `PY=$(command -v python3 || command -v python) && [ -n "$PY" ] && $PY -c "` + py + `"`
+}
+
+func injectHardwareKey(ctx context.Context, profile config.Profile, code int, long bool) error {
+	out, status, err := terminal.RunCommand(ctx, profile.Host, profile.EffectiveTelnetPort(), telnetUser(profile), profile.Password, hardwareKeyCommand(code, long), 64<<10)
+	if err != nil {
+		return err
+	}
+	if status != 0 {
+		return errors.New("the receiver could not write to its remote-control device: " + strings.TrimSpace(out))
+	}
+	return nil
 }

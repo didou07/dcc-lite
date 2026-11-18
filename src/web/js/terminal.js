@@ -6,7 +6,7 @@ const term = {
   theme: store.get("termTheme", "black") === "light" ? "light" : "black",
 };
 const TERMINAL_KEYS = { "ctrl-c": "\u0003", "ctrl-d": "\u0004", tab: "\t", escape: "\u001b", up: "\u001b[A", down: "\u001b[B", right: "\u001b[C", left: "\u001b[D", home: "\u001b[H", end: "\u001b[F", pageup: "\u001b[5~", pagedown: "\u001b[6~" };
-const DEFAULT_SNIPPETS = [
+const BUILTIN_COMMANDS = [
   { id: "uptime", name: "Uptime", command: "uptime" },
   { id: "disk", name: "Disk usage", command: "df -h" },
   { id: "memory", name: "Memory", command: "free -m" },
@@ -87,6 +87,18 @@ function termSend(tab, data) {
   if (!tab || tab.socket?.readyState !== WebSocket.OPEN || typeof data !== "string" || !data) return false;
   try { for (const chunk of terminalInputChunks(data)) tab.socket.send(JSON.stringify({ type: "input", data: chunk })); return true; }
   catch (error) { toastError(error); return false; }
+}
+function replaceTerminalInput(tab, command, execute = false) {
+  if (!tab || tab.state !== "connected" || typeof command !== "string" || !command) return false;
+
+  const data = `\u0001\u000b${command}${execute ? "\r" : ""}`;
+  if (!termSend(tab, data)) return false;
+
+  tab.line = execute ? "" : command;
+  tab.dirty = false;
+  tab.histIndex = -1;
+  tab.histDraft = "";
+  return true;
 }
 function clearTerminal(tab) {
   if (!tab) return;
@@ -364,6 +376,7 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
   else term.groups.push({ id: `g${id}`, root: leaf(id), focus: id });
   setActive(id);
   renderTabs();
+  globalThis.DccCommandPanel?.refreshHistory();
   requestAnimationFrame(() => { fitTab(tab); if (profileID && autoConnect) connectTab(tab); else terminal.writeln(profileID ? "Press Connect to sign in." : "Choose a device, then press Connect."); });
   return tab;
 }
@@ -385,6 +398,7 @@ function activateTab(id) {
   const device = deviceByID(tab.profileID);
   if (device && device.id !== devices.currentID) { devices.currentID = device.id; store.set("device", device.id); $("#deviceSelect").value = device.id; updateDeviceDot(); renderDeviceGrid(); fileDisconnect(true); }
   renderTabs();
+  globalThis.DccCommandPanel?.refreshHistory();
   requestAnimationFrame(() => { fitTab(tab); focusTab(tab); });
 }
 async function closeTab(id) {
@@ -770,6 +784,7 @@ function historyStep(tab, direction) {
 }
 function renderHistory() {
   const tab = activeTab();
+  $("#histSub").textContent = tab ? `${deviceByID(tab.profileID)?.name || "This tab"} — most recent first` : "No active terminal session";
   const filter = $("#histFilter").value.trim().toLowerCase();
   const all = loadHistory(tab?.profileID);
   const list = (filter ? all.filter((c) => c.toLowerCase().includes(filter)) : all).slice(0, 100);
@@ -791,22 +806,15 @@ function renderHistory() {
 function useHistoryCommand(command, run) {
   const tab = activeTab();
   if (!tab || tab.state !== "connected") { toast("Connect first"); return; }
-  $("#histDialog").close();
-  termSend(tab, command + (run ? "\r" : ""));
+  if (!replaceTerminalInput(tab, command, run)) return;
   if (run) rememberCommand(tab.profileID, command);
   focusTab(tab);
 }
 function openHistory() {
-  const tab = activeTab();
-  if (!tab) return;
-  $("#histSub").textContent = `${deviceByID(tab.profileID)?.name || "This tab"} — most recent first`;
   $("#histFilter").value = "";
+  globalThis.DccCommandPanel?.show("history", true);
   renderHistory();
-  openDialog($("#histDialog"));
-  $("#histFilter").focus();
 }
-$("#termHistory").addEventListener("click", openHistory);
-$("#histClose").addEventListener("click", () => $("#histDialog").close());
 $("#histFilter").addEventListener("input", renderHistory);
 $("#histFilter").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
@@ -1004,55 +1012,7 @@ $("#scanForm").addEventListener("submit", async (event) => {
   }
 });
 
-function loadCustomSnippets() {
-  const list = store.get("snippets", []);
-  return Array.isArray(list) ? list.filter((s) => s && typeof s.name === "string" && typeof s.command === "string" && s.id) : [];
-}
-$("#termSnippets").addEventListener("click", (event) => {
-  const custom = loadCustomSnippets();
-  const insert = (snippet) => () => {
-    const tab = activeTab();
-    if (!tab || tab.state !== "connected") { toast("Connect first"); return; }
-    termSend(tab, snippet.command); focusTab(tab); toast("Command typed — press Enter to run it");
-  };
-  const items = [{ heading: "Saved commands" }, ...DEFAULT_SNIPPETS.map((s) => ({ label: s.name, icon: "bolt", sub: s.command.slice(0, 22), run: insert(s) }))];
-  if (custom.length) items.push("-", { heading: "Mine" }, ...custom.map((s) => ({ label: s.name, icon: "bolt", sub: s.command.slice(0, 22), run: insert(s) })));
-  items.push("-", { label: "Add a command…", icon: "plus", run: async () => {
-    const name = await ask({ title: "New saved command", label: "Name", ok: "Next", validate: (v) => (v ? "" : "Enter a name.") });
-    if (!name) return;
-    const command = await ask({ title: name, label: "Command (typed into the terminal, you press Enter)", ok: "Save", validate: (v) => (!v ? "Enter a command." : /[\r\n\0]/.test(v) ? "Use a single line." : "") });
-    if (!command) return;
-    if (custom.length >= 30) { toast("You can save up to 30 commands", "error"); return; }
-    store.set("snippets", [...custom, { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: name.slice(0, 80), command: command.slice(0, 1000) }]);
-    toast("Command saved");
-  } });
-  items.push({ label: "Import DCC scripts (dccscript.ini)…", icon: "upload", run: () => $("#dccScriptFile").click() });
-  for (const s of custom) items.push({ label: `Remove “${s.name}”`, icon: "trash", danger: true, run: () => { store.set("snippets", custom.filter((c) => c.id !== s.id)); toast("Command removed"); } });
-  const rect = event.currentTarget.getBoundingClientRect();
-  openMenu(items, rect.left, rect.bottom + 4);
-});
-
-$("#dccScriptFile").addEventListener("change", async (event) => {
-  const file = event.target.files[0];
-  event.target.value = "";
-  if (!file) return;
-  if (file.size > 256 * 1024) { toast("That file is too big to be a dccscript.ini", "error"); return; }
-  const { scripts, skipped } = globalThis.DccImport.parseDccScripts(await file.text());
-  if (!scripts.length) { toast(skipped.length ? "No usable user scripts in that file" : "No [UserScripts] section found — is this a dccscript.ini?", "error"); return; }
-  const custom = loadCustomSnippets();
-  const fresh = scripts.filter((script) => !custom.some((c) => c.name === script.name && c.command === script.command));
-  const room = Math.max(0, 30 - custom.length);
-  const take = fresh.slice(0, room);
-  if (!take.length) { toast(fresh.length ? "You already have 30 saved commands" : "Those scripts are already saved"); return; }
-  const note = [`${take.length} script${take.length === 1 ? "" : "s"} will be added to Saved commands:`, ...take.map((script) => `• ${script.name}: ${script.command}`)];
-  if (fresh.length > take.length) note.push(`(${fresh.length - take.length} more do not fit: limit 30.)`);
-  if (skipped.length) note.push(`Skipped: ${skipped.map((item) => `${item.name} (${item.reason})`).join(", ")}.`);
-  note.push("They are only typed; press Enter to run.");
-  const ok = await ask({ title: "Import DCC scripts", message: note.join("\n"), input: false, ok: "Import" });
-  if (!ok) return;
-  store.set("snippets", [...custom, ...take.map((script) => ({ id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: script.name, command: script.command }))]);
-  toast(`${take.length} command${take.length === 1 ? "" : "s"} imported`);
-});
+// The terminal command menu and library are implemented in commands.js.
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "t" && view.current === "terminal") { event.preventDefault(); newTabFromActive(); }

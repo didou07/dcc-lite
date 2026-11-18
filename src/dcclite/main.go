@@ -231,7 +231,7 @@ func main() {
 
 	var serveErr error
 	if nativeBuild {
-		// The window needs this thread, so the server runs beside it. Closing the window ends the program.
+		// The window needs this thread; the server runs beside it.
 		served := make(chan error, 1)
 		go func() { served <- server.Serve(listener) }()
 		if err := runNative(nativeDeps{App: application, URL: url, DataDir: root}); err != nil {

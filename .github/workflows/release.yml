@@ -113,6 +113,8 @@ jobs:
           [[ "$count" -eq 3 ]] || { echo "Expected 3 platform archives, found $count" >&2; exit 1; }
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
+          unzip -p "dist/DCC-Lite-${VERSION}-windows-amd64.zip" DCCLite.exe > "$tmp/DCCLite.exe"
+          objdump -x "$tmp/DCCLite.exe" | grep -F "Resource Directory [.rsrc]" || { echo "Windows executable is missing its embedded icon resource" >&2; exit 1; }
           unzip -p "dist/DCC-Lite-${VERSION}-linux-amd64.zip" DCCLite > "$tmp/DCCLite"
           chmod +x "$tmp/DCCLite"
           "$tmp/DCCLite" --version | grep -F "DCC Lite ${VERSION} (linux/amd64)"

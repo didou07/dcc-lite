@@ -166,7 +166,9 @@ async function zapTo(entry) {
   showNow({ ref: entry.ref, name: entry.name, now: null, next: null }, entry);
   channelStatus(`Switching to ${entry.name}…`);
   try {
-    await post(profileURL(id, "zap"), { ref: entry.ref });
+    const holds = (b) => (b.channels || []).some((c) => c.ref === entry.ref);
+    const root = ch.bouquets.some((b) => b.ref === ch.bouquetRef && holds(b)) ? ch.bouquetRef : (ch.bouquets.find(holds) || {}).ref || "";
+    await post(profileURL(id, "zap"), { ref: entry.ref, root });
     if (token !== ch.zapping || id !== ch.profileID) return;
     channelStatus("");
     window.setTimeout(() => { if (id === ch.profileID && !screenView.paused) screenRestart(); }, 1200);

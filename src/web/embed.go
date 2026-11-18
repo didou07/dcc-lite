@@ -7,10 +7,11 @@ import (
 	"io/fs"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 )
 
-//go:embed index.html login.html login.js app.css js vendor
+//go:embed index.html login.html login.js app.css js vendor boxes
 var files embed.FS
 
 func FS() fs.FS { return files }
@@ -54,4 +55,40 @@ func Page(name string) ([]byte, error) {
 		return nil, err
 	}
 	return assetRef.ReplaceAll(data, []byte(`$1="$2?v=`+Build()+`"`)), nil
+}
+
+var (
+	boxOnce  sync.Once
+	boxFiles map[string]string
+)
+
+func boxKey(name string) string {
+	name = strings.NewReplacer("+", "plus", "\u00b2", "2").Replace(strings.ToLower(name))
+	var b strings.Builder
+	for _, c := range name {
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
+}
+
+// Box returns the bundled picture of a receiver model, matching names without regard to case, spaces, dashes or underscores.
+func Box(name string) ([]byte, bool) {
+	boxOnce.Do(func() {
+		boxFiles = map[string]string{}
+		entries, _ := fs.ReadDir(files, "boxes")
+		for _, e := range entries {
+			if n := e.Name(); strings.HasSuffix(n, ".webp") {
+				boxFiles[boxKey(strings.TrimSuffix(n, ".webp"))] = "boxes/" + n
+			}
+		}
+	})
+	key := boxKey(name)
+	path, ok := boxFiles[key]
+	if key == "" || !ok {
+		return nil, false
+	}
+	data, err := files.ReadFile(path)
+	return data, err == nil
 }

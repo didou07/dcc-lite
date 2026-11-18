@@ -131,7 +131,8 @@ func (s *Server) deviceTimerChange(w http.ResponseWriter, r *http.Request) {
 		"&channelOld=" + url.QueryEscape(in.OldRef) +
 		"&beginOld=" + strconv.FormatInt(in.OldBegin, 10) + "&endOld=" + strconv.FormatInt(in.OldEnd, 10) +
 		"&disabled=" + boolFlag(in.Disabled) + "&justplay=" + boolFlag(in.JustPlay) +
-		"&afterevent=" + strconv.Itoa(in.AfterEvent) + "&repeated=" + strconv.Itoa(in.Repeated)
+		"&afterevent=" + strconv.Itoa(in.AfterEvent) + "&repeated=" + strconv.Itoa(in.Repeated) +
+		"&deleteOldOnSave=1" // the old DreamOS interface adds a second timer without this flag
 	if dir := timerDir(in.Dir); dir != "" {
 		path += "&dirname=" + url.QueryEscape(dir)
 	}

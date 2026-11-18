@@ -84,9 +84,7 @@ func init() {
 		return legacyEvents(ctx, d, "/web/epgmulti", q)
 	})
 	// Documented DreamOS twins whose name or answer differs only slightly.
-	add("/api/timertogglestatus", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
-		return legacyResult(ctx, d, "/web/timeronoff", q)
-	})
+	add("/api/timertogglestatus", legacyTimerToggle)
 	for _, name := range []string{"timerchange", "selectaudiotrack"} {
 		web := "/web/" + name
 		add("/api/"+name, func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
@@ -680,6 +678,53 @@ func legacyTimers(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error
 		})
 	}
 	return asJSON(map[string]any{"result": true, "timers": out})
+}
+
+func legacyTimerToggle(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
+	var list struct {
+		Timers []struct {
+			Ref      string `xml:"e2servicereference"`
+			EIT      string `xml:"e2eit"`
+			Name     string `xml:"e2name"`
+			Desc     string `xml:"e2description"`
+			Disabled string `xml:"e2disabled"`
+			Begin    string `xml:"e2timebegin"`
+			End      string `xml:"e2timeend"`
+			JustPlay string `xml:"e2justplay"`
+			After    string `xml:"e2afterevent"`
+			Repeated string `xml:"e2repeated"`
+		} `xml:"e2timer"`
+	}
+	if err := d.legacyXML(ctx, "/web/timerlist", maxGuideBytes, &list); err != nil {
+		return nil, err
+	}
+	ref, begin, end := strings.TrimSpace(q.Get("sRef")), num(q.Get("begin")), num(q.Get("end"))
+	for _, t := range list.Timers {
+		if !strings.EqualFold(strings.TrimSpace(t.Ref), ref) || num(t.Begin) != begin || num(t.End) != end {
+			continue
+		}
+		disabled := "1"
+		if num(t.Disabled) != 0 {
+			disabled = "0"
+		}
+		nq := url.Values{}
+		nq.Set("sRef", strings.TrimSpace(t.Ref))
+		nq.Set("begin", strconv.FormatInt(begin, 10))
+		nq.Set("end", strconv.FormatInt(end, 10))
+		nq.Set("name", strings.TrimSpace(t.Name))
+		nq.Set("description", strings.TrimSpace(t.Desc))
+		nq.Set("eit", strings.TrimSpace(t.EIT))
+		nq.Set("disabled", disabled)
+		nq.Set("justplay", strconv.FormatInt(num(t.JustPlay), 10))
+		nq.Set("afterevent", strconv.FormatInt(num(t.After), 10))
+		nq.Set("repeated", strconv.FormatInt(num(t.Repeated), 10))
+		nq.Set("channelOld", strings.TrimSpace(t.Ref))
+		nq.Set("beginOld", strconv.FormatInt(begin, 10))
+		nq.Set("endOld", strconv.FormatInt(end, 10))
+		nq.Set("deleteOldOnSave", "1")
+		return legacyResult(ctx, d, "/web/timerchange", nq)
+	}
+	return nil, &legacyBadReply{"the timer was not found in the receiver's timer list"}
 }
 
 // legacyMovies answers /api/movielist.

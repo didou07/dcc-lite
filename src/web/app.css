@@ -225,8 +225,70 @@ body.browser-files .actionbar .hint { display: none; }
 .font-size {
   min-width: calc(24px * var(--ui)); text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--muted);
 }
-.screens { position: relative; flex: 1 1 0; min-height: 0; padding: calc(6px * var(--ui)) calc(4px * var(--ui)) calc(4px * var(--ui)) calc(8px * var(--ui)); }
+.terminal-workspace { position: relative; display: flex; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+.screens { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; padding: calc(6px * var(--ui)) calc(4px * var(--ui)) calc(4px * var(--ui)) calc(8px * var(--ui)); }
 .terminal-screen { position: absolute; inset: calc(6px * var(--ui)) calc(4px * var(--ui)) calc(4px * var(--ui)) calc(8px * var(--ui)); }
+.term-command-dock {
+  display: flex; flex: 0 0 clamp(calc(270px * var(--ui)), 29vw, calc(360px * var(--ui))); flex-direction: column; min-width: 0; min-height: 0;
+  border-left: 1px solid var(--border); background: var(--surface); color: var(--text); overflow: hidden;
+}
+.term-command-dock[hidden] { display: none !important; }
+.command-dock-header { display: flex; align-items: center; gap: calc(5px * var(--ui)); min-height: calc(42px * var(--ui)); padding: 0 calc(7px * var(--ui)) 0 calc(8px * var(--ui)); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.command-dock-tabs { display: flex; align-items: stretch; gap: calc(3px * var(--ui)); flex: 1 1 auto; min-width: 0; height: calc(42px * var(--ui)); }
+.command-dock-tab { position: relative; padding: 0 calc(10px * var(--ui)); border: 0; background: transparent; color: var(--muted); font: inherit; font-size: calc(12px * var(--ui)); font-weight: 650; cursor: pointer; white-space: nowrap; }
+.command-dock-tab:hover { color: var(--text); }
+.command-dock-tab.active { color: var(--text); }
+.command-dock-tab.active::after { content: ""; position: absolute; left: calc(8px * var(--ui)); right: calc(8px * var(--ui)); bottom: 0; height: calc(2px * var(--ui)); background: var(--accent); border-radius: 2px 2px 0 0; }
+.command-dock-pane { display: flex; flex: 1 1 0; flex-direction: column; gap: calc(8px * var(--ui)); min-width: 0; min-height: 0; padding: calc(9px * var(--ui)); overflow: hidden; }
+.command-dock-pane[hidden] { display: none !important; }
+.command-dock-tools { display: flex; flex: none; align-items: center; gap: calc(5px * var(--ui)); min-width: 0; }
+.command-dock-tools > .filter-input { width: 100%; min-width: 0; min-height: calc(32px * var(--ui)); }
+.command-dock-subtitle { margin: 0; font-size: calc(11px * var(--ui)); color: var(--muted); overflow-wrap: anywhere; }
+.command-dock-list { display: flex; flex: 1 1 0; flex-direction: column; gap: calc(4px * var(--ui)); min-height: 0; overflow: auto; overscroll-behavior: contain; padding: calc(2px * var(--ui)); }
+.command-dock-hint { flex: none; margin: 0; padding-top: calc(6px * var(--ui)); border-top: 1px solid var(--border); color: var(--muted); font-size: calc(10.5px * var(--ui)); line-height: 1.4; }
+.command-dock-footer { display: flex; align-items: center; gap: calc(6px * var(--ui)); padding-top: calc(5px * var(--ui)); border-top: 1px solid var(--border); }
+.dock-command-row { display: flex; align-items: center; gap: calc(4px * var(--ui)); min-width: 0; padding: calc(4px * var(--ui)); border: 1px solid transparent; border-radius: var(--radius-sm); background: var(--surface-2); }
+.dock-command-row:hover { border-color: var(--border-strong); }
+.dock-command-main { display: grid; flex: 1 1 auto; gap: calc(3px * var(--ui)); min-width: 0; padding: calc(4px * var(--ui)) calc(5px * var(--ui)); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.dock-command-main:hover { background: var(--accent-soft); }
+.dock-command-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--ui)); font-weight: 650; }
+.dock-command-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: calc(10.5px * var(--ui)); }
+.dock-command-row > .icon-btn { flex: none; width: calc(27px * var(--ui)); height: calc(27px * var(--ui)); }
+.command-library-meta { display: grid; flex: none; gap: calc(3px * var(--ui)); min-width: 0; font-size: calc(11.5px * var(--ui)); }
+.command-library-meta > strong { font-size: calc(12px * var(--ui)); }
+#commandPath { overflow-wrap: anywhere; font-size: calc(10px * var(--ui)); }
+.command-library-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
+.command-library-toolbar > .filter-input { grid-column: 1 / -1; }
+.command-library-toolbar .btn { min-width: calc(30px * var(--ui)); min-height: calc(30px * var(--ui)); padding: 0 calc(7px * var(--ui)); gap: calc(3px * var(--ui)); }
+.command-library-list { display: flex; flex: 1 1 0; flex-direction: column; gap: calc(4px * var(--ui)); min-height: 0; max-height: none; overflow: auto; padding: calc(3px * var(--ui)); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.saved-command-row {
+  display: flex; align-items: center; gap: calc(6px * var(--ui)); min-width: 0; padding: calc(5px * var(--ui));
+  border: 1px solid transparent; border-radius: var(--radius-sm); background: var(--surface); cursor: grab;
+}
+.saved-command-row:hover { border-color: var(--border-strong); }
+.saved-command-row.dragging { opacity: .45; }
+.saved-command-row.drag-over { border-color: var(--accent); background: var(--accent-soft); }
+.command-drag { display: grid; place-items: center; flex: none; width: calc(20px * var(--ui)); color: var(--muted); cursor: grab; }
+.command-drag .ic { width: calc(15px * var(--ui)); }
+.command-info { display: grid; gap: calc(2px * var(--ui)); flex: 1 1 auto; min-width: 0; }
+.command-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--ui)); font-weight: 650; }
+.command-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: calc(10.5px * var(--ui)); }
+.command-actions { display: flex; align-items: center; gap: calc(2px * var(--ui)); flex: none; }
+.command-actions .icon-btn { width: calc(27px * var(--ui)); height: calc(27px * var(--ui)); }
+.command-actions .icon-btn:disabled { opacity: .28; }
+.command-actions .icon-btn.danger:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); }
+.command-empty { display: grid; place-items: center; min-height: calc(78px * var(--ui)); padding: calc(14px * var(--ui)); color: var(--muted); text-align: center; font-size: calc(11px * var(--ui)); }
+.command-library-list .saved-command-row { gap: calc(4px * var(--ui)); padding: calc(4px * var(--ui)); }
+.command-library-list .command-drag { width: calc(16px * var(--ui)); }
+.command-library-list .command-actions { gap: 0; }
+.command-library-list .command-actions .icon-btn { width: calc(24px * var(--ui)); height: calc(26px * var(--ui)); }
+.command-library-list .command-actions .command-move { display: none; }
+.command-library-list .command-name { font-size: calc(11.5px * var(--ui)); }
+.command-library-list .command-preview { font-size: calc(10px * var(--ui)); }
+.command-dock-pane .hist-list { max-height: none; flex: 1 1 0; }
+.command-dock-pane .hist-item { gap: calc(3px * var(--ui)); }
+.command-dock-pane .hist-cmd { font-size: calc(11px * var(--ui)); }
+#termDockToggle[aria-expanded="true"] { color: var(--accent); background: var(--accent-soft); }
 .terminal-screen .xterm { height: 100%; padding: 0; }
 .terminal-screen .xterm-viewport { background: transparent !important; }
 .quickkeys {
@@ -2459,7 +2521,7 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .login-card .i18n-sel { margin-top: calc(14px * var(--ui)); }
 [dir="rtl"] .xterm, [dir="rtl"] pre, [dir="rtl"] code, [dir="rtl"] input[type="password"] { direction: ltr; }
 
-/* Longer translations: widen fixed-width chrome and wrap instead of clipping (English is unchanged). */
+/* Longer translations: widen fixed-width chrome, wrap instead of clipping */
 html:is([lang="ru"], [lang="de"], [lang="es"], [lang="tr"], [lang="fr"]) { --rail-w: calc(96px * var(--ui)); --bridge-w: calc(84px * var(--ui)); }
 html:not([lang="en"]) .rail .tab { padding: 0 calc(2px * var(--ui)); text-align: center; overflow-wrap: break-word; font-size: calc(11.5px * var(--ui)); }
 .rail .i18n-sel { max-width: calc(var(--rail-w) - calc(12px * var(--ui))); }
@@ -2562,8 +2624,8 @@ html:not([lang="en"]) .actionbar .btn { padding-left: calc(6px * var(--ui)); pad
 }
 .live-center[data-state="buffering"], .live-center[data-state="reconnecting"] { --wait: #f5b942; }
 .live-center[data-state="error"] { --wait: #ff6b6e; }
-/* An SVG ring: the "sharp" corner setting forces border-radius: 0 on every element, which turned a CSS ring into a square. */
-.live-spin { flex: none; box-sizing: border-box; width: calc(48px * var(--ui)); height: calc(48px * var(--ui)); border: 0; background: none; box-shadow: none; animation: liveSpin .9s linear infinite; } /* border/background reset: older .live-spin rules above drew a CSS ring */
+/* SVG ring: "sharp" corners would turn a CSS ring square */
+.live-spin { flex: none; box-sizing: border-box; width: calc(48px * var(--ui)); height: calc(48px * var(--ui)); border: 0; background: none; box-shadow: none; animation: liveSpin .9s linear infinite; }
 .live-spin circle { fill: none; stroke-width: 4; }
 .live-spin .trk { stroke: rgb(255 255 255 / .16); }
 .live-spin .arc { stroke: var(--wait); stroke-linecap: round; stroke-dasharray: 34 200; }
@@ -2592,3 +2654,152 @@ html:not([lang="en"]) .actionbar .btn { padding-left: calc(6px * var(--ui)); pad
 .screen-stage.fs-native .live-viewport { flex: 1; aspect-ratio: auto; max-height: none; }
 .screen-stage.fs-native.fs-idle .live-top, .screen-stage.fs-native.fs-idle .live-bar { display: none; }
 .screen-stage.fs-native.fs-idle { cursor: none; }
+
+.remote-row .rk-spacer { visibility: hidden; pointer-events: none; }
+
+/* Compact layout for small screens */
+@media (max-width: 900px), (max-height: 500px) {
+  :root { --topbar-h: calc(40px * var(--ui)); }
+  .topbar { gap: calc(6px * var(--ui)); padding-block: 0; }
+  .topbar .device-picker { min-height: calc(32px * var(--ui)); }
+  .topbar .device-picker select { min-height: calc(30px * var(--ui)); }
+  .topbar .rail-foot { display: flex; align-items: center; gap: calc(2px * var(--ui)); margin: 0; flex: none; }
+  .topbar .rail-foot .icon-btn { width: calc(34px * var(--ui)); height: calc(34px * var(--ui)); }
+  .topbar .rail-foot .i18n-sel { max-width: calc(64px * var(--ui)); min-height: calc(30px * var(--ui)); padding-inline: calc(4px * var(--ui)); }
+  .topbar #logoutButton, .topbar #updateBadge { flex: none; margin-inline-start: 0; }
+  .topbar #logoutButton { margin-left: 0; }
+  /* shortcuts need a hardware keyboard */
+  .topbar #keysOpen { display: none; }
+  .view { padding: calc(8px * var(--ui)) calc(8px * var(--ui)); gap: calc(8px * var(--ui)); padding-inline: max(calc(8px * var(--ui)), env(safe-area-inset-left)) max(calc(8px * var(--ui)), env(safe-area-inset-right)); }
+}
+
+/* Portrait: slimmer bottom bar */
+@media (max-width: 900px) and (orientation: portrait), (max-width: 900px) and (min-height: 501px) {
+  body[data-view] { grid-template-rows: var(--topbar-h) minmax(0, 1fr) calc(48px * var(--ui)); }
+  .rail { padding-block: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .rail .tab { height: calc(48px * var(--ui)); gap: 1px; font-size: calc(10.5px * var(--ui)); }
+  .rail .tab .ic { width: calc(19px * var(--ui)); height: calc(19px * var(--ui)); }
+}
+
+/* Landscape phones: sections on the side, icons only; the whole height goes to the work area */
+@media (max-height: 500px) and (orientation: landscape) {
+  body[data-view] {
+    grid-template-columns: calc(48px * var(--ui) + env(safe-area-inset-left, 0px)) minmax(0, 1fr); grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+    grid-template-areas: "rail top" "rail main";
+  }
+  body[data-view] > .statusbar { display: none; }
+  .rail { flex-direction: column; justify-content: flex-start; align-items: stretch; padding: calc(4px * var(--ui)) 0; border-top: 0; border-right: 0; border-inline-end: 1px solid var(--border); overflow-y: auto; padding-left: env(safe-area-inset-left); }
+  :root[dir="rtl"] .rail { padding-left: 0; padding-right: env(safe-area-inset-right); }
+  .rail .brand { display: none; }
+  .rail .tabs { flex-direction: column; gap: 0; padding: 0 calc(4px * var(--ui)); width: 100%; }
+  .rail .tab { flex: none; width: 100%; height: calc(40px * var(--ui)); }
+  .rail .tab span { display: none; }
+  .rail .tab .ic { width: calc(21px * var(--ui)); height: calc(21px * var(--ui)); }
+}
+
+:root[dir="rtl"] body[data-view] { --rtl: 1; }
+@media (max-height: 500px) and (orientation: landscape) {
+  :root[dir="rtl"] body[data-view] { grid-template-columns: calc(48px * var(--ui) + env(safe-area-inset-right, 0px)) minmax(0, 1fr); }
+}
+
+/* Follow the visible height of the phone (address bar shown or hidden) */
+@supports (height: 100dvh) { html, body { height: 100dvh; } }
+
+/* ---------- Small screens: toolbars use one row instead of three ---------- */
+@media (max-width: 900px), (max-height: 500px) {
+  /* Devices: search + layout switch + actions share the row where they fit */
+  .sites-head { gap: calc(6px * var(--ui)); flex-wrap: wrap; justify-content: flex-start; }
+  .sites-head .sites-find { flex: 1 1 calc(140px * var(--ui)); min-width: 0; }
+  .sites-head .view-actions { flex: 0 0 auto; flex-wrap: nowrap; gap: calc(6px * var(--ui)); }
+  .view-actions .btn:not(.primary) { font-size: 0; gap: 0; padding: 0; width: var(--ctl-h); justify-content: center; flex: none; }
+  .view-actions .btn:not(.primary) .ic { margin: 0; }
+
+  /* Files / terminal connection bar: one slim row */
+  .connbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: calc(4px * var(--ui)); }
+  .connbar > * { flex: none; }
+  .connbar .vr { display: none; }
+  .pane-switch button { min-height: calc(30px * var(--ui)); }
+  .pane-head { padding: calc(4px * var(--ui)) calc(6px * var(--ui)); gap: calc(4px * var(--ui)); }
+
+  /* File actions: a single scrollable strip, the main action first */
+  .actionbar { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: calc(6px * var(--ui)); scrollbar-width: none; padding-bottom: 0; }
+  .actionbar .btn { flex: none; }
+  .actionbar #btnTransferActive { order: -1; }
+
+  /* Terminal: tabs and connection buttons on one row; tools and quick keys scroll sideways */
+  .term-top { flex-wrap: nowrap; gap: calc(6px * var(--ui)); padding-bottom: calc(4px * var(--ui)); }
+  .term-top .termtabs { flex: 1 1 0; }
+  .term-top .connbar { flex: none; overflow: visible; padding: 0; }
+  .termtools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-block: calc(2px * var(--ui)); }
+  .termtools > * { flex: none; }
+  .termtools .filterbar.compact .filter-input { width: calc(120px * var(--ui)); }
+  .quickkeys { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: calc(6px * var(--ui)); }
+  .quickkeys button { flex: none; min-width: calc(44px * var(--ui)); }
+
+  /* Live screen: options inline and tight */
+  .screen-tools .screen-opts { flex: 1 1 100%; flex-wrap: wrap; gap: calc(4px * var(--ui)) calc(10px * var(--ui)); }
+  .screen-tools .screen-opts .field-inline { display: inline-flex; flex: none; flex-direction: row; align-items: center; gap: calc(6px * var(--ui)); }
+  .screen-tools .screen-opts .field-inline select { width: auto; }
+  .screen-tools .auto-refresh:has(#screenAuto:not(:checked)) > :not(label) { display: none; }
+
+  /* Tools: section buttons in one scrolling row */
+  .toolsnav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: calc(6px * var(--ui)); scrollbar-width: none; }
+  .toolsnav-btn { flex: none; }
+
+  /* Logs: status pill sits on the tab row; chips scroll; buttons are icons */
+  #view-logs { position: relative; }
+  #view-logs .tools-top { position: absolute; top: calc(8px * var(--ui)); inset-inline-end: calc(10px * var(--ui)); margin: 0; z-index: 1; }
+  .logs-tools { gap: calc(6px * var(--ui)); }
+  .logs-tools .field-inline { flex: 1 1 calc(120px * var(--ui)); min-width: 0; }
+  .logs-tools .btn.sm { flex: 1 1 0; min-width: 0; font-size: 0; gap: 0; justify-content: center; }
+  .logs-tools .btn.sm .ic { margin: 0; }
+  .logs-tools .btn.sm span { display: none; }
+  .lg-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .lg-chips > * { flex: none; }
+}
+
+/* Phone portrait: device cards use two short rows instead of five */
+@media (max-width: 560px), (max-height: 500px) {
+  .sites:not([data-mode="list"]) .device-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: calc(4px * var(--ui)) calc(8px * var(--ui)); align-items: center; padding: calc(8px * var(--ui)) calc(10px * var(--ui)); }
+  .sites:not([data-mode="list"]) .device-card > * { grid-column: 1 / -1; }
+  .sites:not([data-mode="list"]) .device-card .device-top { display: contents; }
+  .sites:not([data-mode="list"]) .device-card .avatar { grid-column: 1; grid-row: 1; width: calc(34px * var(--ui)); height: calc(34px * var(--ui)); margin: 0; }
+  .sites:not([data-mode="list"]) .device-card .site-id { grid-column: 2 / -1; grid-row: 1; }
+  .sites:not([data-mode="list"]) .device-card .chips { grid-column: 1 / 3; grid-row: 2; min-height: 0; }
+  .sites:not([data-mode="list"]) .device-card .device-menu { grid-column: 3; grid-row: 2; margin: 0; }
+  .sites:not([data-mode="list"]) .device-card .device-actions { grid-row: 3; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(6px * var(--ui)); margin-top: calc(2px * var(--ui)); }
+  .sites:not([data-mode="list"]) .device-card .device-actions .btn { min-width: 0; padding-inline: calc(4px * var(--ui)); font-size: calc(11.5px * var(--ui)); gap: calc(4px * var(--ui)); }
+}
+
+/* Scrolling strips keep their height in column layouts */
+@media (max-width: 900px), (max-height: 500px) {
+  .connbar, .actionbar, .termtools, .quickkeys, .toolsnav, .lg-chips, .logs-tabs { flex: none; }
+  .actionbar #btnTransferActive { flex: 0 0 auto; width: auto; min-width: calc(112px * var(--ui)); }
+  .topbar .rail-foot .i18n-sel { max-width: calc(92px * var(--ui)); }
+}
+@media (max-width: 360px) { .sites:not([data-mode="list"]) .device-card .device-actions .btn { font-size: calc(11.5px * var(--ui)); gap: calc(4px * var(--ui)); } }
+@media (max-width: 340px) { .sites:not([data-mode="list"]) .device-card .device-actions .btn { font-size: 0; gap: 0; } }
+
+/* Tablets, landscape phones: cards flow into columns */
+@media (max-width: 900px), (max-height: 500px) {
+  .sites:not([data-mode="list"]) .device-grid { grid-template-columns: repeat(auto-fill, minmax(calc(300px * var(--ui)), 1fr)); gap: calc(8px * var(--ui)); }
+}
+
+/* Remote: one grid so every key keeps its place whatever the layout or screen */
+.remote-row { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); grid-auto-flow: row; grid-auto-columns: auto; }
+.remote-row.colors { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rk { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.remote-layout { display: block; }
+.remote-layout select { width: 100%; min-height: calc(28px * var(--ui)); font-size: calc(12px * var(--ui)); }
+.remote-row .rk.pwr { color: var(--bad); min-height: calc(30px * var(--ui)); }
+.rk.pwr svg { width: calc(17px * var(--ui)); height: calc(17px * var(--ui)); }
+
+#commandEditDialog { max-width: min(calc(620px * var(--ui)), calc(100vw - calc(24px * var(--ui)))); }
+.command-edit-card { gap: calc(10px * var(--ui)); }
+.command-edit-card .field textarea { width: 100%; min-height: calc(100px * var(--ui)); resize: vertical; font-family: ui-monospace, Consolas, monospace; }
+
+@media (max-width: 760px) {
+  .term-command-dock { position: absolute; z-index: 8; top: 0; right: 0; bottom: 0; width: min(88vw, 340px); flex: none; box-shadow: var(--shadow-lg); }
+  .term-command-dock[hidden] { display: none !important; }
+  .command-dock-tab { padding-inline: calc(8px * var(--ui)); }
+}

@@ -92,20 +92,28 @@ func (s *Server) devicePackages(w http.ResponseWriter, r *http.Request) {
 		web := newDeviceWeb(profile, 150*time.Second)
 		ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
 		defer cancel()
-		status, body, err := web.getBounded(ctx, "/ipkg?command=listall&format=json&filter=all", maxPackageList)
-		if err == nil && status == http.StatusNotFound {
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": "This receiver's web interface has no package manager.", "code": "no_packages"})
-			return
+		if web.kind == "dreamos" {
+			parsed, ok := dreamOSPackageList(ctx, w, profile)
+			if !ok {
+				return
+			}
+			list = parsed
+		} else {
+			status, body, err := web.getBounded(ctx, "/ipkg?command=listall&format=json&filter=all", maxPackageList)
+			if err == nil && status == http.StatusNotFound {
+				writeJSON(w, http.StatusNotFound, map[string]any{"error": "This receiver's web interface has no package manager.", "code": "no_packages"})
+				return
+			}
+			if writeWebStatus(w, web, status, err) {
+				return
+			}
+			parsed, perr := parsePackageList(body)
+			if perr != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return its package list.", "code": "web_error"})
+				return
+			}
+			list = parsed
 		}
-		if writeWebStatus(w, web, status, err) {
-			return
-		}
-		parsed, perr := parsePackageList(body)
-		if perr != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver did not return its package list.", "code": "web_error"})
-			return
-		}
-		list = parsed
 		packageCachesMu.Lock()
 		packageCaches[profile.ID] = packageCache{at: time.Now(), list: list}
 		packageCachesMu.Unlock()
@@ -182,6 +190,14 @@ func (s *Server) devicePackageAction(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, limit)
 	ctx, cancel := context.WithTimeout(r.Context(), limit)
 	defer cancel()
+	if web.kind == "dreamos" {
+		if in.Command == "remove" && dreamOSProtectedPackage(in.Package) {
+			writeError(w, http.StatusForbidden, in.Package+" is needed by the receiver and cannot be removed from here.")
+			return
+		}
+		dreamOSPackageAction(ctx, w, profile, in.Command, in.Package)
+		return
+	}
 	status, body, err := web.getBounded(ctx, "/ipkg?"+query, 1<<20)
 	packageCachesMu.Lock()
 	delete(packageCaches, profile.ID)

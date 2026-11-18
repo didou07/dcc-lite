@@ -39,25 +39,28 @@ func init() {
 }
 
 var (
-	user32             = windows.NewLazySystemDLL("user32.dll")
-	procMessageBoxW    = user32.NewProc("MessageBoxW")
-	procCreateWindowEx = user32.NewProc("CreateWindowExW")
-	procSetWindowPos   = user32.NewProc("SetWindowPos")
-	procGetClientRect  = user32.NewProc("GetClientRect")
-	procSetDPIAware    = user32.NewProc("SetProcessDPIAware")
-	procGetWindow      = user32.NewProc("GetWindow")
-	procClientToScreen = user32.NewProc("ClientToScreen")
-	procIsIconic       = user32.NewProc("IsIconic")
-	procGetWindowLong  = user32.NewProc("GetWindowLongW")
-	procGetMessage     = user32.NewProc("GetMessageW")
-	procTranslateMsg   = user32.NewProc("TranslateMessage")
-	procDispatchMsg    = user32.NewProc("DispatchMessageW")
+	kernel32            = windows.NewLazySystemDLL("kernel32.dll")
+	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
+	user32              = windows.NewLazySystemDLL("user32.dll")
+	procMessageBoxW     = user32.NewProc("MessageBoxW")
+	procCreateWindowEx  = user32.NewProc("CreateWindowExW")
+	procSetWindowPos    = user32.NewProc("SetWindowPos")
+	procGetClientRect   = user32.NewProc("GetClientRect")
+	procSetDPIAware     = user32.NewProc("SetProcessDPIAware")
+	procGetWindow       = user32.NewProc("GetWindow")
+	procClientToScreen  = user32.NewProc("ClientToScreen")
+	procIsIconic        = user32.NewProc("IsIconic")
+	procGetWindowLong   = user32.NewProc("GetWindowLongW")
+	procGetMessage      = user32.NewProc("GetMessageW")
+	procTranslateMsg    = user32.NewProc("TranslateMessage")
+	procDispatchMsg     = user32.NewProc("DispatchMessageW")
 
 	procGetCursorPos       = user32.NewProc("GetCursorPos")
 	procGetAsyncKeyState   = user32.NewProc("GetAsyncKeyState")
 	procCreateCursor       = user32.NewProc("CreateCursor")
 	procLoadCursor         = user32.NewProc("LoadCursorW")
 	procSendMessage        = user32.NewProc("SendMessageW")
+	procLoadImage          = user32.NewProc("LoadImageW")
 	procSetClassLongPtr    = user32.NewProc(classLongName())
 	procWindowFromPoint    = user32.NewProc("WindowFromPoint")
 	procGetAncestor        = user32.NewProc("GetAncestor")
@@ -97,6 +100,14 @@ const (
 	smSwapButton  = 23
 	idcArrow      = 32512
 	wmSetCursor   = 0x0020
+	wmSetIcon     = 0x0080
+	imageIcon     = 1
+	smCxIcon      = 11
+	smCyIcon      = 12
+	smCxSmIcon    = 49
+	smCySmIcon    = 50
+	iconSmall     = 0
+	iconBig       = 1
 	gclpHCursor   = ^uintptr(11) // -12
 	wmMouseMove   = 0x0200
 	wmLButtonDown = 0x0201
@@ -260,6 +271,7 @@ func runNative(d nativeDeps) error {
 
 	view.SetTitle("DCC Lite")
 	view.SetSize(960, 620, webview2.HintMin)
+	setApplicationIcon(uintptr(view.Window()))
 
 	live := &nativeLive{app: d.App, view: view, parent: uintptr(view.Window()), snap: stateOut{State: "opening", AudioCurrent: -1}}
 	go func() { _, _ = live.vlc() }() // load VLC in the background so the first channel starts fast
@@ -278,6 +290,32 @@ func runNative(d nativeDeps) error {
 	view.Navigate(d.URL)
 	view.Run()
 	return nil
+}
+
+func setApplicationIcon(hwnd uintptr) {
+	module, _, _ := procGetModuleHandle.Call(0)
+	if module == 0 {
+		return
+	}
+	load := func(width, height uintptr) uintptr {
+		icon, _, _ := procLoadImage.Call(module, 1, imageIcon, width, height, 0)
+		return icon
+	}
+	metrics := func(index uintptr, fallback uintptr) uintptr {
+		value, _, _ := procGetSystemMetrics.Call(index)
+		if value == 0 {
+			return fallback
+		}
+		return value
+	}
+	big := load(metrics(smCxIcon, 32), metrics(smCyIcon, 32))
+	small := load(metrics(smCxSmIcon, 16), metrics(smCySmIcon, 16))
+	if big != 0 {
+		_, _, _ = procSendMessage.Call(hwnd, wmSetIcon, iconBig, big)
+	}
+	if small != 0 {
+		_, _, _ = procSendMessage.Call(hwnd, wmSetIcon, iconSmall, small)
+	}
 }
 
 // ---- Live TV through the user's VLC ----

@@ -35,6 +35,57 @@
     sbTransfers.dataset.busy = /\b[1-9]\d* active\b/.test(text) ? "true" : "false";
   }
 
+
+  // Small screens: utility buttons move into the top bar.
+  const rail = document.querySelector(".rail");
+  const railFoot = document.querySelector(".rail-foot");
+  const topbar = document.querySelector(".topbar");
+  const compactQuery = window.matchMedia("(max-width: 900px), (max-height: 500px)");
+  function placeRailFoot() {
+    if (!rail || !railFoot || !topbar) return;
+    if (compactQuery.matches) { if (railFoot.parentElement !== topbar) topbar.append(railFoot); }
+    else if (railFoot.parentElement !== rail) rail.append(railFoot);
+  }
+  // Very narrow phones: language picker moves into the Appearance window.
+  const narrowQuery = window.matchMedia("(max-width: 599px)");
+  let langRow = null;
+  function placeLanguage() {
+    const select = document.querySelector(".i18n-sel");
+    const body = document.querySelector("#themeDialog .ap-body");
+    if (!select || !body) return;
+    if (narrowQuery.matches) {
+      if (!langRow) {
+        langRow = document.createElement("div");
+        langRow.className = "ap-row";
+        const label = document.createElement("span");
+        label.className = "ap-l";
+        label.textContent = "Language";
+        langRow.append(label);
+      }
+      langRow.append(select);
+      if (langRow.parentElement !== body) body.prepend(langRow);
+    } else if (select.parentElement === langRow) {
+      const anchor = document.getElementById("themeOpen");
+      if (anchor) anchor.before(select);
+    }
+  }
+  placeRailFoot();
+  document.addEventListener("DOMContentLoaded", placeLanguage);
+  if (document.readyState !== "loading") placeLanguage();
+  if (narrowQuery.addEventListener) narrowQuery.addEventListener("change", placeLanguage); else narrowQuery.addListener(placeLanguage);
+  // Buttons that lose their text on small screens keep it as a tooltip / accessible name.
+  for (const button of document.querySelectorAll(".view-actions .btn, .logs-tools .btn, .screen-tools > .btn")) {
+    const text = button.textContent.trim();
+    if (text && !button.title) button.title = text;
+    if (text && !button.getAttribute("aria-label")) button.setAttribute("aria-label", text);
+  }
+  if (compactQuery.addEventListener) compactQuery.addEventListener("change", placeRailFoot); else compactQuery.addListener(placeRailFoot);
+  // The side rail shows icons only: keep the names as tooltips / accessible names.
+  for (const tab of document.querySelectorAll("#mainTabs .tab")) {
+    const label = tab.querySelector("span");
+    if (label && !tab.title) tab.title = label.textContent.trim();
+  }
+
   const watch = (node, options, fn) => { if (node) new MutationObserver(fn).observe(node, options); };
   watch(document.body, { attributes: true, attributeFilter: ["data-view"] }, syncView);
   watch(dot, { attributes: true, attributeFilter: ["data-state", "title"] }, syncDevice);
@@ -44,7 +95,7 @@
   if (sbTransfers) sbTransfers.addEventListener("click", () => { if (typeof showView === "function") showView("files"); });
 
   const DIALOG_ICONS = {
-    deviceDialog: "tv", histDialog: "history", termCfgDialog: "sliders", pasteDialog: "paste", raDialog: "lock",
+    deviceDialog: "tv", termCfgDialog: "sliders", pasteDialog: "paste", raDialog: "lock",
     scanDialog: "search", bqAddDialog: "plus", bqStreamDialog: "link", editorDialog: "edit", powerDialog: "power",
     guideDialog: "calendar", timerDialog: "bell", atDialog: "bolt", erDialog: "calendar", svcDialog: "info", askDialog: "info", themeDialog: "palette", diagDialog: "plug", keysDialog: "keyboard",
   };

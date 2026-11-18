@@ -170,8 +170,11 @@ func (s *Server) deviceChannels(w http.ResponseWriter, r *http.Request) {
 }
 
 type zapRequest struct {
-	Ref string `json:"ref"`
+	Ref  string `json:"ref"`
+	Root string `json:"root,omitempty"` // the bouquet the channel was chosen from
 }
+
+var bouquetRootPattern = regexp.MustCompile(`^1:7:[0-9]+:0:0:0:0:0:0:0:FROM BOUQUET "[A-Za-z0-9._-]{1,120}" ORDER BY bouquet$`)
 
 func (s *Server) deviceZap(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
@@ -191,7 +194,11 @@ func (s *Server) deviceZap(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 10*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	status, body, err := web.pressFallback(ctx, "/api/zap?sRef="+url.QueryEscape(ref))
+	path := "/api/zap?sRef=" + url.QueryEscape(ref)
+	if root := strings.TrimSpace(input.Root); bouquetRootPattern.MatchString(root) {
+		path += "&root=" + url.QueryEscape(root)
+	}
+	status, body, err := web.pressFallback(ctx, path)
 	if writeWebFailure(w, web, status, body, err) {
 		return
 	}

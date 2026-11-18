@@ -2,12 +2,11 @@
 <html lang="en" data-theme="dark" data-radius="sharp">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#e8ecf1" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0c0f13" media="(prefers-color-scheme: dark)">
   <title>DCC Lite</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2335b36a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 10a7.31 7.31 0 0 0 10 10Z'/%3E%3Cpath d='m9 15 3-3'/%3E%3Cpath d='M17 13a6 6 0 0 0-6-6'/%3E%3Cpath d='M21 13A10 10 0 0 0 11 3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/app.css">
   <script src="/vendor/xterm.js" defer></script>
@@ -24,6 +23,8 @@
   <script src="/js/tools.js" defer></script>
   <script src="/js/transfers.js" defer></script>
   <script src="/js/terminal.js" defer></script>
+  <script src="/js/commands.js" defer></script>
+  <script src="/js/remote-db.js" defer></script>
   <script src="/js/remote-control.js" defer></script>
   <script src="/js/screen.js" defer></script>
   <script src="/js/signal.js" defer></script>
@@ -478,8 +479,7 @@
         <button class="icon-btn" id="termSplitRight" type="button" title="Split right (Ctrl+Shift+D)" aria-label="Split right"><svg class="ic" aria-hidden="true"><use href="#i-split-h"/></svg></button>
         <button class="icon-btn" id="termSplitDown" type="button" title="Split down (Ctrl+Shift+E)" aria-label="Split down"><svg class="ic" aria-hidden="true"><use href="#i-split-v"/></svg></button>
         <span class="vr"></span>
-        <button class="icon-btn" id="termSnippets" type="button" title="Saved commands" aria-label="Saved commands"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
-        <button class="icon-btn" id="termHistory" type="button" title="Previous commands (Ctrl+Shift+H)" aria-label="Previous commands"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg></button>
+        <button class="icon-btn" id="termDockToggle" type="button" title="Hide command tools" aria-label="Hide command tools" aria-controls="termCommandDock" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg></button>
         <span class="vr"></span>
         <button class="icon-btn" id="termCopy" type="button" title="Copy selection (Ctrl+Shift+C), or all output" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
         <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg></button>
@@ -501,7 +501,56 @@
         </div>
         <button class="icon-btn" id="termFullscreen" type="button" title="Full screen" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
       </div>
-      <div class="screens" id="terminalScreens"></div>
+      <div class="terminal-workspace">
+        <div class="screens" id="terminalScreens"></div>
+        <aside class="term-command-dock" id="termCommandDock" aria-label="Terminal command tools">
+          <div class="command-dock-header">
+            <div class="command-dock-tabs" role="tablist" aria-label="Command tools">
+              <button class="command-dock-tab active" type="button" role="tab" data-command-tab="system" aria-controls="commandPaneSystem" aria-selected="true">System</button>
+              <button class="command-dock-tab" type="button" role="tab" data-command-tab="history" aria-controls="commandPaneHistory" aria-selected="false">History</button>
+              <button class="command-dock-tab" type="button" role="tab" data-command-tab="library" aria-controls="commandPaneLibrary" aria-selected="false">Scripts</button>
+            </div>
+            <button class="icon-btn" id="termDockClose" type="button" title="Hide command tools" aria-label="Hide command tools"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+          </div>
+
+          <section class="command-dock-pane" id="commandPaneSystem" role="tabpanel" aria-label="System commands">
+            <div class="command-dock-tools">
+              <input id="systemCommandFilter" class="filter-input" type="search" placeholder="Find a system command" aria-label="Find a system command" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="command-dock-list" id="systemCommandList" role="list"></div>
+            <p class="command-dock-hint">Select a command to type it into the terminal. Press Enter to execute.</p>
+          </section>
+
+          <section class="command-dock-pane" id="commandPaneHistory" role="tabpanel" aria-label="Command history" hidden>
+            <p class="command-dock-subtitle" id="histSub"></p>
+            <div class="command-dock-tools">
+              <input id="histFilter" class="filter-input" type="search" placeholder="Search command history" aria-label="Search command history" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="hist-list command-dock-list" id="histList" role="list"></div>
+            <div class="command-dock-footer">
+              <span class="muted small">Most recent first</span>
+              <span class="spacer"></span>
+              <button class="btn sm danger" id="histClear" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Clear</button>
+            </div>
+          </section>
+
+          <section class="command-dock-pane" id="commandPaneLibrary" role="tabpanel" aria-label="Script library" hidden>
+            <div class="command-library-meta">
+              <strong id="commandCount">0 saved commands</strong>
+              <span id="commandPath" class="muted small"></span>
+            </div>
+            <div class="command-dock-tools command-library-toolbar">
+              <input id="commandFilter" class="filter-input" type="search" placeholder="Find a script" aria-label="Find a saved script" autocomplete="off" spellcheck="false">
+              <button class="btn sm" id="commandImport" type="button" title="Import dccscript.ini"><svg class="ic"><use href="#i-upload"/></svg><span>Import</span></button>
+              <button class="btn sm" id="commandExport" type="button" title="Export as dccscript.ini"><svg class="ic"><use href="#i-download"/></svg><span>Export</span></button>
+              <button class="btn sm" id="commandReload" type="button" title="Reload the library file"><svg class="ic"><use href="#i-refresh"/></svg></button>
+              <button class="btn sm primary" id="commandAdd" type="button" title="Add a script"><svg class="ic"><use href="#i-plus"/></svg><span>Add</span></button>
+            </div>
+            <div class="command-library-list command-dock-list" id="commandList" role="list"></div>
+            <p class="command-dock-hint">Select a script to type it into the terminal. It will not run until you press Enter.</p>
+          </section>
+        </aside>
+      </div>
       <div class="quickkeys" id="quickKeys" aria-label="Quick keys">
         <button type="button" data-key="ctrl-c">Ctrl+C</button><button type="button" data-key="ctrl-d">Ctrl+D</button>
         <button type="button" data-key="tab">Tab</button><button type="button" data-key="escape">Esc</button>
@@ -647,6 +696,8 @@
           <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic" aria-hidden="true"><use href="#i-collapse"/></svg></button>
         </header>
         <div class="remote-keys" id="remoteKeys"></div>
+        <label class="remote-layout"><span class="sr-only">Remote layout</span><select id="remoteLayout" aria-label="Remote layout" title="Remote layout: Auto follows the receiver model"></select></label>
+        <label class="remote-layout"><span class="sr-only">Send keys through</span><select id="remoteMode" aria-label="Send keys through" title="How keys reach the receiver. Telnet acts like the real remote (works inside apps such as YouTube) but needs Telnet and takes about a second per key."><option value="web">Send via: Web (fast)</option><option value="telnet">Send via: Telnet (like real remote)</option></select></label>
         <button class="btn sm remote-more" id="remoteMore" type="button" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg><span>More keys</span></button>
         <p class="form-error" id="remoteError" role="alert" hidden></p>
       </aside>
@@ -932,18 +983,19 @@
   </div>
 </dialog>
 
-<input type="file" id="dccScriptFile" accept=".ini,text/plain" hidden>
+<input type="file" id="commandImportFile" accept=".ini,text/plain" hidden>
 
-<dialog id="histDialog" aria-labelledby="histTitle">
-  <div class="dialog-card">
-    <h2 id="histTitle">History</h2>
-    <p class="muted small" id="histSub"></p>
-    <input id="histFilter" class="filter-input" type="search" placeholder="Search commands" aria-label="Search previous commands" autocomplete="off" spellcheck="false">
-    <div class="hist-list" id="histList" role="list"></div>
+<dialog id="commandEditDialog" aria-labelledby="commandEditTitle">
+  <div class="dialog-card command-edit-card">
+    <h2 id="commandEditTitle">Add command</h2>
+    <label class="field"><span>Name</span><input id="commandEditName" maxlength="80" autocomplete="off" spellcheck="false" placeholder="e.g. Restart Enigma2"></label>
+    <label class="field"><span>Terminal command</span><textarea id="commandEditText" rows="4" maxlength="1000" spellcheck="false" placeholder="Enter a single-line shell command"></textarea></label>
+    <p class="muted small">The command is typed into the active terminal. DCC Lite does not press Enter automatically.</p>
+    <p class="form-error" id="commandEditError" role="alert" hidden></p>
     <div class="dialog-actions">
-      <button class="btn danger" id="histClear" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Clear history</button>
       <span class="spacer"></span>
-      <button class="btn" id="histClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+      <button class="btn" id="commandEditCancel" type="button">Cancel</button>
+      <button class="btn primary" id="commandEditSave" type="button"><svg class="ic"><use href="#i-check"/></svg>Save command</button>
     </div>
   </div>
 </dialog>

@@ -56,6 +56,7 @@ function updateFileUI() {
   can("mkdir", paneReady); can("rename", paneReady && selection.length === 1); can("chmod", paneReady && selection.length > 0);
   can("delete", paneReady && selection.length > 0); can("copypath", paneReady);
   can("edit", paneReady && selection.length === 1 && !selection[0].is_dir); can("transfer", connected && selection.length > 0); can("selectall", paneReady && active.visible.length > 0);
+  { const allSel = active.visible.length > 0 && active.visible.every((e) => active.selected.has(e.path)); const lbl = $(".actionbar [data-cmd=\"selectall\"] .sel-label"); if (lbl) lbl.textContent = allSel ? "Deselect all" : "Select all"; }
   $("#btnDownload").disabled = !(connected && remoteSel.length);
   $("#btnUpload").disabled = !(connected && localSel.length);
   const transferBtn = $("#btnTransferActive");
@@ -419,7 +420,7 @@ function openEntry(pane, entry) {
 for (const pane of Object.values(panes)) {
   pane.rows.addEventListener("click", (event) => {
     const row = event.target.closest("tr.row");
-    if (!row) return;
+    if (!row) { if (!event.ctrlKey && !event.shiftKey && pane.selected.size) { pane.selected = new Set(); updateSelectionUI(pane); } return; }
     setActivePane(pane.kind);
     if (row.dataset.up) { if (coarsePointer || event.detail === 1) goUp(pane.kind); return; }
     const index = Number(row.dataset.index), entry = pane.visible[index];
@@ -439,6 +440,11 @@ for (const pane of Object.values(panes)) {
     } else { pane.selected = new Set([entry.path]); pane.anchor = index; }
     pane.cursor = index;
     updateSelectionUI(pane);
+  });
+  const scroller = pane.table.parentElement;
+  scroller?.addEventListener("click", (event) => {
+    if (event.target !== scroller || event.ctrlKey || event.shiftKey || !pane.selected.size) return;
+    setActivePane(pane.kind); pane.selected = new Set(); updateSelectionUI(pane);
   });
   pane.rows.addEventListener("dblclick", (event) => {
     if (coarsePointer) return;
@@ -545,6 +551,7 @@ function contextItems(pane, onEntry) {
     if (kind === "remote") {
       items.push("-");
       items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path) });
+      items.push({ label: "Install .ipk packages…", icon: "box", run: () => cmdIpk() });
       items.push({ label: "Terminal here, split beside current", icon: "split-h", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path, { split: "row" }) });
       if (single && !single.is_dir) items.push({ label: "Run in terminal…", icon: "play", run: () => runRemoteFile() });
     }
@@ -557,8 +564,8 @@ function contextItems(pane, onEntry) {
     if (kind === "remote") items.push({ label: "New symbolic link…", icon: "link", run: () => cmdSymlink() });
     items.push({ label: "Paste", icon: "paste", sub: "Ctrl+V", disabled: !files.clipboard?.entries?.length, run: () => cmdPaste() });
     items.push({ label: "Refresh", icon: "refresh", run: () => refreshPane(kind) });
-    items.push({ label: "Select all", icon: "check", run: () => cmdSelectAll() });
-    if (kind === "remote") items.push("-", { label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) });
+    items.push({ label: pane.visible.length > 0 && pane.visible.every((e) => pane.selected.has(e.path)) ? "Deselect all" : "Select all", icon: "check", sub: "Ctrl+A", run: () => cmdSelectAll() });
+    if (kind === "remote") items.push("-", { label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) }, { label: "Install .ipk packages…", icon: "box", run: () => cmdIpk() });
   }
   return items;
 }

@@ -17,12 +17,18 @@
   const makeID = () => globalThis.crypto?.randomUUID?.() || `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
   const validCommand = (value) => typeof value === "string" && value.trim() && value.trim().length <= 1000 && !/[\r\n\0]/.test(value);
 
-  function typeCommand(item) {
+  // Two ways to browse commands: "panel" (side panel, default) or "classic" (small menu from the lightning button, like older versions).
+  const classic = () => store.get("termCmdStyle", "panel") === "classic";
+
+  // Clicking a command types it (press Enter to run); the play triangle runs it at once.
+  function typeCommand(item, run = false) {
     const tab = activeTab();
     if (!tab || tab.state !== "connected") { toast("Connect a receiver first"); return; }
-    if (!replaceTerminalInput(tab, item.command)) return;
+    if (!replaceTerminalInput(tab, item.command, run)) return;
+    if (run) rememberCommand(tab.profileID, item.command);
+    if (classic()) toggleDock(false);
     focusTab(tab);
-    toast("Command typed — press Enter to execute");
+    toast(run ? "Command executed" : "Command typed — press Enter to execute");
   }
 
   function selectPanel(name, focusSearch = false) {
@@ -41,6 +47,7 @@
       button.setAttribute("aria-selected", String(active));
       button.tabIndex = active ? 0 : -1;
     });
+    $id("termCommandDock").querySelector(".command-dock-header")?.setAttribute("data-title", { system: "System commands", history: "Previous commands", library: "Scripts" }[name]);
     for (const pane of panes) $id(`commandPane${pane[0].toUpperCase()}${pane.slice(1)}`).hidden = pane !== name;
     if (name === "history") renderHistory();
     if (name === "library") {
@@ -80,7 +87,7 @@
         h("button", { class: "dock-command-main", type: "button", title: `Type ${item.name}`, onClick: () => typeCommand(item) },
           h("span", { class: "dock-command-title", text: item.name }),
           h("code", { class: "dock-command-preview", text: item.command, title: item.command })),
-        iconButton("play", "Type into terminal", () => typeCommand(item))));
+        iconButton("play", "Run now", () => typeCommand(item, true))));
     }
   }
 
@@ -201,7 +208,7 @@
           h("strong", { class: "command-name", text: item.name }),
           h("code", { class: "command-preview", text: item.command, title: item.command })),
         h("div", { class: "command-actions" },
-          iconButton("play", "Type into terminal", () => typeCommand(item)),
+          iconButton("play", "Run now", () => typeCommand(item, true)),
           iconButton("chev-up", "Move up", () => moveCommand(item.id, -1), "command-move"),
           iconButton("chev-down", "Move down", () => moveCommand(item.id, 1), "command-move"),
           iconButton("edit", "Edit script", () => editSavedCommand(item)),
@@ -325,7 +332,51 @@
   document.querySelectorAll("[data-command-tab]").forEach((button) => {
     button.addEventListener("click", () => selectPanel(button.dataset.commandTab));
   });
-  $id("termDockToggle").addEventListener("click", () => toggleDock());
+  // Classic style (as in 1.1.4): three icons; System and Scripts open a small menu, History opens a centered window.
+  function classicOpen(name, anchor) {
+    const sub = (c) => (c.length > 22 ? `${c.slice(0, 22)}…` : c);
+    const rect = anchor.getBoundingClientRect();
+    if (name === "history") { if (!dock.hidden && state.activePane === "history") toggleDock(false); else selectPanel("history", true); return; }
+    toggleDock(false);
+    if (name === "system") {
+      openMenu([{ heading: "System commands" }, ...BUILTIN_COMMANDS.map((c) => ({ label: c.name, icon: "bolt", sub: sub(c.command), run: () => typeCommand(c), runNow: () => typeCommand(c, true) }))], rect.left, rect.bottom + 4);
+      return;
+    }
+    const build = () => {
+      const items = [{ heading: `Scripts (${state.commands.length})` }];
+      if (state.commands.length) items.push(...state.commands.map((c) => ({ label: c.name, icon: "bolt", sub: sub(c.command), run: () => typeCommand(c), runNow: () => typeCommand(c, true) })));
+      else items.push({ label: "No scripts yet", disabled: true });
+      items.push("-",
+        { label: "Add a command…", icon: "plus", run: () => editSavedCommand() },
+        { label: "Import DCC scripts (dccscript.ini)…", icon: "upload", run: () => $id("commandImportFile").click() },
+        { label: "Export as dccscript.ini", icon: "download", run: () => exportLibrary() },
+        { label: "Edit or remove scripts…", icon: "edit", run: () => selectPanel("library", true) });
+      openMenu(items, rect.left, rect.bottom + 4);
+    };
+    ensureLibrary().then(build, build);
+  }
+  function applyCommandStyle() {
+    const on = classic();
+    document.body.classList.toggle("cmd-classic", on);
+    const toggle = $id("termDockToggle");
+    toggle.querySelector("use")?.setAttribute("href", on ? "#i-bolt" : "#i-list");
+    $id("termHistory").hidden = !on;
+    $id("termScripts").hidden = !on;
+    if (on) {
+      dock.hidden = true;
+      document.body.classList.add("term-dock-hidden");
+      toggle.title = "System commands"; toggle.setAttribute("aria-label", "System commands"); toggle.removeAttribute("aria-expanded");
+      requestAnimationFrame(() => activeTab()?.fit?.fit?.());
+    } else {
+      toggle.setAttribute("aria-expanded", "true");
+      selectPanel(state.activePane || "system");
+    }
+  }
+  $id("termHistory").addEventListener("click", (event) => classicOpen("history", event.currentTarget));
+  $id("termScripts").addEventListener("click", (event) => classicOpen("scripts", event.currentTarget));
+  $id("termDockToggle").addEventListener("click", (event) => { if (classic()) classicOpen("system", event.currentTarget); else toggleDock(); });
+  $id("termCustomize").addEventListener("click", () => { const sel = $id("termCfgCmdStyle"); if (sel) sel.value = classic() ? "classic" : "panel"; });
+  $id("termCfgCmdStyle")?.addEventListener("change", (event) => { store.set("termCmdStyle", event.target.value === "classic" ? "classic" : "panel"); applyCommandStyle(); });
   $id("termDockClose").addEventListener("click", () => toggleDock(false));
   $id("systemCommandFilter").addEventListener("input", renderSystemCommands);
   $id("commandAdd").addEventListener("click", () => editSavedCommand());
@@ -359,7 +410,16 @@
     refreshHistory: () => { if (state.activePane === "history") renderHistory(); },
   };
 
+  // Classic style: the panel (history only) is a popup over the terminal; it closes on outside click or Esc.
+  document.addEventListener("pointerdown", (event) => {
+    if (!classic() || dock.hidden || event.target.closest("#termCommandDock, #termDockToggle, dialog")) return;
+    toggleDock(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (classic() && event.key === "Escape" && !dock.hidden && !document.querySelector("dialog[open]")) { toggleDock(false); activeTab() && focusTab(activeTab()); }
+  });
+
   renderSystemCommands();
-  selectPanel(state.activePane, false);
+  if (classic()) applyCommandStyle(); else selectPanel(state.activePane, false);
   ensureLibrary().catch(() => {});
 })();

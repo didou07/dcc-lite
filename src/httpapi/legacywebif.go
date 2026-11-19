@@ -52,6 +52,7 @@ func init() {
 	add("/api/getallservices", legacyServices)
 	add("/api/getcurrent", legacyCurrent)
 	add("/api/powerstate", legacyPower)
+	add("/api/vol", legacyVolume)
 	add("/api/about", legacyAbout)
 	add("/api/tunersignal", legacySignal)
 	add("/api/timerlist", legacyTimers)

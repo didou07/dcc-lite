@@ -290,10 +290,14 @@ function openMenu(items, x, y) {
   for (const item of items) {
     if (item === "-") { menu.append(h("hr")); continue; }
     if (item.heading) { menu.append(h("div", { class: "label", text: item.heading })); continue; }
-    menu.append(h("button", {
+    const main = h("button", {
       type: "button", role: "menuitem", class: item.danger ? "danger" : "", disabled: item.disabled,
       onClick: () => { closeMenu(); item.run?.(); },
-    }, item.icon ? icon(item.icon, "sm") : null, h("span", { class: "ellipsis", text: item.label }), item.sub ? h("span", { class: "sub", text: item.sub }) : null));
+    }, item.icon ? icon(item.icon, "sm") : null, h("span", { class: "ellipsis", text: item.label }), item.sub ? h("span", { class: "sub", text: item.sub }) : null);
+    if (!item.runNow) { menu.append(main); continue; }
+    // A second small button at the end of the row (the play triangle) runs the command at once.
+    menu.append(h("div", { class: "menu-row" }, main,
+      h("button", { type: "button", role: "menuitem", class: "menu-run", title: "Run now", "aria-label": `Run ${item.label} now`, onClick: () => { closeMenu(); item.runNow(); } }, icon("play", "sm"))));
   }
   menu.hidden = false;
   const width = menu.offsetWidth, height = menu.offsetHeight;

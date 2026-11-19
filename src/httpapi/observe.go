@@ -19,7 +19,7 @@ import (
 var httpLog = logx.For("http")
 
 var quietPrefixes = []string{
-	"/js/", "/vendor/", "/app.css", "/favicon", "/login", "/api/v1/health",
+	"/js/", "/vendor/", "/assets/", "/app.css", "/favicon", "/login", "/api/v1/health",
 	"/api/v1/connections", "/api/v1/files/transfers", "/api/v1/logs", "/api/v1/faults",
 	"/api/v1/auth/status",
 }

@@ -51,6 +51,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/profiles/{id}/screen", s.deviceScreen)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/remote-key", s.deviceRemoteKey)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/message", s.deviceMessage)
+	mux.HandleFunc("GET /api/v1/profiles/{id}/volume", s.deviceVolume)
+	mux.HandleFunc("POST /api/v1/profiles/{id}/volume", s.deviceVolume)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/remote-text", s.deviceRemoteText)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/remote-profile", s.deviceRemoteProfile)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/channels", s.deviceChannels)

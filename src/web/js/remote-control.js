@@ -27,41 +27,42 @@ const K_TRANSPORT = [
   [["skipback", "@skipback"], ["record", "@record", "rec"], ["stop", "@stop"], ["skipnext", "@skipnext"]],
 ];
 const small = (key, label) => [key, label, "small"];
+const K_QUICK = [[small("pvr", "PVR"), small("tv", "TV"), small("text", "Text"), small("help", "Help")]];
 const MUTE = ["mute", "Mute"], HISTORY = ["history", "History"], INFO = ["info", "Info"];
 
 const REMOTE_LAYOUTS = {
   standard: {
     label: "Standard",
-    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["back", "Back"])],
+    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["back", "Back"]), ...K_QUICK],
     extra: [...K_VOLCH(MUTE, HISTORY), ...K_TRANSPORT],
     more: [[small("text", "Text"), small("audio", "Audio"), small("video", "Video")], [small("pvr", "PVR"), small("tv", "TV"), small("radio", "Radio"), small("help", "Help")],
       [small("setup", "Setup"), small("aspect", "Aspect"), small("pip", "PiP")], [small("epg", "EPG"), small("subtitle", "Subs"), small("fav", "Fav"), small("timer", "Timer")]],
   },
   dreambox: {
     label: "Dreambox",
-    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, small("help", "Help"))],
+    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, small("help", "Help")), ...K_QUICK],
     extra: [...K_VOLCH(MUTE, HISTORY), ...K_TRANSPORT],
     more: [[small("tv", "TV"), small("radio", "Radio"), small("epg", "EPG")], [small("audio", "Audio"), small("video", "Video"), small("text", "Text")],
       [small("back", "Back"), small("fav", "Fav"), small("subtitle", "Subs")], [small("pvr", "PVR"), small("timer", "Timer"), small("setup", "Setup")]],
   },
   vu: {
     label: "Vu+",
-    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["epg", "EPG"])],
+    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["epg", "EPG"]), ...K_QUICK],
     extra: [...K_VOLCH(MUTE, HISTORY), ...K_TRANSPORT],
     more: [[small("tv", "TV"), small("radio", "Radio"), small("fav", "Fav")], [small("audio", "Audio"), small("subtitle", "Subs"), small("text", "Text")],
       [small("pvr", "PVR"), small("timer", "Timer"), small("help", "Help")], [small("video", "Video"), small("setup", "Setup"), small("back", "Back")]],
   },
   gigablue: {
     label: "GigaBlue",
-    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["back", "Back"])],
+    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["back", "Back"]), ...K_QUICK],
     extra: [...K_VOLCH(MUTE, ["epg", "EPG"]), ...K_TRANSPORT],
     more: [[small("tv", "TV"), small("radio", "Radio"), small("history", "History")], [small("audio", "Audio"), small("subtitle", "Subs"), small("text", "Text")],
       [small("fav", "Fav"), small("pvr", "PVR"), small("timer", "Timer")], [small("video", "Video"), small("help", "Help"), small("setup", "Setup")]],
   },
   compact: {
     label: "Compact",
-    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["back", "Back"]), ...K_VOLCH(MUTE, HISTORY)],
-    extra: [...K_TRANSPORT],
+    main: [...K_POWER, ...K_NUM, ...K_COLORS, ...K_NAV(INFO, ["back", "Back"]), ...K_QUICK],
+    extra: [...K_VOLCH(MUTE, HISTORY), ...K_TRANSPORT],
     more: [[small("tv", "TV"), small("radio", "Radio"), small("epg", "EPG"), small("text", "Text")]],
   },
 };
@@ -74,35 +75,63 @@ const RC_CLASS = { UP: "nav", DOWN: "nav", LEFT: "nav", RIGHT: "nav", OK: "nav o
 const RC_MAIN = new Set(["POWER", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "UP", "DOWN", "LEFT", "RIGHT", "OK", "RED", "GREEN", "YELLOW", "BLUE", "MENU", "EXIT", "INFO", "VOLUMEUP", "VOLUMEDOWN", "CHANNELUP", "CHANNELDOWN", "MUTE"]);
 const rcNorm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Builds a layout (rows of keys) from the button positions of one OE-Alliance remote definition.
+// Builds a layout from one OE-Alliance remote definition. Keys are grouped by role (not by raw pixel rows, which
+// scatter them): main = power, digits, colours, navigation and a quick row (+ volume slider); "More keys" = the rest.
 function rcBuildLayout(code) {
   const buttons = RC_DB.codes[code];
   if (!buttons) return null;
-  const sorted = buttons.map(([id, label, x, y]) => ({ id, label, x, y })).sort((a, b) => a.y - b.y || a.x - b.x);
-  const rows = [];
-  for (const button of sorted) {
-    const row = rows.find((item) => Math.abs(item.y - button.y) <= 9);
-    if (row) { row.items.push(button); row.y = (row.y * (row.items.length - 1) + button.y) / row.items.length; } else rows.push({ y: button.y, items: [button] });
+  const byId = new Map(buttons.map(([id, label, x, y]) => [id, { id, label, x, y }]));
+  const used = new Set();
+  const key = (id, cls) => {
+    const item = byId.get(id);
+    if (!item) return null;
+    used.add(id);
+    const glyph = RC_GLYPH[id];
+    const kind = cls ?? (RC_CLASS[id] || (RC_MAIN.has(id) ? "" : "small"));
+    const text = glyph ? "@" + glyph : (/^(RED|GREEN|YELLOW|BLUE)$/.test(id) ? "" : (RC_TEXT[id] || item.label));
+    return ["KEY_" + id, text, kind];
+  };
+  // Keys that every receiver understands even when the drawing of this remote has no such button.
+  const generic = (name, text, cls) => [name, text, cls];
+  const firstOf = (...ids) => { for (const id of ids) if (byId.has(id) && !used.has(id)) return id; return null; };
+  const row = (...cells) => { const r = cells.filter(Boolean); return r.length ? r : null; };
+  const main = [], extra = [], more = [];
+  const push = (list, r) => { if (r) list.push(r); };
+
+  push(main, row(key("POWER")));
+  if ("0123456789".split("").every((d) => byId.has(d))) {
+    for (const r of [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]) push(main, row(...r.map((d) => key(d))));
+    push(main, row(key("PREVIOUS", "nav"), key("0"), key("NEXT", "nav")));
   }
-  const keyRows = [];
-  for (const row of rows) {
-    row.items.sort((a, b) => a.x - b.x);
-    const chunks = Math.ceil(row.items.length / 4);
-    for (let c = 0; c < chunks; c += 1) {
-      const items = row.items.slice(Math.floor(c * row.items.length / chunks), Math.floor((c + 1) * row.items.length / chunks));
-      keyRows.push(items.map(({ id, label }) => {
-        const glyph = RC_GLYPH[id];
-        const cls = RC_CLASS[id] || (RC_MAIN.has(id) ? "" : "small");
-        const text = glyph ? "@" + glyph : (/^(RED|GREEN|YELLOW|BLUE)$/.test(id) ? "" : (RC_TEXT[id] || label));
-        return ["KEY_" + id, text, cls];
-      }));
-    }
+  push(main, row(key("RED"), key("GREEN"), key("YELLOW"), key("BLUE")));
+  if (["UP", "DOWN", "LEFT", "RIGHT", "OK"].every((id) => byId.has(id))) {
+    const bl = firstOf("INFO", "HELP", "EPG"), br = firstOf("BACK", "EPG", "TV", "AUDIO");
+    push(main, row(key("MENU") || [ "", "", "spacer" ], key("UP"), key("EXIT") || ["", "", "spacer"]));
+    push(main, row(key("LEFT"), key("OK"), key("RIGHT")));
+    push(main, row(bl ? key(bl, "") : ["", "", "spacer"], key("DOWN"), br ? key(br, "") : ["", "", "spacer"]));
   }
-  // Keep the physical order of the remote: everything down to the row below OK is the main block.
-  const okRow = Math.max(0, keyRows.findIndex((row) => row.some((key) => key[0] === "KEY_OK")));
-  const split = Math.min(keyRows.length, okRow + 3);
-  const main = keyRows.slice(0, split), extra = [], more = [];
-  for (const row of keyRows.slice(split)) (row.some((key) => !key[2].includes("small") || RC_GLYPH[key[0].slice(4)]) ? extra : more).push(row);
+  // One small row of quick keys (like the real remote), then the volume slider is added by buildRemote.
+  const quick = ["PVR", "TV", "TEXT", "HELP", "AUDIO", "RADIO"].filter((id) => byId.has(id)).slice(0, 4);
+  push(main, row(...quick.map((id) => key(id, "small"))));
+  // Expanded part starts with the volume / channel keys.
+  const vol = (id, name, text, cls) => key(id, cls) || generic(name, text, cls);
+  const mid = firstOf("LAST", "EPG", "FAVORITES");
+  push(extra, row(vol("VOLUMEUP", "volup", "Vol+", "vol"), key("MUTE", ""), vol("CHANNELUP", "chup", "CH+", "ch")));
+  push(extra, row(vol("VOLUMEDOWN", "voldown", "Vol-", "vol"), mid ? key(mid, "") : ["", "", "spacer"], vol("CHANNELDOWN", "chdown", "CH-", "ch")));
+
+  // Expanded part: transport keys first, then every remaining key in the order of the real remote, 4 per row.
+  const transport = ["REWIND", "PLAY", "PAUSE", "FASTFORWARD", "PREVIOUS", "RECORD", "STOP", "NEXT"].filter((id) => byId.has(id) && !used.has(id));
+  if (transport.length) {
+    const list = transport.map((id) => key(id, id === "RECORD" ? "rec" : ""));
+    const rows = Math.ceil(list.length / 4);
+    for (let i = 0; i < rows; i += 1) push(extra, list.slice(Math.floor(i * list.length / rows), Math.floor((i + 1) * list.length / rows)));
+  }
+  const rest = [...byId.values()].filter((item) => !used.has(item.id)).sort((a, b) => a.y - b.y || a.x - b.x);
+  const chunks = Math.ceil(rest.length / 4);
+  for (let i = 0; i < chunks; i += 1) {
+    const items = rest.slice(Math.floor(i * rest.length / chunks), Math.floor((i + 1) * rest.length / chunks));
+    push(more, items.map((item) => key(item.id, "small")));
+  }
   return { label: RC_DB.names[code] || code, main, extra, more, generated: true };
 }
 function rcLayout(id) {
@@ -123,6 +152,56 @@ function remoteMatchCodes(info) {
     if (found?.length) return found;
   }
   return [];
+}
+
+// Receiver volume slider (reads and sets the volume of the receiver itself).
+const rvol = { level: 0, muted: false, timer: null, busy: false };
+function remoteVolumeBar() {
+  const mute = h("button", { type: "button", class: "rv-mute", title: "Mute", "aria-label": "Mute" });
+  mute.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg>';
+  const bar = h("div", { class: "remote-vol", id: "remoteVol" }, mute,
+    h("input", { type: "range", class: "rv-range", min: "0", max: "100", step: "1", value: String(rvol.level), "aria-label": "Receiver volume" }),
+    h("span", { class: "rv-val", text: String(rvol.level) }));
+  return bar;
+}
+function remoteVolumeShow(level, muted) {
+  if (Number.isFinite(level)) rvol.level = Math.max(0, Math.min(100, level));
+  if (typeof muted === "boolean") rvol.muted = muted;
+  const bar = $("#remoteVol");
+  if (!bar) return;
+  const range = $(".rv-range", bar);
+  if (document.activeElement !== range) range.value = String(rvol.level);
+  $(".rv-val", bar).textContent = rvol.muted ? "—" : String(rvol.level);
+  $(".rv-mute use", bar).setAttribute("href", rvol.muted || rvol.level === 0 ? "#i-volume-off" : "#i-volume");
+  bar.classList.toggle("muted", rvol.muted);
+}
+async function remoteVolumeSync() {
+  const id = screenView.profileID;
+  if (!id) return;
+  try {
+    const r = await api(profileURL(id, "volume"));
+    if (id === screenView.profileID) { remoteVolumeShow(Number(r.level), r.muted); $("#remoteVol")?.classList.remove("na"); }
+  } catch { $("#remoteVol")?.classList.add("na"); }
+}
+async function remoteVolumeSend(body) {
+  const id = screenView.profileID;
+  if (!id) return;
+  try {
+    const r = await post(profileURL(id, "volume"), body);
+    remoteError("");
+    if (id === screenView.profileID) remoteVolumeShow(Number(r.level), r.muted);
+  } catch (error) { remoteError(error.message); }
+}
+function remoteVolumeBind() {
+  const holder = $("#remoteKeys");
+  holder.addEventListener("input", (event) => {
+    if (!event.target.matches(".rv-range")) return;
+    const level = Number(event.target.value);
+    remoteVolumeShow(level, false);
+    window.clearTimeout(rvol.timer);
+    rvol.timer = window.setTimeout(() => remoteVolumeSend({ level }), 150);
+  });
+  holder.addEventListener("click", (event) => { if (event.target.closest(".rv-mute")) remoteVolumeSend({ mute: true }); });
 }
 
 const remote = { queue: Promise.resolve(), pending: 0, hold: null, holdFired: false, family: "standard", gen: 0, id: "" };
@@ -154,6 +233,7 @@ function sendRemoteKey(key, long = false, button = null, hardware = false) {
       await post(profileURL(profileID, "remote-key"), { key, ...(long ? { long: true } : {}), ...(hardware || remoteMode() === "telnet" ? { hardware: true } : {}) });
       remoteError("");
       remoteRefreshScreen(profileID);
+      if (/^(volup|voldown|mute|KEY_(VOLUMEUP|VOLUMEDOWN|MUTE))$/.test(key)) window.setTimeout(remoteVolumeSync, 400);
     } catch (error) { remoteError(error.message); }
     finally { remote.pending -= 1; button?.classList.remove("sending"); }
   });
@@ -172,8 +252,20 @@ function buildRemote() {
   holder.replaceChildren();
   const rowClass = (group, row) => `remote-row${row[0][2] === "red" ? " colors" : group === "extra" ? " extra" : group === "more" ? " extra extra2" : ""}`;
   const keyTitle = (key, label) => KEY_TITLES[key] || (label && !label.startsWith("@") ? label : key.replace(/^KEY_/, "").replace(/_/g, " ").toLowerCase());
+  const seen = new Set();
   for (const group of ["main", "extra", "more"]) {
-    for (const row of layout[group]) {
+    if (group === "extra") holder.append(remoteVolumeBar());
+    let rows = layout[group];
+    if (group === "more") {
+      // keys already shown above are dropped, then the rest is spread evenly (max 4 per row)
+      const keys = rows.flat().filter(([key]) => !seen.has(key));
+      const count = Math.ceil(keys.length / 4);
+      rows = Array.from({ length: count }, (_, i) => keys.slice(Math.floor(i * keys.length / count), Math.floor((i + 1) * keys.length / count)));
+    }
+    for (const row0 of rows) {
+      const row = row0.filter(([key, , extra]) => extra === "spacer" || !seen.has(key));
+      if (!row.length || row.every((k) => k[2] === "spacer")) continue;
+      row.forEach(([key, , extra]) => { if (extra !== "spacer") seen.add(key); });
       holder.append(h("div", { class: rowClass(group, row), style: `--cols:${row.length}` }, row.map(([key, label, extra = ""]) => {
         if (extra === "spacer") return h("span", { class: "rk-spacer", "aria-hidden": "true" });
         const button = h("button", { class: `rk ${extra}`.trim(), type: "button", title: keyTitle(key, label), dataset: { key }, "aria-label": keyTitle(key, label) });
@@ -211,6 +303,7 @@ async function remoteLoadProfile(device) {
   remote.family = String(device?.web_kind || "").toLowerCase() === "dreamos" || String(device?.web_kind || "").toLowerCase() === "webinterface" ? "dreambox" : "standard";
   buildRemote();
   if (!id) return;
+  remoteVolumeSync();
   try {
     const info = await api(profileURL(id, "remote-profile"));
     if (gen !== remote.gen || id !== screenView.profileID) return;
@@ -218,6 +311,7 @@ async function remoteLoadProfile(device) {
     if (REMOTE_LAYOUTS[info?.family]) remote.family = info.family;
     $("#remotePad").dataset.family = remote.family;
     buildRemote();
+    remoteVolumeSync();
   } catch { /* keep the guess made from the saved web kind */ }
 }
 function remoteBind() {
@@ -271,3 +365,4 @@ function setRemoteOpen(open) {
 }
 buildRemote();
 remoteBind();
+remoteVolumeBind();

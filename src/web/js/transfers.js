@@ -484,7 +484,7 @@ document.addEventListener("keydown", (event) => {
   if (key === "F4" && !event.ctrlKey && !event.altKey) { event.preventDefault(); if (event.shiftKey) cmdNewFile(); else cmdEdit(); return; }
   if (fkeys[key] && !event.ctrlKey && !event.altKey) { event.preventDefault(); fkeys[key](); return; }
   if (typing) return;
-  if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "a") { event.preventDefault(); cmdSelectAll(); return; }
+  if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "a") { event.preventDefault(); if (event.shiftKey) cmdSelectNone(); else cmdSelectAll(); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "r") { event.preventDefault(); refreshPane(files.active); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "c") { event.preventDefault(); cmdCopy(); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "x") { event.preventDefault(); cmdCut(); return; }

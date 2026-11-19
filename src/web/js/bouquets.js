@@ -813,7 +813,13 @@ async function cmdCopyPath() {
 }
 function cmdSelectAll() {
   const pane = panes[files.active];
-  pane.selected = new Set(pane.visible.map((e) => e.path));
+  const all = pane.visible.length > 0 && pane.visible.every((e) => pane.selected.has(e.path));
+  pane.selected = all ? new Set() : new Set(pane.visible.map((e) => e.path));
+  updateSelectionUI(pane);
+}
+function cmdSelectNone() {
+  const pane = panes[files.active];
+  pane.selected = new Set();
   updateSelectionUI(pane);
 }
 function handleOpError(error, kind) {
@@ -823,6 +829,6 @@ function handleOpError(error, kind) {
 $(".actionbar").addEventListener("click", (event) => {
   const button = event.target.closest("[data-cmd]");
   if (!button) return;
-  ({ mkdir: cmdMkdir, edit: cmdEdit, ipk: cmdIpk, rename: cmdRename, chmod: cmdChmod, delete: cmdDelete, copypath: cmdCopyPath, selectall: cmdSelectAll,
+  ({ mkdir: cmdMkdir, edit: cmdEdit, ipk: cmdIpk, rename: cmdRename, chmod: cmdChmod, delete: cmdDelete, copypath: cmdCopyPath, selectall: cmdSelectAll, selectnone: cmdSelectNone,
      transfer: () => transferSelection(files.active === "remote" ? "download" : "upload") })[button.dataset.cmd]?.();
 });

@@ -50,7 +50,7 @@
   const narrowQuery = window.matchMedia("(max-width: 599px)");
   let langRow = null;
   function placeLanguage() {
-    const select = document.querySelector(".i18n-sel");
+    const select = document.querySelector(".lang-btn");
     const body = document.querySelector("#themeDialog .ap-body");
     if (!select || !body) return;
     if (narrowQuery.matches) {

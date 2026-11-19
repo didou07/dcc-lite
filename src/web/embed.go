@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-//go:embed index.html login.html login.js app.css js vendor boxes
+//go:embed index.html login.html login.js app.css js vendor boxes assets
 var files embed.FS
 
 func FS() fs.FS { return files }
@@ -47,7 +47,7 @@ func Build() string {
 	return buildID
 }
 
-var assetRef = regexp.MustCompile(`(src|href)="(/(?:js/|vendor/|app\.css|login\.js)[^"?#]*)"`)
+var assetRef = regexp.MustCompile(`(src|href)="(/(?:js/|vendor/|assets/|app\.css|login\.js)[^"?#]*)"`)
 
 func Page(name string) ([]byte, error) {
 	data, err := files.ReadFile(name)

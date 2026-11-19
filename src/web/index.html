@@ -43,6 +43,7 @@
   <script src="/js/palette.js" defer></script>
   <script src="/js/shell.js" defer></script>
   <script src="/js/main.js" defer></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/DCCLite-mark.svg">
 </head>
 <body data-view="devices">
 <svg class="sprite" aria-hidden="true" focusable="false">
@@ -163,7 +164,7 @@
 </svg>
 
 <aside class="rail" aria-label="Primary">
-  <div class="brand"><span class="brand-mark"><svg class="ic" aria-hidden="true"><use href="#i-dish"/></svg></span><span class="brand-name">DCC <b>Lite</b></span></div>
+  <div class="brand"><span class="brand-mark"><img class="logo" src="/assets/DCCLite.svg" alt=""></span><span class="brand-name">DCC <b>Lite</b></span><span class="brand-ver" id="sbVersion" title="Version · click to check for updates"></span></div>
   <nav class="tabs" id="mainTabs" role="tablist" aria-label="Sections">
     <button type="button" class="tab" role="tab" data-view="devices" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-devices"/></svg><span>Devices</span></button>
     <button type="button" class="tab" role="tab" data-view="files" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-files"/></svg><span>Files</span></button>
@@ -173,8 +174,6 @@
     <button type="button" class="tab" role="tab" data-view="logs" aria-selected="false" title="Program log and faults"><svg class="ic" aria-hidden="true"><use href="#i-bug"/></svg><span>Logs</span></button>
   </nav>
   <div class="rail-foot">
-    <button class="icon-btn" id="cmdOpen" type="button" title="Command palette (Ctrl+K)" aria-label="Command palette"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
-    <button class="icon-btn" id="keysOpen" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg></button>
     <button class="icon-btn" id="themeOpen" type="button" title="Appearance" aria-label="Appearance"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg></button>
     <button class="icon-btn" id="themeToggle" type="button" title="Switch light / dark theme" aria-label="Switch light or dark theme"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg></button>
   </div>
@@ -325,9 +324,7 @@
       <button class="btn sm" data-cmd="mkdir" data-fkey="F7" type="button"><svg class="ic" aria-hidden="true"><use href="#i-newfolder"/></svg><kbd>F7</kbd><span>New folder</span></button>
       <button class="btn sm danger" data-cmd="delete" data-fkey="F8" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><kbd>F8</kbd><span>Delete</span></button>
       <button class="btn sm" data-cmd="chmod" data-fkey="F9" type="button"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><kbd>F9</kbd><span>Permissions</span></button>
-      <button class="btn sm" data-cmd="ipk" type="button"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg><span>Install .ipk</span></button>
-      <button class="btn sm" data-cmd="copypath" type="button"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy path</span></button>
-      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Select all</span></button>
+      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span class="sel-label">Select all</span></button>
       <button class="btn sm primary only-mobile" id="btnTransferActive" data-cmd="transfer" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span id="transferActiveLabel">Download</span></button>
     </div>
 
@@ -346,16 +343,16 @@
   <section class="view" id="view-lists" aria-label="Channel lists" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
-      <div class="tools-actions">
-        <label class="field-inline">Settings folder <input id="bqDir" value="/etc/enigma2" spellcheck="false" autocomplete="off"></label>
-        <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Load</button>
-        <button class="btn sm primary" id="listsConnect" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
-      </div>
     </div>
     <h1 id="listsTitle" class="sr-only">Channel editor <span id="listsDevice"></span></h1>
     <p id="listsLead" class="sr-only"></p>
 
     <div class="lists-pane" id="listsEdit">
+      <div class="bq-source" role="group" aria-label="Settings folder on the receiver">
+        <label class="field-inline">Settings folder <input id="bqDir" value="/etc/enigma2" spellcheck="false" autocomplete="off"></label>
+        <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Load</button>
+        <button class="btn sm primary" id="listsConnect" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
+      </div>
       <div class="bq-body">
         <aside class="bq-side">
           <div class="seg" id="bqKind" role="radiogroup" aria-label="List type">
@@ -480,6 +477,8 @@
         <button class="icon-btn" id="termSplitDown" type="button" title="Split down (Ctrl+Shift+E)" aria-label="Split down"><svg class="ic" aria-hidden="true"><use href="#i-split-v"/></svg></button>
         <span class="vr"></span>
         <button class="icon-btn" id="termDockToggle" type="button" title="Hide command tools" aria-label="Hide command tools" aria-controls="termCommandDock" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg></button>
+        <button class="icon-btn" id="termScripts" type="button" title="Scripts (saved commands)" aria-label="Scripts" hidden><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg></button>
+        <button class="icon-btn" id="termHistory" type="button" title="Previous commands (Ctrl+Shift+H)" aria-label="Previous commands" hidden><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg></button>
         <span class="vr"></span>
         <button class="icon-btn" id="termCopy" type="button" title="Copy selection (Ctrl+Shift+C), or all output" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
         <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg></button>
@@ -1024,6 +1023,9 @@
       <label class="field"><span>Cursor shape</span><select id="termCfgShape"><option value="bar">Bar</option><option value="block">Block</option><option value="underline">Underline</option></select></label>
       <label class="check"><input type="checkbox" id="termCfgBlink"> Blinking cursor</label>
     </div>
+    <label class="field"><span>Command list style</span>
+      <select id="termCfgCmdStyle"><option value="panel">Side panel (System, History, Scripts)</option><option value="classic">Classic: three icons (System, Scripts, History)</option></select>
+    </label>
     <p class="muted small">The font must be installed on this computer.</p>
     <div class="dialog-actions">
       <button class="btn" id="termCfgReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reset</button>
@@ -1533,10 +1535,5 @@
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<footer class="statusbar" id="statusBar">
-  <span class="spacer"></span>
-  <button class="sb-item sb-btn" id="sbTransfers" type="button" title="Open file transfers"><svg class="ic sm"><use href="#i-upload"/></svg><span id="sbTransfersText">No transfers</span></button>
-  <span class="sb-item muted" id="sbVersion"></span>
-</footer>
 </body>
 </html>

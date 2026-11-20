@@ -16,7 +16,7 @@ import (
 )
 
 type App struct {
-	Version string
+	Version     string
 	DataDir     string
 	Profiles    *config.ProfileStore
 	Connections *connection.Manager

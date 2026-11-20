@@ -1,6 +1,5 @@
 package httpapi
 
-
 import (
 	"context"
 	"errors"

@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrNoShell = errors.New("no shell prompt over Telnet")
+	ErrNoShell        = errors.New("no shell prompt over Telnet")
 	ErrCommandTimeout = errors.New("the command did not finish in time")
 )
 

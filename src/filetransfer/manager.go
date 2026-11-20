@@ -27,7 +27,7 @@ var (
 	ErrSessionNotFound = errors.New("file transfer session not found")
 	ErrSessionLimit    = errors.New("Too many file connections are busy with transfers.")
 	ErrTaskNotFound    = errors.New("transfer task not found")
-	ErrPathNotFound = errors.New("Folder not found on the device")
+	ErrPathNotFound    = errors.New("Folder not found on the device")
 )
 
 const (

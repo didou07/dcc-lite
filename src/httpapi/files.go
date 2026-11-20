@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -43,11 +42,19 @@ func (s *Server) listLocalFiles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	parent := "."
-	if current != "." {
-		parent = filepath.ToSlash(filepath.Dir(filepath.FromSlash(current)))
+	writeJSON(w, http.StatusOK, map[string]any{"root": s.app.LocalFiles.RootLabel(), "path": current, "parent": s.app.LocalFiles.ParentOf(current), "entries": entries})
+}
+
+// listLocalPlaces feeds the drive picker above the local panel.
+func (s *Server) listLocalPlaces(w http.ResponseWriter, r *http.Request) {
+	if s.denyHostFiles(w) {
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"root": s.app.LocalFiles.RootLabel(), "path": current, "parent": parent, "entries": entries})
+	if s.app.LocalFiles == nil {
+		writeError(w, http.StatusServiceUnavailable, "local file browser is unavailable")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"places": s.app.LocalFiles.Places()})
 }
 
 func (s *Server) makeLocalDirectory(w http.ResponseWriter, r *http.Request) {
@@ -449,6 +456,10 @@ func writeSessionNotFound(w http.ResponseWriter) {
 func writeFilesError(w http.ResponseWriter, err error) {
 	if errors.Is(err, filetransfer.ErrSessionNotFound) {
 		writeSessionNotFound(w)
+		return
+	}
+	if errors.Is(err, filetransfer.ErrPathNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error(), "code": "path_not_found"})
 		return
 	}
 	writeError(w, http.StatusBadGateway, err.Error())

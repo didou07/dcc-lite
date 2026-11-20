@@ -27,6 +27,8 @@ var (
 	ErrSessionNotFound = errors.New("file transfer session not found")
 	ErrSessionLimit    = errors.New("Too many file connections are busy with transfers.")
 	ErrTaskNotFound    = errors.New("transfer task not found")
+	// ErrPathNotFound: the folder typed in the path bar does not exist (or cannot be opened) on…
+	ErrPathNotFound = errors.New("Folder not found on the device")
 )
 
 const (
@@ -241,8 +243,54 @@ func (m *Manager) Mkdir(ctx context.Context, sessionID, remotePath string) error
 func (m *Manager) Rename(ctx context.Context, sessionID, oldPath, newPath string) error {
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Rename(ctx, oldPath, newPath) })
 }
+
+// Remove deletes a file, or a folder together with everything inside it.
 func (m *Manager) Remove(ctx context.Context, sessionID, remotePath string, directory bool) error {
-	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Remove(ctx, remotePath, directory) })
+	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
+		if !directory {
+			return adapter.Remove(ctx, remotePath, false)
+		}
+		clean := path.Clean(remotePath)
+		if clean == "/" || clean == "." || clean == "" {
+			return errors.New("refusing to delete the root folder")
+		}
+		budget := maxDirectoryEntries
+		return removeTree(ctx, adapter, clean, 0, &budget)
+	})
+}
+
+func removeTree(ctx context.Context, adapter core.FileTransfer, dir string, depth int, budget *int) error {
+	if depth > maxDirectoryDepth {
+		return errors.New("folder is nested too deeply to delete")
+	}
+	entries, err := adapter.List(ctx, dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if *budget--; *budget < 0 {
+			return errors.New("folder has too many items to delete in one step")
+		}
+		if entry.Name == "" || entry.Name == "." || entry.Name == ".." {
+			continue
+		}
+		child := path.Join(dir, entry.Name)
+		// A symbolic link is removed as a file; the folder it points to is never entered.
+		isLink := strings.HasPrefix(entry.Mode, "l")
+		if entry.IsDir && !isLink {
+			if err := removeTree(ctx, adapter, child, depth+1, budget); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := adapter.Remove(ctx, child, false); err != nil {
+			return fmt.Errorf("%s: %w", child, err)
+		}
+	}
+	return adapter.Remove(ctx, dir, true)
 }
 func (m *Manager) Chmod(ctx context.Context, sessionID, remotePath string, mode uint32) error {
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Chmod(ctx, remotePath, mode) })
@@ -286,11 +334,12 @@ func (m *Manager) Copy(ctx context.Context, sessionID, srcPath, dstPath string, 
 			count := 0
 			return copyRemoteDirectory(ctx, adapter, srcPath, dstPath, overwrite, 0, &count)
 		}
-		return copyRemoteFile(ctx, adapter, srcPath, dstPath)
+		return copyRemoteFile(ctx, adapter, srcPath, dstPath, srcEntry.Mode)
 	})
 }
 
-func copyRemoteFile(ctx context.Context, adapter core.FileTransfer, src, dst string) error {
+// copyRemoteFile copies through this computer and then restores the original permissions…
+func copyRemoteFile(ctx context.Context, adapter core.FileTransfer, src, dst, mode string) error {
 	dir, err := os.MkdirTemp("", "dcclite-copy-*")
 	if err != nil {
 		return err
@@ -300,7 +349,13 @@ func copyRemoteFile(ctx context.Context, adapter core.FileTransfer, src, dst str
 	if err := adapter.Download(ctx, src, tmpPath, nil); err != nil {
 		return fmt.Errorf("read source for copy: %w", err)
 	}
-	return adapter.Upload(ctx, tmpPath, dst, nil)
+	if err := adapter.Upload(ctx, tmpPath, dst, nil); err != nil {
+		return err
+	}
+	if perm, ok := parseRemoteMode(mode); ok {
+		_ = adapter.Chmod(ctx, dst, perm&0o7777) // best effort: some servers do not support CHMOD
+	}
+	return nil
 }
 
 func copyRemoteDirectory(ctx context.Context, adapter core.FileTransfer, srcRoot, dstRoot string, overwrite bool, depth int, count *int) error {
@@ -339,7 +394,7 @@ func copyRemoteDirectory(ctx context.Context, adapter core.FileTransfer, srcRoot
 		if err := checkRemoteDestination(ctx, adapter, dstChild, false, overwrite); err != nil {
 			return err
 		}
-		if err := copyRemoteFile(ctx, adapter, srcChild, dstChild); err != nil {
+		if err := copyRemoteFile(ctx, adapter, srcChild, dstChild, entry.Mode); err != nil {
 			return err
 		}
 	}

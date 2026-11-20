@@ -37,6 +37,8 @@ const ERROR_PATTERNS = [
   [/i\/o timeout|timed out|deadline exceeded/i, "The receiver did not answer in time."],
   [/no route to host|network is unreachable|no such host/i, "The receiver cannot be reached."],
   [/connection reset|broken pipe|use of closed|unexpected eof|^eof$/i, "Connection dropped. Press Connect."],
+  [/not empty/i, "The folder is not empty."],
+  [/no such file|not found|does not exist/i, "That item no longer exists."],
   [/permission denied|\b550\b|read-only file system/i, "The receiver does not allow this."],
   [/no space left|disk quota/i, "The receiver's storage is full."],
 ];
@@ -284,26 +286,44 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
 }
 
 function closeMenu() { const menu = $("#menu"); if (!menu.hidden) { menu.hidden = true; menu.replaceChildren(); } }
-function openMenu(items, x, y) {
+function openMenu(items, x, y, { search = "" } = {}) {
   const menu = $("#menu");
   menu.replaceChildren();
+  let box = null;
+  if (search) {
+    box = h("input", { class: "menu-search", type: "search", placeholder: search, "aria-label": search, spellcheck: "false", autocomplete: "off" });
+    menu.append(box);
+  }
   for (const item of items) {
     if (item === "-") { menu.append(h("hr")); continue; }
     if (item.heading) { menu.append(h("div", { class: "label", text: item.heading })); continue; }
     const main = h("button", {
-      type: "button", role: "menuitem", class: item.danger ? "danger" : "", disabled: item.disabled,
+      type: "button", role: "menuitem", dataset: item.searchable ? { find: `${item.label} ${item.find || item.sub || ""}`.toLowerCase(), searchable: "1" } : { find: "" }, class: item.danger ? "danger" : "", disabled: item.disabled,
       onClick: () => { closeMenu(); item.run?.(); },
     }, item.icon ? icon(item.icon, "sm") : null, h("span", { class: "ellipsis", text: item.label }), item.sub ? h("span", { class: "sub", text: item.sub }) : null);
-    if (!item.runNow) { menu.append(main); continue; }
-    // A second small button at the end of the row (the play triangle) runs the command at once.
+    const extras = [];
+    if (item.runNow) extras.push({ icon: "play", title: "Run now", label: `Run ${item.label} now`, cls: "menu-run", run: item.runNow });
+    for (const action of item.actions || []) extras.push({ icon: action.icon, title: action.title, label: `${action.title}: ${item.label}`, cls: `menu-act${action.danger ? " danger" : ""}`, run: action.run });
+    if (!extras.length) { menu.append(main); continue; }
+    // Small buttons at the end of the row.
     menu.append(h("div", { class: "menu-row" }, main,
-      h("button", { type: "button", role: "menuitem", class: "menu-run", title: "Run now", "aria-label": `Run ${item.label} now`, onClick: () => { closeMenu(); item.runNow(); } }, icon("play", "sm"))));
+      ...extras.map((extra) => h("button", { type: "button", role: "menuitem", class: extra.cls, title: extra.title, "aria-label": extra.label, onClick: () => { closeMenu(); extra.run(); } }, icon(extra.icon, "sm")))));
   }
+  if (box) {
+    // Typing narrows the rows that have a find key (scripts and commands).
+    box.addEventListener("input", () => {
+      const q = box.value.trim().toLowerCase();
+      menu.querySelectorAll("button[data-find]").forEach((b) => { const row = b.closest(".menu-row") || b; row.hidden = Boolean(q) && b.dataset.searchable !== undefined && !b.dataset.find.includes(q); });
+    });
+    box.addEventListener("keydown", (event) => { if (event.key === "ArrowDown") { event.preventDefault(); menu.querySelector("button:not(:disabled)")?.focus(); } });
+  }
+  // Use all the room the window has.
+  menu.style.maxHeight = `${Math.max(120, window.innerHeight - 12)}px`;
   menu.hidden = false;
   const width = menu.offsetWidth, height = menu.offsetHeight;
   menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - width - 6))}px`;
   menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - height - 6))}px`;
-  menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
+  (box || menu.querySelector("button:not(:disabled)"))?.focus({ preventScroll: true });
 }
 document.addEventListener("pointerdown", (event) => { if (!event.target.closest("#menu")) closeMenu(); });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });

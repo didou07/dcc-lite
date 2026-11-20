@@ -392,6 +392,7 @@ $("#deviceForm").addEventListener("submit", async (event) => {
     if (!editing || !devices.currentID) devices.currentID = savedID;
     store.set("device", devices.currentID);
     renderDeviceSelect(); renderDeviceGrid();
+    globalThis.DccCommandPanel?.refreshSystem?.();
     toast(editing ? "Device updated" : "Device added");
     testDevice(savedID);
     if (!editing && devices.list.length === 1) setCurrentDevice(savedID);
@@ -428,6 +429,7 @@ function setCurrentDevice(id, deferViewRefresh = false) {
   $("#deviceSelect").value = id;
   updateDeviceDot();
   renderDeviceGrid();
+  globalThis.DccCommandPanel?.refreshSystem?.();
   if (changed) {
     const own = store.get(`tool.${id}`, "");
     if (toolKnown(own) && ![...toolViews].includes(view.current)) tools.current = own;

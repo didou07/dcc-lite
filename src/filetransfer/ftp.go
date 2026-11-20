@@ -127,16 +127,84 @@ func (c *FTPClient) List(ctx context.Context, remotePath string) ([]core.FileEnt
 	data, err := c.dataCommand(ctx, "MLSD", remotePath)
 	if err == nil {
 		entries := parseMLSD(data, remotePath)
-		return entries, nil
+		return c.checkEmptyListingLocked(remotePath, entries)
+	}
+	if isFTPListRejected(err) {
+		return nil, fmt.Errorf("%w: %s", ErrPathNotFound, remotePath)
 	}
 	if !isUnsupportedFTPCommand(err) {
 		return nil, err
 	}
 	data, err = c.dataCommand(ctx, "LIST", remotePath)
 	if err != nil {
+		if isFTPListRejected(err) {
+			return nil, fmt.Errorf("%w: %s", ErrPathNotFound, remotePath)
+		}
 		return nil, err
 	}
-	return parseFTPList(data, remotePath), nil
+	return c.checkEmptyListingLocked(remotePath, parseFTPList(data, remotePath))
+}
+
+// isFTPListRejected: the server refused MLSD/LIST for this path (550 = no such folder or no…
+func isFTPListRejected(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := err.Error()
+	return strings.Contains(text, "rejected (550)") || strings.Contains(text, "rejected (450)")
+}
+
+// Many FTP servers (vsftpd, busybox, some Dreambox images) answer MLSD/LIST of a folder…
+func (c *FTPClient) checkEmptyListingLocked(remotePath string, entries []core.FileEntry) ([]core.FileEntry, error) {
+	if len(entries) > 0 || remotePath == "" || remotePath == "." || remotePath == "/" {
+		return entries, nil
+	}
+	code, reply, err := c.command("PWD", "")
+	if err != nil {
+		return nil, err
+	}
+	original := ""
+	if code == 257 {
+		original = parsePWDReply(reply)
+	}
+	if original == "" {
+		return entries, nil // cannot go back safely: keep the old behaviour rather than disturb the session
+	}
+	code, _, err = c.command("CWD", remotePath)
+	if err != nil {
+		return nil, err
+	}
+	if code < 200 || code >= 300 {
+		return nil, fmt.Errorf("%w: %s", ErrPathNotFound, remotePath)
+	}
+	if code, _, err = c.command("CWD", original); err != nil {
+		return nil, err
+	} else if code < 200 || code >= 300 {
+		return nil, fmt.Errorf("FTP could not return to %s after checking the folder (%d)", original, code)
+	}
+	return entries, nil
+}
+
+// parsePWDReply reads the folder out of a 257 reply.
+func parsePWDReply(reply string) string {
+	line := reply
+	start := strings.IndexByte(line, '"')
+	if start < 0 {
+		return ""
+	}
+	var out strings.Builder
+	for i := start + 1; i < len(line); i++ {
+		if line[i] == '"' {
+			if i+1 < len(line) && line[i+1] == '"' {
+				out.WriteByte('"')
+				i++
+				continue
+			}
+			return out.String()
+		}
+		out.WriteByte(line[i])
+	}
+	return ""
 }
 
 func (c *FTPClient) Upload(ctx context.Context, localPath, remotePath string, progress func(core.TransferProgress)) error {
@@ -459,7 +527,7 @@ func (c *FTPClient) simplePathCommand(ctx context.Context, command, remotePath s
 	defer func() { stop(); _ = c.control.SetDeadline(time.Time{}) }()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	code, _, err := c.command(command, remotePath)
+	code, reply, err := c.command(command, remotePath)
 	if err != nil {
 		return err
 	}
@@ -467,6 +535,9 @@ func (c *FTPClient) simplePathCommand(ctx context.Context, command, remotePath s
 		if code == value {
 			return nil
 		}
+	}
+	if reply = strings.TrimSpace(reply); reply != "" {
+		return fmt.Errorf("FTP %s failed (%d): %s", command, code, reply)
 	}
 	return fmt.Errorf("FTP %s failed (%d)", command, code)
 }

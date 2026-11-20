@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -15,7 +16,14 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-type LocalFS struct{ root string }
+// computerPath is the virtual folder that lists every drive / mount point of this computer.
+const computerPath = "@computer"
+
+// LocalFS is a view of this computer's files.
+type LocalFS struct {
+	root  string
+	multi bool
+}
 
 func NewLocalFS() (*LocalFS, error) {
 	home, err := os.UserHomeDir()
@@ -30,7 +38,7 @@ func NewLocalFS() (*LocalFS, error) {
 	if err != nil || !info.IsDir() {
 		return nil, errors.New("local file root is not a directory")
 	}
-	return &LocalFS{root: filepath.Clean(root)}, nil
+	return &LocalFS{root: filepath.Clean(root), multi: true}, nil
 }
 
 func NewLocalFSAt(dir string) (*LocalFS, error) {
@@ -48,6 +56,11 @@ func (f *LocalFS) Root() string { return f.root }
 
 func (f *LocalFS) RootLabel() string { return "Home" }
 func (f *LocalFS) List(relative string) ([]core.FileEntry, string, error) {
+	if f.multi {
+		if c, err := f.cleanRelativePath(relative); err == nil && c == computerPath {
+			return f.driveEntries(), computerPath, nil
+		}
+	}
 	absolute, clean, err := f.Resolve(relative, false)
 	if err != nil {
 		return nil, "", err
@@ -77,6 +90,12 @@ func (f *LocalFS) Resolve(relative string, allowMissing bool) (string, string, e
 	clean, err := f.cleanRelativePath(relative)
 	if err != nil {
 		return "", "", err
+	}
+	if clean == computerPath {
+		return "", "", errors.New("choose a drive first")
+	}
+	if f.isAbsolute(clean) {
+		return f.resolveAbsolute(clean, allowMissing)
 	}
 	converted := filepath.FromSlash(clean)
 	candidate := filepath.Join(f.root, converted)
@@ -108,10 +127,23 @@ func (f *LocalFS) cleanRelativePath(relative string) (string, error) {
 		return "", errors.New("local path is invalid")
 	}
 	relative = strings.ReplaceAll(relative, "\\", "/")
+	if f.multi && relative == computerPath {
+		return computerPath, nil
+	}
 	if strings.HasPrefix(relative, "/") || filepath.IsAbs(relative) || filepath.VolumeName(relative) != "" {
-		return "", errors.New("absolute local paths are not allowed")
+		if !f.multi || !f.isAbsolute(relative) {
+			return "", errors.New("absolute local paths are not allowed")
+		}
+		clean := pathClean(relative)
+		if runtime.GOOS == "windows" && filepath.VolumeName(filepath.FromSlash(clean)) == clean {
+			clean += "/" // "D:" alone means "the current folder of D:"; we always mean its root
+		}
+		return clean, nil
 	}
 	clean := pathClean(relative)
+	if f.multi && (clean == computerPath || strings.HasPrefix(clean, computerPath+"/")) {
+		return "", errors.New("choose a drive first")
+	}
 	if clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", errors.New("local path escapes the permitted home directory")
 	}
@@ -126,13 +158,16 @@ func (f *LocalFS) EnsureDir(relative string) error {
 	if clean == "." {
 		return nil
 	}
-	current := f.root
-	for _, component := range strings.Split(clean, "/") {
+	current, rest, absolute := f.root, clean, f.isAbsolute(clean)
+	if absolute {
+		current, rest = splitAbsolute(clean)
+	}
+	for _, component := range strings.Split(rest, "/") {
 		if component == "" || component == "." {
 			continue
 		}
 		candidate := filepath.Join(current, filepath.FromSlash(component))
-		if !withinRoot(f.root, candidate) {
+		if !absolute && !withinRoot(f.root, candidate) {
 			return errors.New("local path escapes the permitted home directory")
 		}
 		info, statErr := os.Lstat(candidate)
@@ -150,7 +185,7 @@ func (f *LocalFS) EnsureDir(relative string) error {
 			if resolveErr != nil {
 				return resolveErr
 			}
-			if !withinRoot(f.root, resolved) {
+			if !absolute && !withinRoot(f.root, resolved) {
 				return errors.New("local symlink resolves outside the permitted home directory")
 			}
 			info, statErr = os.Stat(resolved)
@@ -194,22 +229,29 @@ func (f *LocalFS) Rename(oldRelative, newRelative string) error {
 	}
 	return os.Rename(oldPath, newPath)
 }
+
+// Remove deletes a file or a link, or a folder with everything inside it.
 func (f *LocalFS) Remove(relative string) error {
-	absolute, clean, err := f.Resolve(relative, false)
+	clean, err := f.cleanRelativePath(relative)
 	if err != nil {
 		return err
 	}
-	if clean == "." {
+	if clean == "." || f.isRootPath(clean) {
 		return errors.New("the local root cannot be removed")
 	}
-	info, err := os.Lstat(absolute)
+	parent, _, err := f.Resolve(path.Dir(clean), false)
 	if err != nil {
 		return err
 	}
-	if info.IsDir() {
-		return os.Remove(absolute)
+	target := filepath.Join(parent, filepath.Base(filepath.FromSlash(clean)))
+	info, err := os.Lstat(target)
+	if err != nil {
+		return err
 	}
-	return os.Remove(absolute)
+	if info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		return os.RemoveAll(target)
+	}
+	return os.Remove(target)
 }
 func (f *LocalFS) Chmod(relative string, mode uint32) error {
 	absolute, _, err := f.Resolve(relative, false)
@@ -278,7 +320,7 @@ func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, ove
 	if err != nil {
 		return err
 	}
-	if dstClean == "." {
+	if dstClean == "." || f.isRootPath(dstClean) {
 		return errors.New("the local root cannot be a copy destination")
 	}
 	if dstClean == srcClean || strings.HasPrefix(dstClean, srcClean+"/") {
@@ -424,4 +466,115 @@ func withinRoot(root, candidate string) bool {
 		return !strings.HasPrefix(rel, "..")
 	}
 	return true
+}
+
+// isAbsolute reports whether value names a place outside the home folder (a drive path on…
+func (f *LocalFS) isAbsolute(value string) bool {
+	if !f.multi || value == computerPath {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.VolumeName(filepath.FromSlash(value)) != ""
+	}
+	return strings.HasPrefix(value, "/")
+}
+
+// isRootPath is true for a drive root ("D:/") or "/".
+func (f *LocalFS) isRootPath(clean string) bool {
+	if !f.isAbsolute(clean) {
+		return false
+	}
+	base, rest := splitAbsolute(clean)
+	return base != "" && strings.Trim(rest, "/") == ""
+}
+
+// splitAbsolute splits an absolute slash path into its OS root ("D:\\" or "/") and the…
+func splitAbsolute(clean string) (string, string) {
+	if runtime.GOOS == "windows" {
+		vol := filepath.VolumeName(filepath.FromSlash(clean))
+		return vol + `\`, strings.TrimPrefix(clean[len(vol):], "/")
+	}
+	return "/", strings.TrimPrefix(clean, "/")
+}
+
+func (f *LocalFS) resolveAbsolute(clean string, allowMissing bool) (string, string, error) {
+	candidate := filepath.FromSlash(clean)
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		if !allowMissing || !errors.Is(err, os.ErrNotExist) {
+			return "", "", err
+		}
+		resolvedParent, parentErr := filepath.EvalSymlinks(filepath.Dir(candidate))
+		if parentErr != nil {
+			return "", "", parentErr
+		}
+		resolved = filepath.Join(resolvedParent, filepath.Base(candidate))
+	}
+	return resolved, clean, nil
+}
+
+// ParentOf returns the folder one level above current, for the "up" button.
+func (f *LocalFS) ParentOf(current string) string {
+	if !f.multi {
+		return pathParent(current)
+	}
+	switch {
+	case current == computerPath:
+		return computerPath
+	case current == "." || current == "":
+		parent := filepath.Dir(f.root)
+		if parent == f.root {
+			return computerPath
+		}
+		return filepath.ToSlash(parent)
+	case f.isAbsolute(current):
+		if f.isRootPath(current) {
+			return computerPath
+		}
+		parent := filepath.ToSlash(filepath.Dir(filepath.FromSlash(current)))
+		if runtime.GOOS == "windows" && filepath.VolumeName(filepath.FromSlash(parent)) == parent {
+			parent += "/"
+		}
+		return parent
+	}
+	return pathParent(current)
+}
+
+func pathParent(current string) string {
+	if current == "." || current == "" {
+		return "."
+	}
+	return filepath.ToSlash(filepath.Dir(filepath.FromSlash(current)))
+}
+
+// driveEntries lists every drive / mount point as folders, for the virtual "This computer" folder.
+func (f *LocalFS) driveEntries() []core.FileEntry {
+	drives := listDrives()
+	out := make([]core.FileEntry, 0, len(drives))
+	for _, d := range drives {
+		out = append(out, core.FileEntry{Name: d.Label, Path: d.Path, IsDir: true})
+	}
+	return out
+}
+
+// Place is one entry of the drive / location picker above the local panel.
+type Place struct {
+	Label string `json:"label"`
+	Path  string `json:"path"`
+	Kind  string `json:"kind"` // home, folder, computer, drive
+}
+
+// Places returns the quick locations.
+func (f *LocalFS) Places() []Place {
+	places := []Place{{Label: "Home", Path: ".", Kind: "home"}}
+	for _, name := range []string{"Desktop", "Documents", "Downloads"} {
+		if info, err := os.Stat(filepath.Join(f.root, name)); err == nil && info.IsDir() {
+			places = append(places, Place{Label: name, Path: name, Kind: "folder"})
+		}
+	}
+	places = append(places, Place{Label: "This computer", Path: computerPath, Kind: "computer"})
+	for _, d := range listDrives() {
+		places = append(places, Place{Label: d.Label, Path: d.Path, Kind: "drive"})
+	}
+	return places
 }

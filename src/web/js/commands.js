@@ -17,7 +17,7 @@
   const makeID = () => globalThis.crypto?.randomUUID?.() || `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
   const validCommand = (value) => typeof value === "string" && value.trim() && value.trim().length <= 1000 && !/[\r\n\0]/.test(value);
 
-  // Two ways to browse commands: "panel" (side panel, default) or "classic" (small menu from the lightning button, like older versions).
+  // Two ways to browse commands.
   const classic = () => store.get("termCmdStyle", "panel") === "classic";
 
   // Clicking a command types it (press Enter to run); the play triangle runs it at once.
@@ -49,6 +49,7 @@
     });
     $id("termCommandDock").querySelector(".command-dock-header")?.setAttribute("data-title", { system: "System commands", history: "Previous commands", library: "Scripts" }[name]);
     for (const pane of panes) $id(`commandPane${pane[0].toUpperCase()}${pane.slice(1)}`).hidden = pane !== name;
+    if (name === "system") renderSystemCommands(); // list depends on the device type
     if (name === "history") renderHistory();
     if (name === "library") {
       ensureLibrary().catch((error) => toast(error.message || "Could not load the command library", "error"));
@@ -76,7 +77,7 @@
     const box = $id("systemCommandList");
     if (!box) return;
     const query = $id("systemCommandFilter").value.trim().toLowerCase();
-    const items = BUILTIN_COMMANDS.filter((item) => !query || `${item.name}\n${item.command}`.toLowerCase().includes(query));
+    const items = builtinCommands().filter((item) => !query || `${item.name}\n${item.command}`.toLowerCase().includes(query));
     box.replaceChildren();
     if (!items.length) {
       box.append(h("div", { class: "command-empty", text: "No system commands match your search." }));
@@ -332,28 +333,34 @@
   document.querySelectorAll("[data-command-tab]").forEach((button) => {
     button.addEventListener("click", () => selectPanel(button.dataset.commandTab));
   });
-  // Classic style (as in 1.1.4): three icons; System and Scripts open a small menu, History opens a centered window.
+  // Classic style (as in 1.1.4).
   function classicOpen(name, anchor) {
     const sub = (c) => (c.length > 22 ? `${c.slice(0, 22)}…` : c);
     const rect = anchor.getBoundingClientRect();
     if (name === "history") { if (!dock.hidden && state.activePane === "history") toggleDock(false); else selectPanel("history", true); return; }
     toggleDock(false);
-    if (name === "system") {
-      openMenu([{ heading: "System commands" }, ...BUILTIN_COMMANDS.map((c) => ({ label: c.name, icon: "bolt", sub: sub(c.command), run: () => typeCommand(c), runNow: () => typeCommand(c, true) }))], rect.left, rect.bottom + 4);
-      return;
-    }
+    const row = (c, own) => ({
+      label: c.name, icon: "bolt", sub: sub(c.command), searchable: true, find: c.command,
+      run: () => typeCommand(c), runNow: () => typeCommand(c, true),
+      actions: own ? [{ icon: "edit", title: "Edit", run: () => editSavedCommand(c) }, { icon: "trash", title: "Delete", danger: true, run: () => deleteCommand(c.id) }] : undefined,
+    });
+    const manage = [
+      { label: "Add a script…", icon: "plus", run: () => editSavedCommand() },
+      { label: "Import dccscript.ini…", icon: "upload", run: () => $id("commandImportFile").click() },
+      { label: "Export as dccscript.ini", icon: "download", disabled: !state.commands.length, run: () => exportLibrary() },
+      { label: "Manage scripts (reorder)…", icon: "list", run: () => selectPanel("library", true) },
+    ];
+    // The lightning button lists the built-in system commands and, below them, your own scripts…
     const build = () => {
       const items = [{ heading: `Scripts (${state.commands.length})` }];
-      if (state.commands.length) items.push(...state.commands.map((c) => ({ label: c.name, icon: "bolt", sub: sub(c.command), run: () => typeCommand(c), runNow: () => typeCommand(c, true) })));
+      if (state.commands.length) items.push(...state.commands.map((c) => row(c, true)));
       else items.push({ label: "No scripts yet", disabled: true });
-      items.push("-",
-        { label: "Add a command…", icon: "plus", run: () => editSavedCommand() },
-        { label: "Import DCC scripts (dccscript.ini)…", icon: "upload", run: () => $id("commandImportFile").click() },
-        { label: "Export as dccscript.ini", icon: "download", run: () => exportLibrary() },
-        { label: "Edit or remove scripts…", icon: "edit", run: () => selectPanel("library", true) });
-      openMenu(items, rect.left, rect.bottom + 4);
+      items.push("-", ...manage);
+      if (name === "system") items.push("-", { heading: "System commands" }, ...builtinCommands().map((c) => row(c, false)));
+      openMenu(items, rect.left, rect.bottom + 4, { search: "Search scripts and commands…" });
     };
-    ensureLibrary().then(build, build);
+    // Always re-read the library file so scripts added or replaced on disk show up at once.
+    readLibrary().catch((error) => { state.error = error; }).then(build);
   }
   function applyCommandStyle() {
     const on = classic();
@@ -408,9 +415,10 @@
     show: (name, focusSearch = false) => selectPanel(name, focusSearch),
     toggle: toggleDock,
     refreshHistory: () => { if (state.activePane === "history") renderHistory(); },
+    refreshSystem: () => renderSystemCommands(),
   };
 
-  // Classic style: the panel (history only) is a popup over the terminal; it closes on outside click or Esc.
+  // Classic style: the panel (history only) is a popup over the terminal.
   document.addEventListener("pointerdown", (event) => {
     if (!classic() || dock.hidden || event.target.closest("#termCommandDock, #termDockToggle, dialog")) return;
     toggleDock(false);

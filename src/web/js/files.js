@@ -182,6 +182,16 @@ function renderCrumbs(pane) {
       const button = event.target.closest("button[data-path]");
       if (button) loadPane(pane.kind, button.dataset.path);
     });
+    // Right-click on the path links.
+    pane.crumbs.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const button = event.target.closest("button[data-path]");
+      const where = button ? button.dataset.path : pane.path;
+      openMenu([
+        { label: "Copy path", icon: "copy", run: async () => { if (await clipboardWrite(where)) toast("Path copied"); else toast("Could not copy", "error"); } },
+        { label: "Open", icon: "folder", run: () => loadPane(pane.kind, where) },
+      ], event.clientX, event.clientY);
+    });
   }
   const remote = pane.kind === "remote";
   const parts = pane.path.split("/").filter((part) => part && part !== ".");
@@ -225,6 +235,39 @@ function setActivePane(kind) {
   updateSelectionUI(other);
 }
 
+/* Drive / place picker (Home, This computer, C:, D:, USB…) above the local panel. */
+let placesList = [], placesLoading = null;
+function placeFor(path) {
+  const norm = (v) => String(v).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const here = norm(path);
+  if (path === "." || path === "") return placesList.find((p) => p.kind === "home");
+  if (path === "@computer") return placesList.find((p) => p.kind === "computer");
+  let best = null;
+  for (const place of placesList) {
+    if (place.kind === "home" || place.kind === "computer") continue;
+    const base = norm(place.path);
+    const abs = /^([a-z]:|\/)/.test(here);
+    if (!abs && place.kind === "drive") continue;
+    if (here === base || here.startsWith(base + "/") || (base === "" && abs)) { if (!best || base.length > norm(best.path).length) best = place; }
+  }
+  return best || placesList.find((p) => p.kind === "home");
+}
+function renderPlaces() {
+  const select = $("#localPlaces");
+  if (!select) return;
+  select.replaceChildren(...placesList.map((p) => { const o = document.createElement("option"); o.value = p.path; o.textContent = p.label; return o; }));
+  select.value = (placeFor(panes.local.path || ".") || placesList[0] || {}).path ?? ".";
+}
+function syncPlaces(path) {
+  if (!placesLoading) {
+    placesLoading = api("/api/v1/files/local/places").then((r) => { placesList = r.places || []; renderPlaces(); }).catch(() => { placesLoading = null; });
+    return;
+  }
+  const select = $("#localPlaces");
+  const place = placeFor(path);
+  if (select && place) select.value = place.path;
+}
+
 async function loadPane(kind, path, { keepSelection = false, quiet = false } = {}) {
   const pane = panes[kind];
   if (kind === "remote" && !files.sessionID) return false;
@@ -239,7 +282,7 @@ async function loadPane(kind, path, { keepSelection = false, quiet = false } = {
     pane.selected = new Set([...previous].filter((p) => pane.entries.some((e) => e.path === p)));
     pane.anchor = -1; pane.cursor = -1; pane.loaded = true;
     pane.pathInput.value = result.path;
-    if (kind === "local") $("#localRoot").textContent = result.root ? `${result.root} · home` : "Home folder";
+    if (kind === "local") { $("#localRoot").textContent = result.path === "." ? "Home folder" : "This computer"; syncPlaces(result.path); }
     renderPane(pane);
     if (kind === "local") store.set("localPath", result.path);
     else if (files.profileID) store.set(`remotePath.${files.profileID}.${files.protocol}`, result.path);
@@ -342,6 +385,8 @@ $("#fileConnect").addEventListener("click", () => { files.manualOff = false; fil
 $("#fileDisconnect").addEventListener("click", () => fileDisconnect(false));
 
 for (const pane of Object.values(panes)) {
+  if (pane.kind === "local") $("#localPlaces")?.addEventListener("change", (event) => { loadPane("local", event.target.value, {}).then((ok) => { if (!ok) syncPlaces(panes.local.path); else pane.table.focus(); }); });
+  pane.pathInput.addEventListener("dblclick", () => pane.pathInput.select()); // double click selects the whole path
   pane.pathInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") { event.preventDefault(); loadPane(pane.kind, pane.pathInput.value.trim() || (pane.kind === "remote" ? "/" : "."), {}).then(() => pane.table.focus()); }
     if (event.key === "Escape") { pane.pathInput.value = pane.path; pane.table.focus(); }
@@ -437,7 +482,15 @@ for (const pane of Object.values(panes)) {
     } else if (event.ctrlKey || event.metaKey) {
       if (pane.selected.has(entry.path)) pane.selected.delete(entry.path); else pane.selected.add(entry.path);
       pane.anchor = index;
-    } else { pane.selected = new Set([entry.path]); pane.anchor = index; }
+    } else {
+      // Clicking the name of an item that is already the only selection starts renaming (like a…
+      const wasOnlySelected = pane.selected.size === 1 && pane.selected.has(entry.path);
+      pane.selected = new Set([entry.path]); pane.anchor = index;
+      clearTimeout(pane.renameTimer);
+      if (wasOnlySelected && event.detail === 1 && !event.ctrlKey && !event.metaKey && event.target.closest("td.name span") && !(pane.kind === "remote" && !files.sessionID)) {
+        pane.renameTimer = setTimeout(() => inlineRename(pane, entry), 450);
+      }
+    }
     pane.cursor = index;
     updateSelectionUI(pane);
   });
@@ -447,6 +500,7 @@ for (const pane of Object.values(panes)) {
     setActivePane(pane.kind); pane.selected = new Set(); updateSelectionUI(pane);
   });
   pane.rows.addEventListener("dblclick", (event) => {
+    clearTimeout(pane.renameTimer);
     if (coarsePointer) return;
     const row = event.target.closest("tr.row");
     if (!row || row.dataset.up) { if (row?.dataset.up) goUp(pane.kind); return; }
@@ -615,12 +669,7 @@ async function cmdMkdir() {
     toast(`Folder “${name}” created`);
   } catch (error) { handleOpError(error, kind); }
 }
-async function cmdRename() {
-  const kind = files.active, sel = selectedEntries(panes[kind]);
-  if (sel.length !== 1) { toast("Select one item to rename"); return; }
-  if (kind === "remote" && !requireSession()) return;
-  const entry = sel[0];
-  const name = await ask({ title: "Rename", label: "New name", value: entry.name, ok: "Rename", validate: (v) => (validName(v) ? "" : "Enter a valid name (no slashes).") });
+async function applyRename(kind, entry, name) {
   if (!name || name === entry.name) return;
   const parentPath = kind === "local" ? panes.local.path : panes.remote.path;
   const target = kind === "local" ? joinLocal(parentPath, name) : joinRemote(parentPath, name);
@@ -631,6 +680,50 @@ async function cmdRename() {
     await loadPane(kind, panes[kind].path, { keepSelection: true });
     toast("Renamed");
   } catch (error) { handleOpError(error, kind); }
+}
+// Edit the name right in the list (Enter saves, Esc cancels).
+function inlineRename(pane, entry) {
+  const kind = pane.kind;
+  if (kind === "remote" && !files.sessionID) return false;
+  const index = pane.visible.findIndex((e) => e.path === entry.path);
+  const row = index >= 0 ? pane.rows.querySelector(`tr.row[data-index="${index}"]`) : null;
+  const label = row?.querySelector("td.name span");
+  if (!label || row.querySelector(".rename-input")) return Boolean(label);
+  const input = h("input", { class: "rename-input", type: "text", value: entry.name, spellcheck: "false", autocomplete: "off", "aria-label": "New name" });
+  input.value = entry.name;
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    const name = input.value.trim();
+    input.replaceWith(label);
+    if (!save) { pane.table.focus?.(); return; }
+    if (name && name !== entry.name && !validName(name)) { toast("Enter a valid name (no slashes).", "error"); return; }
+    applyRename(kind, entry, name);
+  };
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    else if (event.key === "Escape") { event.preventDefault(); finish(false); }
+  });
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("dblclick", (event) => event.stopPropagation());
+  input.addEventListener("contextmenu", (event) => event.stopPropagation());
+  input.addEventListener("blur", () => finish(true));
+  label.replaceWith(input);
+  input.focus();
+  const dot = entry.is_dir ? -1 : entry.name.lastIndexOf(".");
+  input.setSelectionRange(0, dot > 0 ? dot : entry.name.length);
+  return true;
+}
+async function cmdRename() {
+  const kind = files.active, sel = selectedEntries(panes[kind]);
+  if (sel.length !== 1) { toast("Select one item to rename"); return; }
+  if (kind === "remote" && !requireSession()) return;
+  const entry = sel[0];
+  if (inlineRename(panes[kind], entry)) return;
+  const name = await ask({ title: "Rename", label: "New name", value: entry.name, ok: "Rename", validate: (v) => (validName(v) ? "" : "Enter a valid name (no slashes).") });
+  await applyRename(kind, entry, name);
 }
 async function cmdDelete() {
   const kind = files.active, sel = selectedEntries(panes[kind]);
@@ -651,25 +744,83 @@ async function cmdDelete() {
   if (failed) { toast(`${failed} item(s) could not be deleted: ${last.message}`, "error"); if (sessionLost(last)) handleSessionLost(); }
   else toast(`${sel.length} item${sel.length === 1 ? "" : "s"} deleted`);
 }
+// Permissions dialog: tick rwx boxes, pick a preset (644 / 755 / 777) or type the octal mode.
+function askPermissions(title, info, initial, hasFolder = false) {
+  const dialog = $("#chmodDialog"), input = $("#chmodInput"), error = $("#chmodError"), form = $("#chmodForm");
+  const boxes = $$("input[data-bit]", dialog);
+  $("#chmodTitle").textContent = title;
+  $("#chmodInfo").textContent = info;
+  error.hidden = true;
+  $("#chmodRecursiveRow").hidden = !hasFolder; $("#chmodRecursive").checked = false;
+  const fromBoxes = () => boxes.reduce((sum, box) => sum + (box.checked ? Number(box.dataset.bit) : 0), 0);
+  const setBoxes = (value) => boxes.forEach((box) => { box.checked = Boolean(value & Number(box.dataset.bit)); });
+  const setOctal = (value) => { input.value = (value & 0o777).toString(8).padStart(3, "0"); };
+  const start = /^[0-7]{3,4}$/.test(initial) ? parseInt(initial, 8) & 0o777 : 0o755;
+  setBoxes(start); setOctal(start);
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (result) => {
+      if (finished) return;
+      finished = true;
+      form.removeEventListener("submit", onSubmit); dialog.removeEventListener("click", onClick);
+      dialog.removeEventListener("change", onChange); input.removeEventListener("input", onInput);
+      dialog.removeEventListener("cancel", onCancel); dialog.removeEventListener("close", onClose);
+      if (dialog.open) dialog.close();
+      resolve(result);
+    };
+    const onChange = (event) => { if (event.target.matches("input[data-bit]")) setOctal(fromBoxes()); };
+    const onInput = () => { if (/^[0-7]{3,4}$/.test(input.value.trim())) setBoxes(parseInt(input.value.trim(), 8) & 0o777); };
+    const onClick = (event) => {
+      const preset = event.target.closest("[data-mode]");
+      if (preset) { const v = parseInt(preset.dataset.mode, 8); setBoxes(v); setOctal(v); return; }
+      if (event.target.closest("#chmodCancel")) finish(null);
+    };
+    const onSubmit = (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!/^[0-7]{3,4}$/.test(text)) { error.textContent = "Use 3 or 4 octal digits."; error.hidden = false; input.focus(); return; }
+      finish({ mode: text, recursive: hasFolder && $("#chmodRecursive").checked });
+    };
+    const onCancel = (event) => { event?.preventDefault?.(); finish(null); };
+    const onClose = () => { if (!dialog.open) finish(null); };
+    form.addEventListener("submit", onSubmit); dialog.addEventListener("click", onClick);
+    dialog.addEventListener("change", onChange); input.addEventListener("input", onInput);
+    dialog.addEventListener("cancel", onCancel); dialog.addEventListener("close", onClose);
+    openDialog(dialog);
+    input.focus(); input.select();
+  });
+}
 async function cmdChmod() {
   const kind = files.active, sel = selectedEntries(panes[kind]);
   if (!sel.length) { toast("Select items first"); return; }
   if (kind === "remote" && !requireSession()) return;
-  const mode = await ask({ title: "Permissions", message: sel.length === 1 ? `${sel[0].name} — now ${permissionOctal(sel[0].mode)}` : `${sel.length} items`, label: "Octal mode (e.g. 755)", value: sel.length === 1 && /^[0-7]{3,4}$/.test(permissionOctal(sel[0].mode)) ? permissionOctal(sel[0].mode) : "755", ok: "Apply", validate: (v) => (/^[0-7]{3,4}$/.test(v) ? "" : "Use 3 or 4 octal digits.") });
-  if (!mode) return;
-  let failed = 0, last = null;
-  for (const entry of sel) {
-    try {
-      if (kind === "local") await post("/api/v1/files/local/chmod", { path: entry.path, mode });
-      else await post(sessionURL(files.sessionID, "chmod"), { path: entry.path, mode });
-    } catch (error) { failed++; last = error; }
+  const current = sel.length === 1 ? permissionOctal(sel[0].mode) : "";
+  const choice = await askPermissions("Permissions", sel.length === 1 ? `${sel[0].name} — now ${current}` : `${sel.length} items`, current, sel.some((e) => e.is_dir));
+  if (!choice) return;
+  const { mode, recursive } = choice;
+  const chmodOne = (path) => (kind === "local" ? post("/api/v1/files/local/chmod", { path, mode }) : post(sessionURL(files.sessionID, "chmod"), { path, mode }));
+  const listDir = (path) => (kind === "local" ? api(`/api/v1/files/local/list?path=${encodeURIComponent(path)}`) : api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(path)}`)));
+  const isLink = (e) => /^l/.test(String(e.mode || ""));
+  const LIMIT = 5000;
+  let failed = 0, done = 0, last = null, capped = false;
+  const queue = sel.map((entry) => ({ entry, depth: 0 }));
+  while (queue.length) {
+    const { entry, depth } = queue.shift();
+    if (done + failed >= LIMIT) { capped = true; break; }
+    try { await chmodOne(entry.path); done++; } catch (error) { failed++; last = error; if (kind === "remote" && sessionLost(error)) break; continue; }
+    if (recursive && entry.is_dir && !isLink(entry) && depth < 12) {
+      try { const result = await listDir(entry.path); for (const child of result.entries || []) if (!isLink(child)) queue.push({ entry: child, depth: depth + 1 }); }
+      catch (error) { failed++; last = error; }
+    }
   }
   await loadPane(kind, panes[kind].path, { keepSelection: true });
-  if (failed) toast(`Permissions failed for ${failed} item(s): ${last.message}`, "error"); else toast(`Permissions set to ${mode}`);
+  if (failed) toast(`Permissions failed for ${failed} item(s): ${last.message}`, "error");
+  else if (capped) toast(`Permissions set to ${mode} on the first ${LIMIT} items only`, "error");
+  else toast(recursive ? `Permissions set to ${mode} on ${done} items` : `Permissions set to ${mode}`);
 }
 
 /* ── Copy / Cut / Paste ───────────────────────────────────────────────── */
-const LocalParentPath = (value) => { const index = value.lastIndexOf("/"); return index <= 0 ? "." : value.slice(0, index); };
+const LocalParentPath = (value) => { const index = value.lastIndexOf("/"); return index < 0 ? "." : index === 0 ? "/" : /^[A-Za-z]:$/.test(value.slice(0, index)) ? value.slice(0, index) + "/" : value.slice(0, index); };
 function uniqueName(baseName, existingNames) {
   if (!existingNames.has(baseName)) return baseName;
   const dot = baseName.lastIndexOf(".");

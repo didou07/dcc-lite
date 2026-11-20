@@ -75,8 +75,7 @@ const RC_CLASS = { UP: "nav", DOWN: "nav", LEFT: "nav", RIGHT: "nav", OK: "nav o
 const RC_MAIN = new Set(["POWER", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "UP", "DOWN", "LEFT", "RIGHT", "OK", "RED", "GREEN", "YELLOW", "BLUE", "MENU", "EXIT", "INFO", "VOLUMEUP", "VOLUMEDOWN", "CHANNELUP", "CHANNELDOWN", "MUTE"]);
 const rcNorm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Builds a layout from one OE-Alliance remote definition. Keys are grouped by role (not by raw pixel rows, which
-// scatter them): main = power, digits, colours, navigation and a quick row (+ volume slider); "More keys" = the rest.
+// Builds a layout from one OE-Alliance remote definition.
 function rcBuildLayout(code) {
   const buttons = RC_DB.codes[code];
   if (!buttons) return null;
@@ -110,7 +109,7 @@ function rcBuildLayout(code) {
     push(main, row(key("LEFT"), key("OK"), key("RIGHT")));
     push(main, row(bl ? key(bl, "") : ["", "", "spacer"], key("DOWN"), br ? key(br, "") : ["", "", "spacer"]));
   }
-  // One small row of quick keys (like the real remote), then the volume slider is added by buildRemote.
+  // One small row of quick keys (like the real remote), then the volume slider is added by…
   const quick = ["PVR", "TV", "TEXT", "HELP", "AUDIO", "RADIO"].filter((id) => byId.has(id)).slice(0, 4);
   push(main, row(...quick.map((id) => key(id, "small"))));
   // Expanded part starts with the volume / channel keys.
@@ -119,7 +118,7 @@ function rcBuildLayout(code) {
   push(extra, row(vol("VOLUMEUP", "volup", "Vol+", "vol"), key("MUTE", ""), vol("CHANNELUP", "chup", "CH+", "ch")));
   push(extra, row(vol("VOLUMEDOWN", "voldown", "Vol-", "vol"), mid ? key(mid, "") : ["", "", "spacer"], vol("CHANNELDOWN", "chdown", "CH-", "ch")));
 
-  // Expanded part: transport keys first, then every remaining key in the order of the real remote, 4 per row.
+  // Expanded part: transport keys first, then every remaining key in the order of the real…
   const transport = ["REWIND", "PLAY", "PAUSE", "FASTFORWARD", "PREVIOUS", "RECORD", "STOP", "NEXT"].filter((id) => byId.has(id) && !used.has(id));
   if (transport.length) {
     const list = transport.map((id) => key(id, id === "RECORD" ? "rec" : ""));

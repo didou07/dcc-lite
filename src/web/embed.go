@@ -73,7 +73,7 @@ func boxKey(name string) string {
 	return b.String()
 }
 
-// Box returns the bundled picture of a receiver model, matching names without regard to case, spaces, dashes or underscores.
+// Box returns the bundled picture of a receiver model, matching names without regard to…
 func Box(name string) ([]byte, bool) {
 	boxOnce.Do(func() {
 		boxFiles = map[string]string{}

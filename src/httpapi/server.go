@@ -112,6 +112,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/terminal/sessions/{id}/ws", s.terminalWebSocket)
 	mux.HandleFunc("DELETE /api/v1/terminal/sessions/{id}", s.closeTerminal)
 	mux.HandleFunc("GET /api/v1/files/local/list", s.listLocalFiles)
+	mux.HandleFunc("GET /api/v1/files/local/places", s.listLocalPlaces)
 	mux.HandleFunc("POST /api/v1/files/local/mkdir", s.makeLocalDirectory)
 	mux.HandleFunc("POST /api/v1/files/local/rename", s.renameLocalFile)
 	mux.HandleFunc("POST /api/v1/files/local/remove", s.removeLocalFile)

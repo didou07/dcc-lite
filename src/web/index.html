@@ -41,6 +41,7 @@
   <script src="/js/remote-access.js" defer></script>
   <script src="/js/update.js" defer></script>
   <script src="/js/palette.js" defer></script>
+  <script src="/js/textmenu.js" defer></script>
   <script src="/js/shell.js" defer></script>
   <script src="/js/main.js" defer></script>
   <link rel="icon" type="image/svg+xml" href="/assets/DCCLite-mark.svg">
@@ -293,6 +294,7 @@
         <header class="pane-head">
           <div class="pathbar">
             <div class="pane-title"><span id="localRoot" class="muted ellipsis">Home folder</span></div>
+            <select class="places-select" id="localPlaces" title="Drives and folders on this computer" aria-label="Drives and folders"></select>
             <button type="button" class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
             <button type="button" class="icon-btn" data-act="root" title="Home folder" aria-label="Home folder"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
             <button type="button" class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
@@ -1060,9 +1062,11 @@
       <div class="ap-row"><span class="ap-l">Edges</span><div class="seg ap-seg" data-ap="edge" role="radiogroup"><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="default" aria-checked="false">Normal</button><button type="button" role="radio" data-v="strong" aria-checked="false">Strong</button></div></div>
       <div class="ap-row"><span class="ap-l">Corners</span><div class="seg ap-seg" data-ap="radius" role="radiogroup"><button type="button" role="radio" data-v="sharp" aria-checked="false">Sharp</button><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="round" aria-checked="false">Round</button></div></div>
       <div class="ap-row"><span class="ap-l">Density</span><div class="seg ap-seg" data-ap="density" role="radiogroup"><button type="button" role="radio" data-v="compact" aria-checked="false">Compact</button><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="roomy" aria-checked="false">Roomy</button></div></div>
-      <div class="ap-row"><span class="ap-l">Interface size</span><div class="seg ap-seg" data-ap="scale" role="radiogroup"><button type="button" role="radio" data-v="0.85" aria-checked="false">85%</button><button type="button" role="radio" data-v="1" aria-checked="false">100%</button><button type="button" role="radio" data-v="1.15" aria-checked="false">115%</button><button type="button" role="radio" data-v="1.3" aria-checked="false">130%</button><button type="button" role="radio" data-v="1.5" aria-checked="false">150%</button></div></div>
+      <div class="ap-row"><span class="ap-l">Interface size</span><div class="ap-range"><input id="apScale" type="range" min="50" max="170" step="1" value="85" aria-label="Interface size"><output id="apScaleVal" for="apScale">85%</output></div></div>
       <div class="ap-row"><span class="ap-l">Icon weight</span><div class="seg ap-seg" data-ap="icons" role="radiogroup"><button type="button" role="radio" data-v="thin" aria-checked="false">Thin</button><button type="button" role="radio" data-v="default" aria-checked="false">Regular</button><button type="button" role="radio" data-v="bold" aria-checked="false">Bold</button></div></div>
-      <div class="ap-row"><span class="ap-l">Font</span><div class="seg ap-seg" data-ap="font" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="system" aria-checked="false">System</button><button type="button" role="radio" data-v="rounded" aria-checked="false">Rounded</button><button type="button" role="radio" data-v="serif" aria-checked="false">Serif</button></div></div>
+      <div class="ap-row"><span class="ap-l">Font</span><div class="seg ap-seg" data-ap="font" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="system" aria-checked="false">System</button><button type="button" role="radio" data-v="rounded" aria-checked="false">Rounded</button><button type="button" role="radio" data-v="serif" aria-checked="false">Serif</button><button type="button" role="radio" data-v="mono" aria-checked="false">Mono</button></div></div>
+      <div class="ap-row"><span class="ap-l">Rows</span><div class="seg ap-seg" data-ap="rows" role="radiogroup"><button type="button" role="radio" data-v="plain" aria-checked="false">Plain</button><button type="button" role="radio" data-v="striped" aria-checked="false">Striped</button></div></div>
+      <div class="ap-row"><span class="ap-l">Scrollbars</span><div class="seg ap-seg" data-ap="scrollbars" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="thin" aria-checked="false">Thin</button></div></div>
       <div class="ap-row"><span class="ap-l">Animations</span><div class="seg ap-seg" data-ap="motion" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">On</button><button type="button" role="radio" data-v="reduced" aria-checked="false">Off</button></div></div>
     </div>
     <div class="dialog-actions"><button class="btn" id="apReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>Reset</button><span class="spacer"></span><button class="btn primary" id="apDone" type="button" autofocus><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Done</button></div>
@@ -1516,6 +1520,33 @@
       <button class="btn primary" id="svcClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
   </div>
+</dialog>
+
+<dialog id="chmodDialog" aria-labelledby="chmodTitle">
+  <form method="dialog" id="chmodForm" class="dialog-card">
+    <h2 id="chmodTitle">Permissions</h2>
+    <p id="chmodInfo" class="ask-message"></p>
+    <table class="chmod-grid" aria-label="Permission bits">
+      <thead><tr><th></th><th>Read</th><th>Write</th><th>Execute</th></tr></thead>
+      <tbody>
+        <tr><th>Owner</th><td><input type="checkbox" data-bit="256" aria-label="Owner read"></td><td><input type="checkbox" data-bit="128" aria-label="Owner write"></td><td><input type="checkbox" data-bit="64" aria-label="Owner execute"></td></tr>
+        <tr><th>Group</th><td><input type="checkbox" data-bit="32" aria-label="Group read"></td><td><input type="checkbox" data-bit="16" aria-label="Group write"></td><td><input type="checkbox" data-bit="8" aria-label="Group execute"></td></tr>
+        <tr><th>Others</th><td><input type="checkbox" data-bit="4" aria-label="Others read"></td><td><input type="checkbox" data-bit="2" aria-label="Others write"></td><td><input type="checkbox" data-bit="1" aria-label="Others execute"></td></tr>
+      </tbody>
+    </table>
+    <div class="chmod-presets" role="group" aria-label="Common modes">
+      <button class="btn sm" type="button" data-mode="644">644 file</button>
+      <button class="btn sm" type="button" data-mode="755">755 script / bin</button>
+      <button class="btn sm" type="button" data-mode="777">777 all</button>
+    </div>
+    <label class="chmod-recursive" id="chmodRecursiveRow" hidden><input type="checkbox" id="chmodRecursive"><span>Apply to everything inside the selected folders</span></label>
+    <label class="field"><span>Octal mode</span><input id="chmodInput" spellcheck="false" autocomplete="off" inputmode="numeric" maxlength="4"></label>
+    <p class="form-error" id="chmodError" role="alert" hidden></p>
+    <div class="dialog-actions"><span class="spacer"></span>
+      <button class="btn" id="chmodCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apply</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="askDialog" aria-labelledby="askTitle">

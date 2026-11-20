@@ -476,7 +476,7 @@ $("#fileTerminalHere").addEventListener("click", () => openTerminalHere());
 $("#fileRun").addEventListener("click", runRemoteFile);
 
 document.addEventListener("keydown", (event) => {
-  if (view.current !== "files" || $("dialog[open]")) return;
+  if (view.current !== "files" || $("dialog[open]") || event.target.classList?.contains("rename-input")) return;
   const tag = event.target.tagName;
   const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   const pane = panes[files.active], key = event.key;

@@ -6,7 +6,7 @@ const term = {
   theme: store.get("termTheme", "black") === "light" ? "light" : "black",
 };
 const TERMINAL_KEYS = { "ctrl-c": "\u0003", "ctrl-d": "\u0004", tab: "\t", escape: "\u001b", up: "\u001b[A", down: "\u001b[B", right: "\u001b[C", left: "\u001b[D", home: "\u001b[H", end: "\u001b[F", pageup: "\u001b[5~", pagedown: "\u001b[6~" };
-const BUILTIN_COMMANDS = [
+const COMMON_COMMANDS = [
   { id: "uptime", name: "Uptime", command: "uptime" },
   { id: "disk", name: "Disk usage", command: "df -h" },
   { id: "memory", name: "Memory", command: "free -m" },
@@ -15,14 +15,40 @@ const BUILTIN_COMMANDS = [
   { id: "ps", name: "Processes", command: "ps" },
   { id: "mount", name: "Mounted drives", command: "mount" },
   { id: "kernel", name: "Kernel", command: "uname -a" },
-  { id: "opkg", name: "Update package list", command: "opkg update" },
   { id: "cams", name: "Running softcams", command: "ps | grep -i -E 'oscam|ncam|cccam|gbox|mgcamd' | grep -v grep" },
-  { id: "restart-gui", name: "Restart Enigma2 (GUI)", command: "init 4 && sleep 3 && init 3" },
   { id: "reload-bouquets", name: "Reload bouquets (OpenWebif)", command: "wget -qO- 'http://127.0.0.1/web/servicelistreload?mode=2'" },
   { id: "drop-caches", name: "Free memory caches", command: "sync; echo 3 > /proc/sys/vm/drop_caches" },
   { id: "hdd-free", name: "Recording disk space", command: "df -h /media/hdd /hdd 2>/dev/null" },
   { id: "reboot", name: "Reboot receiver", command: "reboot" },
 ];
+// System commands follow the device web interface: OpenWebif = opkg/init, DreamOS = apt/systemd.
+const isDreamOSDevice = (device) => ["dreamos", "webinterface"].includes(String(device?.web_kind || "").toLowerCase());
+function builtinCommands() {
+  const dream = isDreamOSDevice(currentDevice());
+  const list = COMMON_COMMANDS.map((c) => (dream && c.id === "reload-bouquets" ? { ...c, name: "Reload bouquets" } : c));
+  list.splice(8, 0, dream
+    ? { id: "opkg", name: "Update package list", command: "apt-get update" }
+    : { id: "opkg", name: "Update package list", command: "opkg update" });
+  list.splice(10, 0, dream
+    ? { id: "restart-gui", name: "Restart Enigma2 (GUI)", command: "systemctl restart enigma2" }
+    : { id: "restart-gui", name: "Restart Enigma2 (GUI)", command: "init 4 && sleep 3 && init 3" });
+  if (dream) {
+    // DreamOS only
+    list.splice(list.length - 1, 0,
+      { id: "apt-upgrade", name: "Upgrade packages", command: "apt-get upgrade -y" },
+      { id: "dpkg-plugins", name: "Installed plugins", command: "dpkg -l | grep enigma2-plugin" },
+      { id: "e2-status", name: "Enigma2 service status", command: "systemctl status enigma2 --no-pager" },
+      { id: "e2-logs", name: "Enigma2 log files", command: "ls -lt /home/root/logs/ | head -20" });
+  } else {
+    // OpenWebif only
+    list.splice(list.length - 1, 0,
+      { id: "opkg-upgrade", name: "Upgrade packages", command: "opkg upgrade" },
+      { id: "opkg-plugins", name: "Installed plugins", command: "opkg list-installed | grep enigma2-plugin" },
+      { id: "e2-status", name: "Enigma2 process status", command: "ps | grep -i enigma2 | grep -v grep" },
+      { id: "e2-logs", name: "Enigma2 log files", command: "ls -lt /home/root/logs/ /home/root/*crash*.log 2>/dev/null | head -20" });
+  }
+  return list;
+}
 
 function terminalTheme(name) {
   const dark = {
@@ -397,6 +423,7 @@ function activateTab(id) {
   const tab = activeTab();
   const device = deviceByID(tab.profileID);
   if (device && device.id !== devices.currentID) { devices.currentID = device.id; store.set("device", device.id); $("#deviceSelect").value = device.id; updateDeviceDot(); renderDeviceGrid(); fileDisconnect(true); }
+  globalThis.DccCommandPanel?.refreshSystem?.();
   renderTabs();
   globalThis.DccCommandPanel?.refreshHistory();
   requestAnimationFrame(() => { fitTab(tab); focusTab(tab); });

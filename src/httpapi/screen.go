@@ -142,6 +142,17 @@ func freezeFrameSupported(width int) bool {
 	return width == 720 || width == 1280 || width == 1920 || width == 3840
 }
 
+// freezeFrameWidth rounds up to a width Freeze Frame offers (480 -> 720).
+// Freeze Frame works on 4K channels where /grab fails.
+func freezeFrameWidth(width int) int {
+	for _, w := range []int{720, 1280, 1920, 3840} {
+		if width <= w {
+			return w
+		}
+	}
+	return 3840
+}
+
 func dreamOSResolution(width int) string {
 	switch width {
 	case 720:
@@ -203,7 +214,7 @@ func grabAddresses(mode string, width int, kind string) []string {
 		return []string{fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width)}
 	}
 	var out []string
-	if p, ok := dreamOSFreezeFramePath(mode, width); ok {
+	if p, ok := dreamOSFreezeFramePath(mode, freezeFrameWidth(width)); ok {
 		out = append(out, p)
 	}
 	out = append(out, dreamOSGrabPath(mode, width))

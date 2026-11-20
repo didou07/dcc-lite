@@ -231,10 +231,8 @@ func parseATResult(body []byte) (atResult, error) {
 	return res, err
 }
 
-// atEsc protects a literal '%': the plugin runs unquote() on the values it receives.
 func atEsc(s string) string { return strings.ReplaceAll(s, "%", "%25") }
 
-// autoTimerGet fetches one plugin URL; it reports a missing plugin as a clear error.
 func (s *Server) autoTimerGet(w http.ResponseWriter, r *http.Request, path string, timeout time.Duration) ([]byte, bool) {
 	return s.autoTimerGetAny(w, r, []string{path}, timeout)
 }
@@ -252,7 +250,6 @@ func (s *Server) autoTimerGetAny(w http.ResponseWriter, r *http.Request, paths [
 	var err error
 	memoKey := "autotimer:" + pathOnly(paths[0])
 	if web.kind == "dreamos" && len(paths) > 1 {
-		// The address that worked last time goes first (nothing is remembered for OpenWebif).
 		if want := legacyRecall(web.base, memoKey); want != "" {
 			for i, p := range paths {
 				if i > 0 && pathOnly(p) == want {
@@ -265,7 +262,7 @@ func (s *Server) autoTimerGetAny(w http.ResponseWriter, r *http.Request, paths [
 	}
 	for i, path := range paths {
 		if i > 0 && web.kind != "dreamos" {
-			break // OpenWebif has one address; the alternatives belong to the old DreamOS only
+			break
 		}
 		status, body, err = web.getBounded(ctx, path, maxAutoTimerBytes)
 		if err == nil && status != http.StatusNotFound && web.kind == "dreamos" && len(paths) > 1 {
@@ -352,7 +349,6 @@ func atList(name string, values []string, keep func(string) bool) (string, error
 	return q.String(), nil
 }
 
-// buildAutoTimerQuery validates a rule and turns it into the plugin's edit parameters.
 func buildAutoTimerQuery(in atSaveRequest) (string, error) {
 	match := cleanText(in.Match, 300)
 	if match == "" {
@@ -498,7 +494,6 @@ func (s *Server) deviceAutoTimerDelete(w http.ResponseWriter, r *http.Request) {
 	s.autoTimerAction(w, r, "/autotimer/remove?id="+strconv.Itoa(*in.ID), 20*time.Second)
 }
 
-// deviceAutoTimerRun asks the plugin to search the guide now and create the timers.
 func (s *Server) deviceAutoTimerRun(w http.ResponseWriter, r *http.Request) {
 	var in atIDRequest
 	if err := decodeJSON(w, r, &in); err != nil {
@@ -558,7 +553,6 @@ type atSimXML struct {
 	} `xml:"e2simulatedtimer"`
 }
 
-// deviceAutoTimerPreview lists what the rules would record, without creating anything.
 func (s *Server) deviceAutoTimerPreview(w http.ResponseWriter, r *http.Request) {
 	suffix := ""
 	if raw := r.URL.Query().Get("id"); raw != "" {

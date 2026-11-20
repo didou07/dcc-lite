@@ -121,11 +121,8 @@ func New(opt Options) *Updater {
 	return u
 }
 
-// ExecPath is the program path captured at startup (os.Executable reports a
-// "(deleted)" path on Linux once the file has been replaced).
 func (u *Updater) ExecPath() string { return u.exe }
 
-// Restart is closed once a new executable is in place and the program should relaunch.
 func (u *Updater) Restart() <-chan struct{} { return u.restart }
 
 func (u *Updater) supported() (bool, string) {
@@ -154,7 +151,6 @@ func (u *Updater) Status() Status {
 	return u.st
 }
 
-// DisableAuto forces automatic installation off for this run (e.g. --no-auto-update).
 func (u *Updater) DisableAuto() {
 	u.mu.Lock()
 	u.st.Auto = false
@@ -311,8 +307,6 @@ func truncate(s string, n int) string {
 	return s
 }
 
-// Install downloads, verifies and swaps in the release found by the last Check,
-// then signals Restart.
 func (u *Updater) Install(ctx context.Context) error {
 	if err := u.begin("installing"); err != nil {
 		return err
@@ -442,7 +436,6 @@ func (u *Updater) download(ctx context.Context, rawURL, dest, wantSum string) er
 	return nil
 }
 
-// binaryName is the executable inside a release package: the same name in every package.
 func binaryName(_ string) string {
 	name := "DCCLite"
 	if runtime.GOOS == "windows" {
@@ -458,7 +451,6 @@ func extractBinary(zipPath, dest, variant string) error {
 	}
 	defer zr.Close()
 	exeName := binaryName(variant)
-	// The package holds the program and, besides it, a README.txt; anything else is refused.
 	var exe *zip.File
 	for _, f := range zr.File {
 		switch f.Name {
@@ -498,8 +490,6 @@ func extractBinary(zipPath, dest, variant string) error {
 	return os.Chmod(dest, 0o755)
 }
 
-// verifyBinary runs the new executable's --version so a broken or foreign build
-// is never swapped in.
 func verifyBinary(ctx context.Context, path, version string) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -513,7 +503,6 @@ func verifyBinary(ctx context.Context, path, version string) error {
 	return nil
 }
 
-// CleanupOld removes the previous executable left behind by a Windows update.
 func (u *Updater) CleanupOld() {
 	if u.exe != "" {
 		_ = os.Remove(u.exe + ".old")
@@ -521,7 +510,6 @@ func (u *Updater) CleanupOld() {
 	_ = os.RemoveAll(filepath.Join(u.opt.DataDir, "updates"))
 }
 
-// Run checks periodically and installs automatically when enabled and idle.
 func (u *Updater) Run(ctx context.Context) {
 	if ok, _ := u.supported(); !ok {
 		return

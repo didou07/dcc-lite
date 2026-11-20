@@ -9,7 +9,6 @@ import (
 	"runtime"
 )
 
-// libNames are tried in this order. DCC_LIBVLC (a full path to libvlc.so.5) always comes first.
 var libNames = []string{"libvlc.so.5", "libvlc.so"}
 
 var libDirs = func() []string {
@@ -24,7 +23,6 @@ var libDirs = func() []string {
 	case "386":
 		dirs = append(dirs, "/usr/lib/i386-linux-gnu")
 	}
-	// Flatpak keeps VLC in its own runtime; the host cannot load it, so it is not listed.
 	return dirs
 }()
 

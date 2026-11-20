@@ -11,7 +11,6 @@ import (
 
 type drive struct{ Path, Label string }
 
-// listDrives returns "/" plus the mounted disks found in the usual mount folders (Linux…
 func listDrives() []drive {
 	out := []drive{{Path: "/", Label: "/ (root)"}}
 	userName := ""

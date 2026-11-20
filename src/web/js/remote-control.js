@@ -90,7 +90,6 @@ function rcBuildLayout(code) {
     const text = glyph ? "@" + glyph : (/^(RED|GREEN|YELLOW|BLUE)$/.test(id) ? "" : (RC_TEXT[id] || item.label));
     return ["KEY_" + id, text, kind];
   };
-  // Keys that every receiver understands even when the drawing of this remote has no such button.
   const generic = (name, text, cls) => [name, text, cls];
   const firstOf = (...ids) => { for (const id of ids) if (byId.has(id) && !used.has(id)) return id; return null; };
   const row = (...cells) => { const r = cells.filter(Boolean); return r.length ? r : null; };
@@ -109,7 +108,6 @@ function rcBuildLayout(code) {
     push(main, row(key("LEFT"), key("OK"), key("RIGHT")));
     push(main, row(bl ? key(bl, "") : ["", "", "spacer"], key("DOWN"), br ? key(br, "") : ["", "", "spacer"]));
   }
-  // One small row of quick keys (like the real remote), then the volume slider is added by…
   const quick = ["PVR", "TV", "TEXT", "HELP", "AUDIO", "RADIO"].filter((id) => byId.has(id)).slice(0, 4);
   push(main, row(...quick.map((id) => key(id, "small"))));
   // Expanded part starts with the volume / channel keys.
@@ -118,7 +116,6 @@ function rcBuildLayout(code) {
   push(extra, row(vol("VOLUMEUP", "volup", "Vol+", "vol"), key("MUTE", ""), vol("CHANNELUP", "chup", "CH+", "ch")));
   push(extra, row(vol("VOLUMEDOWN", "voldown", "Vol-", "vol"), mid ? key(mid, "") : ["", "", "spacer"], vol("CHANNELDOWN", "chdown", "CH-", "ch")));
 
-  // Expanded part: transport keys first, then every remaining key in the order of the real…
   const transport = ["REWIND", "PLAY", "PAUSE", "FASTFORWARD", "PREVIOUS", "RECORD", "STOP", "NEXT"].filter((id) => byId.has(id) && !used.has(id));
   if (transport.length) {
     const list = transport.map((id) => key(id, id === "RECORD" ? "rec" : ""));
@@ -143,7 +140,6 @@ function rcLayout(id) {
   return null;
 }
 const REMOTE_LAYOUTS_CACHE = {};
-// Finds the remote definitions that belong to this receiver (model, machine build, box type).
 function remoteMatchCodes(info) {
   if (!info || typeof RC_DB === "undefined") return [];
   for (const value of [info.machinebuild, info.boxtype, info.model]) {
@@ -153,7 +149,6 @@ function remoteMatchCodes(info) {
   return [];
 }
 
-// Receiver volume slider (reads and sets the volume of the receiver itself).
 const rvol = { level: 0, muted: false, timer: null, busy: false };
 function remoteVolumeBar() {
   const mute = h("button", { type: "button", class: "rv-mute", title: "Mute", "aria-label": "Mute" });
@@ -256,7 +251,6 @@ function buildRemote() {
     if (group === "extra") holder.append(remoteVolumeBar());
     let rows = layout[group];
     if (group === "more") {
-      // keys already shown above are dropped, then the rest is spread evenly (max 4 per row)
       const keys = rows.flat().filter(([key]) => !seen.has(key));
       const count = Math.ceil(keys.length / 4);
       rows = Array.from({ length: count }, (_, i) => keys.slice(Math.floor(i * keys.length / count), Math.floor((i + 1) * keys.length / count)));

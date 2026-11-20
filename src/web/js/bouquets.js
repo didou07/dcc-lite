@@ -1,8 +1,9 @@
 "use strict";
-const bq = { profileID: "", dir: "/etc/enigma2", kind: "tv", lists: { tv: [], radio: [] }, file: "", entries: [], original: "", hash: "", sel: new Set(), anchor: -1, busy: false, dragging: [], namesKnown: true };
+const bq = { profileID: "", sessionID: "", sessionKey: "", dir: "/etc/enigma2", kind: "tv", lists: { tv: [], radio: [] }, file: "", entries: [], original: "", hash: "", sel: new Set(), anchor: -1, busy: false, dragging: [], namesKnown: true, listSeq: 0, openSeq: 0 };
 const bqHist = { undo: [], redo: [] };
 const bqClip = { entries: [] };
-const bqURL = (tail) => sessionURL(files.sessionID, `enigma2/${tail}`);
+const bqURL = (tail, sessionID = bq.sessionID) => sessionURL(sessionID, `enigma2/${tail}`);
+const bqSessionActive = (sessionID = bq.sessionID, sessionKey = bq.sessionKey) => Boolean(sessionID && sessionID === bq.sessionID && files.sessionID === sessionID && sessionKey === bq.sessionKey && files.sessionKey === sessionKey);
 const bqSnapshot = () => JSON.stringify([$("#bqName").value, bq.entries.map((e) => [e.ref, e.description])]);
 const bqDirty = () => Boolean(bq.file) && bqSnapshot() !== bq.original;
 const bqFilter = () => $("#bqFilter").value.trim().toLowerCase();
@@ -118,9 +119,9 @@ async function bqDiscardOK(title = "Discard unsaved changes?") {
   if (!bqDirty()) return true;
   return Boolean(await ask({ title, message: "The open bouquet has changes that are not saved yet.", input: false, ok: "Discard changes", danger: true }));
 }
-function bqError(error) {
+function bqError(error, sessionID = bq.sessionID) {
   if (error?.code === "file_not_found" || error?.code === "web_unreachable" || error?.code === "web_error" || error?.code === "conflict" || error?.code === "not_text") { bqStatus(error.message, "error"); return; }
-  handleOpError(error, "remote");
+  handleOpError(error, "remote", sessionID);
 }
 function bqResetOpen() {
   bq.file = ""; bq.entries = []; bq.sel.clear(); bq.anchor = -1; bq.original = ""; bq.hash = "";
@@ -129,30 +130,40 @@ function bqResetOpen() {
 }
 
 async function bqLoadLists(keepOpen = false) {
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey)) return;
+  const seq = ++bq.listSeq;
+  bq.openSeq++;
   bq.dir = $("#bqDir").value.trim() || "/etc/enigma2";
+  const dir = bq.dir;
   bqStatus("Loading bouquets…");
   try {
-    const data = await api(`${bqURL("bouquets")}?dir=${encodeURIComponent(bq.dir)}`);
+    const data = await api(`${bqURL("bouquets", sessionID)}?dir=${encodeURIComponent(dir)}`);
+    if (!bqSessionActive(sessionID, sessionKey) || seq !== bq.listSeq || dir !== bq.dir) return;
     bq.lists = { tv: data.tv || [], radio: data.radio || [] };
     $("#bqSub").textContent = data.dir;
     if (!keepOpen) bqResetOpen();
     bqRenderLists(); bqRenderEntries();
     bqStatus(`${bq.lists.tv.length} TV and ${bq.lists.radio.length} radio bouquets.`);
     if (!keepOpen && bq.lists[bq.kind][0]) bqOpenBouquet(bq.lists[bq.kind][0].file);
-  } catch (error) { bq.lists = { tv: [], radio: [] }; bqRenderLists(); bqRenderEntries(); bqError(error); }
+  } catch (error) { if (!bqSessionActive(sessionID, sessionKey) || seq !== bq.listSeq) return; bq.lists = { tv: [], radio: [] }; bqRenderLists(); bqRenderEntries(); bqError(error, sessionID); }
 }
 async function bqOpenBouquet(file) {
-  if (file === bq.file || !(await bqDiscardOK())) return;
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  const seq = ++bq.openSeq;
+  if (!bqSessionActive(sessionID, sessionKey) || file === bq.file || !(await bqDiscardOK()) || !bqSessionActive(sessionID, sessionKey) || seq !== bq.openSeq) return;
   bqStatus("Opening…");
   try {
-    const data = await api(`${bqURL("bouquet")}?dir=${encodeURIComponent(bq.dir)}&file=${encodeURIComponent(file)}`);
+    const dir = bq.dir;
+    const data = await api(`${bqURL("bouquet", sessionID)}?dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(file)}`);
+    if (!bqSessionActive(sessionID, sessionKey) || seq !== bq.openSeq || dir !== bq.dir) return;
     Object.assign(bq, { file: data.file, entries: data.entries, hash: data.hash, namesKnown: Boolean(data.names_available) });
     bq.sel.clear(); bq.anchor = -1; bqClearHistory();
     $("#bqName").value = data.name; $("#bqFilter").value = "";
     bq.original = bqSnapshot();
     bqRenderLists(); bqRenderEntries();
     bqStatus(data.names_available ? "" : "Channel names not found.");
-  } catch (error) { bqError(error); }
+  } catch (error) { if (bqSessionActive(sessionID, sessionKey) && seq === bq.openSeq) bqError(error, sessionID); }
 }
 
 function bqMoveBlock(indices, target) {
@@ -288,37 +299,44 @@ function bqPasteClipboard() {
 }
 
 async function bqSendEntries(file, indices, move) {
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey)) return;
   const target = bq.lists[bq.kind].find((item) => item.file === file);
   if (!target || file === bq.file || !indices.length) return;
   const picked = [...indices].sort((a, b) => a - b).map((i) => bq.entries[i]);
   bq.busy = true; bqButtons(); bqStatus(`${move ? "Moving" : "Copying"} to “${target.name}”…`);
   try {
-    const data = await api(`${bqURL("bouquet")}?dir=${encodeURIComponent(bq.dir)}&file=${encodeURIComponent(file)}`);
+    const data = await api(`${bqURL("bouquet", sessionID)}?dir=${encodeURIComponent(bq.dir)}&file=${encodeURIComponent(file)}`);
+    if (!bqSessionActive(sessionID, sessionKey)) return;
     const have = new Set(data.entries.filter((e) => !e.marker).map((e) => bqNormRef(e.ref)));
     const fresh = picked.filter((e) => e.marker || !have.has(bqNormRef(e.ref)));
     const skipped = picked.length - fresh.length;
     if (fresh.length) {
-      await api(bqURL("bouquet"), { method: "PUT", body: JSON.stringify({
+      await api(bqURL("bouquet", sessionID), { method: "PUT", body: JSON.stringify({
         dir: bq.dir, file, name: data.name,
         entries: [...data.entries, ...fresh].map((e) => ({ ref: e.ref, description: e.description })), expected_hash: data.hash, force: false,
       }) });
+      if (!bqSessionActive(sessionID, sessionKey)) return;
     }
     bq.busy = false;
     if (move) { bq.sel = new Set(indices); bqDeleteSelected(); }
     else bqButtons();
     bqStatus(`${bqPlural(fresh.length, "entry", "entries")} ${move ? "moved" : "copied"} to “${target.name}”${skipped ? ` (${skipped} already there)` : ""}.`, "ok");
-  } catch (error) { bq.busy = false; bqButtons(); bqError(error); }
+  } catch (error) { if (!bqSessionActive(sessionID, sessionKey)) return; bq.busy = false; bqButtons(); bqError(error, sessionID); }
 }
 
 async function bqSave(force = false) {
   if (bq.busy || !bq.file) return;
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey)) return;
   const name = $("#bqName").value.trim();
   if (!name) { bqStatus("Give the bouquet a name.", "error"); return; }
   bq.busy = true; bqButtons(); bqStatus("Saving…");
   try {
-    const data = await api(bqURL("bouquet"), { method: "PUT", body: JSON.stringify({
+    const data = await api(bqURL("bouquet", sessionID), { method: "PUT", body: JSON.stringify({
       dir: bq.dir, file: bq.file, name, entries: bq.entries.map((e) => ({ ref: e.ref, description: e.description })), expected_hash: bq.hash, force,
     }) });
+    if (!bqSessionActive(sessionID, sessionKey)) return;
     bq.hash = data.hash;
     $("#bqName").value = name;
     bq.original = bqSnapshot();
@@ -327,60 +345,79 @@ async function bqSave(force = false) {
     bq.busy = false; bqRenderLists(); bqRenderEntries();
     bqStatus(`Saved ${new Date().toLocaleTimeString()}.`, "ok");
   } catch (error) {
+    if (!bqSessionActive(sessionID, sessionKey)) return;
     bq.busy = false; bqButtons();
     if (error.code === "conflict") {
       bqStatus(error.message, "error");
-      if (await ask({ title: "Bouquet changed on the receiver", message: "Changed on the receiver since you opened it. Overwrite?", input: false, ok: "Overwrite", danger: true })) await bqSave(true);
-    } else bqError(error);
+      if (await ask({ title: "Bouquet changed on the receiver", message: "Changed on the receiver since you opened it. Overwrite?", input: false, ok: "Overwrite", danger: true }) && bqSessionActive(sessionID, sessionKey)) await bqSave(true);
+    } else bqError(error, sessionID);
   }
 }
 
 async function bqListAction(action) {
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey)) return;
   const file = bq.file;
   if (!file) return;
-  if (!(await bqDiscardOK())) return;
-  if (action === "remove" && !(await ask({ title: "Remove from the list", message: `Remove “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list? The file stays.`, input: false, ok: "Remove", danger: true }))) return;
-  if (action === "delete" && !(await ask({ title: "Delete the bouquet", message: `Delete “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet and its file ${file}? This cannot be undone.`, input: false, ok: "Delete", danger: true }))) return;
+  if (!(await bqDiscardOK()) || !bqSessionActive(sessionID, sessionKey)) return;
+  if (action === "remove" && (!(await ask({ title: "Remove from the list", message: `Remove “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet list? The file stays.`, input: false, ok: "Remove", danger: true })) || !bqSessionActive(sessionID, sessionKey))) return;
+  if (action === "delete" && (!(await ask({ title: "Delete the bouquet", message: `Delete “${$("#bqName").value}” from the ${bq.kind.toUpperCase()} bouquet and its file ${file}? This cannot be undone.`, input: false, ok: "Delete", danger: true })) || !bqSessionActive(sessionID, sessionKey))) return;
+  bq.busy = true; bqButtons();
   try {
-    const answer = await api(bqURL("bouquet/list-change"), { method: "POST", body: JSON.stringify({ dir: bq.dir, file, action }) });
+    const answer = await api(bqURL("bouquet/list-change", sessionID), { method: "POST", body: JSON.stringify({ dir: bq.dir, file, action }) });
+    if (!bqSessionActive(sessionID, sessionKey)) return;
+    bq.busy = false; bqButtons();
     if (answer?.note) toast(answer.note, "error");
     if (action === "remove" || action === "delete") { bqResetOpen(); await bqLoadLists(true); }
-    else { const keep = bq.file; await bqLoadLists(true); bq.file = keep; bqRenderLists(); }
-  } catch (error) { bqError(error); }
+    else { const keep = bq.file; await bqLoadLists(true); if (bqSessionActive(sessionID, sessionKey)) { bq.file = keep; bqRenderLists(); } }
+  } catch (error) { if (bqSessionActive(sessionID, sessionKey)) { bq.busy = false; bqButtons(); bqError(error, sessionID); } }
 }
 async function bqNewBouquet() {
-  if (!(await bqDiscardOK())) return;
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey) || !(await bqDiscardOK()) || !bqSessionActive(sessionID, sessionKey)) return;
   const name = await ask({ title: `New ${bq.kind.toUpperCase()} bouquet`, label: "Name", ok: "Create", validate: (v) => (v.trim() ? "" : "Enter a name.") });
-  if (!name) return;
+  if (!name || !bqSessionActive(sessionID, sessionKey) || bq.busy) return;
+  bq.busy = true; bqButtons(); bqStatus("Creating bouquet…");
   try {
-    const data = await api(bqURL("bouquet/new"), { method: "POST", body: JSON.stringify({ dir: bq.dir, kind: bq.kind, name: name.trim() }) });
+    const data = await api(bqURL("bouquet/new", sessionID), { method: "POST", body: JSON.stringify({ dir: bq.dir, kind: bq.kind, name: name.trim() }) });
+    if (!bqSessionActive(sessionID, sessionKey)) return;
+    bq.busy = false; bqButtons();
     bq.file = ""; bq.original = "";
     await bqLoadLists(true);
-    await bqOpenBouquet(data.file);
-  } catch (error) { bqError(error); }
+    if (bqSessionActive(sessionID, sessionKey)) await bqOpenBouquet(data.file);
+  } catch (error) { if (bqSessionActive(sessionID, sessionKey)) { bq.busy = false; bqButtons(); bqError(error, sessionID); } }
 }
 async function bqDuplicate() {
   if (!bq.file) return;
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey)) return;
   const entries = bq.entries.map((e) => ({ ref: e.ref, description: e.description }));
   const name = await ask({ title: "Duplicate bouquet", label: "Name of the copy", value: `${$("#bqName").value.trim()} copy`.slice(0, 120), ok: "Duplicate", validate: (v) => (v.trim() ? "" : "Enter a name.") });
-  if (!name) return;
+  if (!name || !bqSessionActive(sessionID, sessionKey)) return;
   bq.busy = true; bqButtons(); bqStatus("Creating the copy…");
   try {
-    const made = await api(bqURL("bouquet/new"), { method: "POST", body: JSON.stringify({ dir: bq.dir, kind: bq.kind, name: name.trim() }) });
-    const fresh = await api(`${bqURL("bouquet")}?dir=${encodeURIComponent(bq.dir)}&file=${encodeURIComponent(made.file)}`);
-    await api(bqURL("bouquet"), { method: "PUT", body: JSON.stringify({ dir: bq.dir, file: made.file, name: name.trim(), entries, expected_hash: fresh.hash, force: false }) });
+    const made = await api(bqURL("bouquet/new", sessionID), { method: "POST", body: JSON.stringify({ dir: bq.dir, kind: bq.kind, name: name.trim() }) });
+    if (!bqSessionActive(sessionID, sessionKey)) return;
+    const fresh = await api(`${bqURL("bouquet", sessionID)}?dir=${encodeURIComponent(bq.dir)}&file=${encodeURIComponent(made.file)}`);
+    if (!bqSessionActive(sessionID, sessionKey)) return;
+    await api(bqURL("bouquet", sessionID), { method: "PUT", body: JSON.stringify({ dir: bq.dir, file: made.file, name: name.trim(), entries, expected_hash: fresh.hash, force: false }) });
+    if (!bqSessionActive(sessionID, sessionKey)) return;
     bq.busy = false;
     const keep = bq.file; bq.file = ""; bq.original = "";
     await bqLoadLists(true);
     bq.file = keep;
-    await bqOpenBouquet(made.file);
+    if (bqSessionActive(sessionID, sessionKey)) await bqOpenBouquet(made.file);
     bqStatus(`Created “${name.trim()}” with ${bqPlural(entries.length, "entry", "entries")}.`, "ok");
-  } catch (error) { bq.busy = false; bqButtons(); bqError(error); }
+  } catch (error) { if (!bqSessionActive(sessionID, sessionKey)) return; bq.busy = false; bqButtons(); bqError(error, sessionID); }
 }
 async function bqReloadReceiver() {
-  bqStatus("Asking the receiver to reload…");
-  try { await api(bqURL("reload"), { method: "POST", body: "{}" }); bqStatus("The receiver reloaded its channel lists.", "ok"); toast("Receiver reloaded its bouquets"); }
-  catch (error) { bqError(error); }
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey) || bq.busy) return;
+  bq.busy = true; bqButtons(); bqStatus("Asking the receiver to reload…");
+  try {
+    await api(bqURL("reload", sessionID), { method: "POST", body: "{}" });
+    if (bqSessionActive(sessionID, sessionKey)) { bq.busy = false; bqButtons(); bqStatus("The receiver reloaded its channel lists.", "ok"); toast("Receiver reloaded its bouquets"); }
+  } catch (error) { if (bqSessionActive(sessionID, sessionKey)) { bq.busy = false; bqButtons(); bqError(error, sessionID); } }
 }
 
 const bqStreamEncode = (url) => url.trim().replace(/%/g, "%25").replace(/ /g, "%20").replace(/:/g, "%3a");
@@ -576,21 +613,23 @@ function bqAddProviders(providers, chosen) {
   select.dataset.kind = bq.kind;
 }
 async function bqAddSearch() {
+  const sessionID = bq.sessionID, sessionKey = bq.sessionKey;
+  if (!bqSessionActive(sessionID, sessionKey)) return;
   const seq = ++bqAdd.seq, q = $("#bqAddSearch").value.trim(), provider = $("#bqAddProvider").value;
   $("#bqAddStatus").textContent = "Searching…";
   try {
-    const data = await api(`${bqURL("services")}?dir=${encodeURIComponent(bq.dir)}&kind=${bq.kind}&q=${encodeURIComponent(q)}&provider=${encodeURIComponent(provider)}`);
-    if (seq !== bqAdd.seq) return;
+    const data = await api(`${bqURL("services", sessionID)}?dir=${encodeURIComponent(bq.dir)}&kind=${bq.kind}&q=${encodeURIComponent(q)}&provider=${encodeURIComponent(provider)}`);
+    if (seq !== bqAdd.seq || !bqSessionActive(sessionID, sessionKey)) return;
     bqAdd.items = data.services || []; bqAdd.sel.clear(); bqAdd.anchor = -1;
     bqAdd.have = new Set(bq.entries.filter((e) => !e.marker).map((e) => bqNormRef(e.ref)));
     bqAddProviders(data.providers, provider);
     bqAddRender();
     $("#bqAddStatus").textContent = !data.total ? "No channel matches." : data.truncated ? `Showing the first ${bqAdd.items.length} of ${data.total}.` : `${bqPlural(data.total, "channel", "channels")}.`;
   } catch (error) {
-    if (seq !== bqAdd.seq) return;
+    if (seq !== bqAdd.seq || !bqSessionActive(sessionID, sessionKey)) return;
     bqAdd.items = []; bqAdd.sel.clear(); bqAddRender();
     $("#bqAddStatus").textContent = error.message;
-    if (error.status === 404 && error.code !== "file_not_found") handleOpError(error, "remote");
+    if (error.status === 404 && error.code !== "file_not_found") handleOpError(error, "remote", sessionID);
   }
 }
 function bqOpenAdd() {
@@ -652,7 +691,7 @@ function bqAddConfirm() {
   $("#bqListFilter").addEventListener("input", bqRenderLists);
 }
 function bqReset() {
-  bqResetOpen(); bq.lists = { tv: [], radio: [] }; $("#bqSub").textContent = "";
+  bqResetOpen(); bq.busy = false; bqAdd.seq++; bq.listSeq++; bq.openSeq++; bq.lists = { tv: [], radio: [] }; $("#bqSub").textContent = "";
   bqRenderLists(); bqRenderEntries();
 }
 function listsMode(mode) {
@@ -675,10 +714,16 @@ async function listsEnterNow() {
   syncFilePort();
   if (!files.sessionID && !files.connecting && !files.manualOff) await fileConnect();
   if (!files.sessionID) { bqStatus(files.connecting ? "Connecting…" : "Not connected. Press Connect."); return; }
-  if (bq.profileID !== files.profileID) {
+  const identityChanged = bq.profileID !== files.profileID || bq.sessionKey !== files.sessionKey;
+  const connectionChanged = bq.sessionID !== files.sessionID;
+  if (identityChanged) {
     if (bqDirty()) toast("Unsaved changes of the previous device were discarded", "error");
     bqReset();
-    bq.profileID = files.profileID;
+  } else if (connectionChanged) {
+    bq.busy = false; bqAdd.seq++; bq.listSeq++; bq.openSeq++; bqButtons();
+  }
+  bq.profileID = files.profileID; bq.sessionID = files.sessionID; bq.sessionKey = files.sessionKey;
+  if (identityChanged || connectionChanged || !bq.lists.tv.length && !bq.lists.radio.length) {
     $("#bqDir").value = bq.dir;
     await bqLoadLists();
   }
@@ -805,25 +850,8 @@ async function listsEnterNow() {
   });
   window.addEventListener("beforeunload", (event) => { if (bqDirty()) { event.preventDefault(); event.returnValue = ""; } });
 }
-async function cmdCopyPath() {
-  const pane = panes[files.active], sel = selectedEntries(pane);
-  const text = sel.length ? sel.map((e) => e.path).join("\n") : pane.path;
-  if (await clipboardWrite(text)) toast(sel.length > 1 ? "Paths copied" : "Path copied");
-  else toast("Copy was blocked by the browser", "error");
-}
-function cmdSelectAll() {
-  const pane = panes[files.active];
-  const all = pane.visible.length > 0 && pane.visible.every((e) => pane.selected.has(e.path));
-  pane.selected = all ? new Set() : new Set(pane.visible.map((e) => e.path));
-  updateSelectionUI(pane);
-}
-function cmdSelectNone() {
-  const pane = panes[files.active];
-  pane.selected = new Set();
-  updateSelectionUI(pane);
-}
-function handleOpError(error, kind) {
-  if (kind === "remote" && sessionLost(error)) handleSessionLost();
+function handleOpError(error, kind, sessionID = files.sessionID) {
+  if (kind === "remote" && sessionLost(error)) handleSessionLost(sessionID);
   toastError(error);
 }
 $(".actionbar").addEventListener("click", (event) => {

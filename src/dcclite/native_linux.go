@@ -56,7 +56,6 @@ func nativeClose() {
 	nativeOnce.Do(func() { close(nativeStop) })
 }
 
-// nativeNotice tells the user something when the program has no console (best effort).
 func nativeNotice(text string) {
 	nativeLog.Info(text)
 	if p, err := exec.LookPath("notify-send"); err == nil {

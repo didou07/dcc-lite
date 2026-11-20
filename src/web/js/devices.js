@@ -5,7 +5,6 @@ const deviceByID = (id) => devices.list.find((p) => p.id === id) || null;
 const sites = { query: "", mode: store.get("sitesMode", "grid") === "list" ? "list" : "grid" };
 const lastUsed = () => store.get("siteLastUsed", {});
 function touchSite(id) { if (!id) return; const m = lastUsed(); m[id] = Date.now(); const keep = Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 200); store.set("siteLastUsed", Object.fromEntries(keep)); }
-/* Pinned sites first, then by group, then by name (same order everywhere). */
 function sortedSites(list = devices.list) {
   return [...list].sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)
     || (a.group || "￿").localeCompare(b.group || "￿", undefined, { sensitivity: "base" })
@@ -181,7 +180,6 @@ async function testDevice(id) {
   }
 }
 const deviceInfoState = new Map();
-// At-a-glance readings on each online card (same /info data as the full panel).
 const deviceBrief = new Map();
 const briefSignature = (data) => JSON.stringify([data.model, data.uptime, data.temperature, data.signal && [data.signal.snr, data.signal.standby], (data.tuners || []).map((t) => [t.rec, t.stream]), (data.disks || [])[0]?.text]);
 async function loadBrief(id) {
@@ -276,7 +274,6 @@ function deviceInfoPanel(profile) {
   return panel;
 }
 
-// ---- Connection check: every service tested on its own, with the reason and what to do ----
 const diag = { profile: null, token: 0 };
 function diagRow(check) {
   const mark = { ok: "check", warn: "info", fail: "x", skip: "minus" }[check.state] || "info";

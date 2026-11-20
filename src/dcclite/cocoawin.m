@@ -101,7 +101,6 @@ static void send_mouse(NSEvent *e, const char *kind) {
 }
 @end
 
-// The page's window: flipped, so boxes from the page (top-left origin) can be used as they are.
 @interface DCCContainer : NSView
 @end
 
@@ -231,7 +230,6 @@ static NSString *unique_download_path(NSString *name) {
 	[wv reload];
 }
 
-// ---- JavaScript dialogs and file choosers (WKWebView shows none of them by itself) ----
 
 - (void)webView:(WKWebView *)wv runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)f completionHandler:(void (^)(void))handler {
 	NSAlert *a = [[NSAlert alloc] init];
@@ -374,7 +372,7 @@ int dcc_cocoa_run(const char *url, const char *origin, const char *datadir, cons
 			@"    return window.webkit.messageHandlers.dccLive.postMessage(op + '\\n' + (args || '{}'));\n"
 			@"  };\n"
 			@"}\n"
-			@"window.dccLiveGtk = true;\n", q, q]; // the picture is a native view above the page (the page keeps it inside its scroll view)
+			@"window.dccLiveGtk = true;\n", q, q];
 		[ucc addUserScript:[[WKUserScript alloc] initWithSource:bridge injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
 		[cfg setUserContentController:ucc];
 		if (getenv("DCC_MAC_DEVTOOLS")) [[cfg preferences] setValue:@YES forKey:@"developerExtrasEnabled"];

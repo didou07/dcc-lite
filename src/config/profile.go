@@ -67,7 +67,6 @@ func portOr(value, fallback int) int {
 	return fallback
 }
 
-// NormalizeWebKind lower-cases the kind and maps the old name "webinterface" to "dreamos".
 func NormalizeWebKind(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "webinterface" {

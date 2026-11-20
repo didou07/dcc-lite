@@ -27,7 +27,6 @@ var (
 	ErrSessionNotFound = errors.New("file transfer session not found")
 	ErrSessionLimit    = errors.New("Too many file connections are busy with transfers.")
 	ErrTaskNotFound    = errors.New("transfer task not found")
-	// ErrPathNotFound: the folder typed in the path bar does not exist (or cannot be opened) on…
 	ErrPathNotFound = errors.New("Folder not found on the device")
 )
 
@@ -244,7 +243,6 @@ func (m *Manager) Rename(ctx context.Context, sessionID, oldPath, newPath string
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Rename(ctx, oldPath, newPath) })
 }
 
-// Remove deletes a file, or a folder together with everything inside it.
 func (m *Manager) Remove(ctx context.Context, sessionID, remotePath string, directory bool) error {
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
 		if !directory {
@@ -278,7 +276,6 @@ func removeTree(ctx context.Context, adapter core.FileTransfer, dir string, dept
 			continue
 		}
 		child := path.Join(dir, entry.Name)
-		// A symbolic link is removed as a file; the folder it points to is never entered.
 		isLink := strings.HasPrefix(entry.Mode, "l")
 		if entry.IsDir && !isLink {
 			if err := removeTree(ctx, adapter, child, depth+1, budget); err != nil {
@@ -296,8 +293,6 @@ func (m *Manager) Chmod(ctx context.Context, sessionID, remotePath string, mode 
 	return m.withAdapter(sessionID, func(adapter core.FileTransfer) error { return adapter.Chmod(ctx, remotePath, mode) })
 }
 
-// Copy duplicates srcPath onto dstPath on the same device. FTP has no server-side copy,
-// so files are streamed through a local temp file.
 func (m *Manager) Copy(ctx context.Context, sessionID, srcPath, dstPath string, overwrite bool) error {
 	if err := validateRemotePath(srcPath); err != nil {
 		return err
@@ -338,7 +333,6 @@ func (m *Manager) Copy(ctx context.Context, sessionID, srcPath, dstPath string, 
 	})
 }
 
-// copyRemoteFile copies through this computer and then restores the original permissions…
 func copyRemoteFile(ctx context.Context, adapter core.FileTransfer, src, dst, mode string) error {
 	dir, err := os.MkdirTemp("", "dcclite-copy-*")
 	if err != nil {

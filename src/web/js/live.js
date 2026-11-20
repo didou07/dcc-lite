@@ -1,5 +1,4 @@
 "use strict";
-// Live TV (Windows app only): VLC draws in a native window over #liveVideo; see window.dccLive.
 
 const liveNative = typeof window.dccLive === "function";
 const liveGui = typeof window.__dccGui === "string"; // running inside the DCC Lite window, bridge or not
@@ -11,21 +10,18 @@ const live = {
   retries: 0, timer: 0, pingTimer: 0, ecmTimer: 0, ecmGen: 0, retryTimer: 0, stableTimer: 0, followSince: 0, polling: false,
   popup: false, boundsKey: "", ticks: 0, syncBusy: false, syncDirty: false,
   cw: [], cwKey: "", cwHistory: [], cwChangedAt: 0, cwRenderKey: "", ecmRaw: "", rx: [],
-  // The one place for player settings (the gear menu). They apply from the next start of a channel.
   deint: liveChoice(store.get("live.deint", "auto"), ["auto", "yadif", "off"], "auto"),
   caching: liveChoice(Number(store.get("live.caching", 1500)), [500, 1500, 3000], 1500),
   hw: store.get("live.hw", true) !== false, settingsDirty: false, popKind: "",
-  // How the picture meets the edges of the window (right-click menu or gear menu).
   fit: liveChoice(store.get("live.fit", "fit"), ["fit", "fill", "stretch", "16:9", "4:3"], "fit"),
   panelOn: store.get("live.panel", true) !== false, // the details panel (player, control words, card) beside the picture
   fs: false, fsTimer: 0, // the player is shown over the whole screen (see liveFullSet)
-  cover: false,   // a long stall: the frozen picture steps aside so the waiting sign can be seen
+  cover: false,
   waitSince: 0, waitTimer: 0,
 };
 const liveIsOn = () => live.on;
 const liveChannelName = () => $("#nowChannel").textContent || live.name || "channel";
 
-// A call that never comes back (the window was busy in a drag, say) must not wedge the polling.
 async function liveCall(op, args = {}) {
   let timer = 0;
   const timeout = new Promise((_, reject) => { timer = window.setTimeout(() => reject(new Error("The player did not answer")), 4000); });
@@ -39,7 +35,6 @@ function liveResetCW() { live.cwKey = ""; live.cw = []; live.cwHistory = []; liv
 
 // ---- State and layout ----
 
-// Shows how long the stream has been pending (after 4 s), so a slow start does not look frozen.
 const liveBusyStates = ["connecting", "buffering", "reconnecting"];
 function liveWaitTick() {
   const node = $("#liveWait");
@@ -84,7 +79,6 @@ function liveReconnect(reason) {
   live.retryTimer = window.setTimeout(() => liveBegin(), Math.min(1200 * live.retries, 6000));
 }
 
-// The native window follows the box: position, size and whether it may be seen at all.
 function liveBox() {
   const r = $("#liveVideo").getBoundingClientRect();
   let left = r.left, top = r.top, right = r.right, bottom = r.bottom;
@@ -106,7 +100,6 @@ function liveSyncNative(force = false) {
   const box = liveBox(), visible = liveMayShow();
   const key = [visible, Math.round(box.x), Math.round(box.y), Math.round(box.w), Math.round(box.h), box.vw, box.vh].join(",");
   if (!force && key === live.boundsKey) return;
-  // One call at a time; changes made meanwhile are sent once, with the newest box.
   if (live.syncBusy) { live.syncDirty = true; return; }
   live.boundsKey = key;
   live.syncBusy = true;
@@ -117,7 +110,6 @@ function liveSyncNative(force = false) {
 }
 
 function liveShowUI(on) {
-  // The remote makes way for the picture while watching live (the Remote button brings it back).
   if (on && !live.autoHidRemote && !$("#remotePad").hidden) {
     live.autoHidRemote = true;
     $("#remotePad").hidden = true;
@@ -275,7 +267,6 @@ async function liveTick() {
     if (!live.followSince) live.followSince = now;
     if (now - live.followSince > 800) { live.followSince = 0; live.retries = 0; liveBegin(); return; }
   } else live.followSince = 0;
-  // Re-raise the picture window every few seconds in case the page window moved above it.
   liveSyncNative(++live.ticks % 6 === 0);
   liveAgo();
 }
@@ -340,7 +331,6 @@ function livePopClose() {
   if (pop) pop.remove();
   live.popKind = "";
   if (live.popup) { live.popup = false; liveSyncNative(); }
-  // Settings that VLC reads when a channel opens take effect once the menu is closed.
   if (live.settingsDirty) {
     live.settingsDirty = false;
     if (live.on) { live.retries = 0; liveBegin(); }
@@ -441,10 +431,8 @@ async function liveFullSet(on) {
   $("#liveFull use").setAttribute("href", on ? "#i-collapse" : "#i-expand");
   $("#liveFull").setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
   try { await liveCall("fullscreen", { on }); } catch (error) { live.fs = !on; $("#screenStage").classList.toggle("fs-native", !on); toast(liveMessage(error), "error"); return; }
-  // The window needs a moment to change size; the picture follows its box when it has settled.
   for (const ms of [120, 450, 900]) window.setTimeout(() => liveSyncNative(true), ms);
 }
-// In full screen the bars go away after 3 s without movement and return when the mouse moves.
 function liveFsWake() {
   const stage = $("#screenStage");
   window.clearTimeout(live.fsTimer);
@@ -458,13 +446,11 @@ function liveFsWake() {
     liveCall("cursor", { hide: true }).catch(() => { }); // the pointer over VLC's window is hidden by the app
   }, 3000);
 }
-// true when the live player took the request (the caller then skips the browser's full screen).
 function liveFullToggle() {
   if (!liveNative || !live.on) return false;
   liveFullSet(!live.fs);
   return true;
 }
-// Escape: close the open menu first, then leave full screen. true when something was closed.
 function liveEscape() {
   if (!live.on) return false;
   if ($("#livePop")) { livePopClose(); return true; }
@@ -518,7 +504,6 @@ function liveContextMenu(x, y) {
   if ($("#livePop")) livePopClose();
   const pop = h("div", { class: "live-pop live-ctx", id: "livePop", role: "menu", "aria-label": "Video options" });
   pop.addEventListener("contextmenu", (event) => event.preventDefault());
-  // Inside the stage, so it is also on top when the stage fills the screen.
   $("#screenStage").append(pop);
   live.popKind = "ctx";
   live.ctxAt = { x, y };
@@ -592,13 +577,11 @@ function liveRenderCW() {
     const title = named ? named[1] : w.name.split(" ")[0], kind = named ? named[2] : "";
     const group = (from) => h("span", { class: "grp" }, bytes.slice(from, from + 4).map((b, i) => h("span", { class: i === 3 ? "sum" : "", text: b })));
     const tip = zero ? "All zero: the channel is not being decoded" : ok ? "Checksum OK: bytes 4 and 8 match the standard DVB checksum" : "Checksum does not match.";
-    // One line per word: name, the eight bytes, and a small checksum mark.
     return h("div", { class: "live-cw", dataset: { name: w.name } },
       h("div", { class: "live-cw-name" }, h("b", { text: title }), kind && h("span", { class: "live-kind", text: kind })),
       h("div", { class: "live-hex", role: "text", "aria-label": w.hex }, group(0), group(4)),
       h("span", { class: `live-chip ${zero ? "bad" : ok ? "ok" : ""}`, title: tip }, zero ? "empty" : ok ? "✓" : "≠"));
   }));
-  // The current words are shown above; history lists earlier ones and starts folded.
   const rows = live.cwHistory.map((e, i) => h("li", {},
     h("time", { text: new Date(e.at).toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB")) }),
     h("span", { text: `${e.first ? "Seen" : "Changed"} ${e.words.map((w) => w.name.split(" ")[0]).join(" + ")}` }),
@@ -662,7 +645,6 @@ if (liveNative) {
     else if (kind === "move") liveFsWake();
     else if (kind === "wheel") { const view = $("#liveVideo").closest(".view"); if (view) view.scrollBy({ top: y }); }
   };
-  // The app looks at the mouse over the picture and queues what happened; collect it often.
   let mouseBusy = false;
   window.setInterval(async () => {
     if (!live.on || mouseBusy) return;
@@ -688,7 +670,6 @@ if (liveNative) {
   $("#livePanelBtn").addEventListener("click", liveTogglePanel);
   $("#livePanelClose").addEventListener("click", liveTogglePanel);
 
-  // Keep VLC's window on its box: whenever the page moves, resizes or covers it.
   new ResizeObserver(() => liveSyncNative()).observe($("#liveVideo"));
   window.addEventListener("resize", () => liveSyncNative());
   window.addEventListener("scroll", () => liveSyncNative(), true);
@@ -709,7 +690,6 @@ if (liveNative) {
   });
 }
 else if (liveGui) {
-  // The window is there but the player bridge did not arrive: say why instead of hiding the button.
   const why = `The player is not connected to this page. Restart DCC Lite.`;
   console.error(why);
   $("#liveToggle").hidden = false;

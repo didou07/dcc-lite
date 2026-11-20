@@ -12,14 +12,11 @@ import (
 	"unicode/utf8"
 )
 
-// Term is a piece of user data that must never leave the machine in a report,
-// for example a device name or host name.
 type Term struct {
 	Value string
 	Kind  string // label prefix: "device", "host", "user", ...
 }
 
-// Sanitizer replaces personal data with stable labels (ip#1, device#2, ...).
 type Sanitizer struct {
 	rules  []termRule
 	labels map[string]int
@@ -41,15 +38,12 @@ var (
 	systemPaths = []string{"/etc", "/usr", "/var", "/tmp", "/proc", "/sys", "/lib", "/bin", "/sbin", "/boot", "/dev", "/run", "/opt"}
 )
 
-// genericDirs are receiver folder names that say nothing about the person.
 var genericDirs = map[string]bool{
 	"movie": true, "movies": true, "music": true, "picture": true, "pictures": true, "video": true, "videos": true,
 	"backup": true, "backups": true, "epg": true, "timeshift": true, "picon": true, "ipk": true, "tmp": true,
 	"enigma2": true, "keys": true, "plugins": true, "hdd": true, "usb": true, "net": true, "ba": true,
 }
 
-// NewSanitizer builds a sanitizer for the given terms. This computer's host name
-// is always included.
 func NewSanitizer(terms ...Term) *Sanitizer {
 	s := &Sanitizer{labels: map[string]int{}, counts: map[string]int{}}
 	if host, err := os.Hostname(); err == nil {

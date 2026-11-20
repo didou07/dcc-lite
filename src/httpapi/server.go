@@ -5,7 +5,10 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
+	"path"
+	"strings"
 	"sync/atomic"
 
 	"github.com/didou07/dcc-lite/src/app"
@@ -49,6 +52,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/profiles/{id}/test", s.testConnection)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/diagnose", s.deviceDiagnose)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/screen", s.deviceScreen)
+	mux.HandleFunc("GET /api/v1/profiles/{id}/screen/diag", s.deviceScreenDiag)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/remote-key", s.deviceRemoteKey)
 	mux.HandleFunc("POST /api/v1/profiles/{id}/message", s.deviceMessage)
 	mux.HandleFunc("GET /api/v1/profiles/{id}/volume", s.deviceVolume)
@@ -185,6 +189,32 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	return nil
 }
 
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		name, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if strings.EqualFold(strings.TrimSpace(name), "gzip") {
+			return strings.ReplaceAll(strings.TrimSpace(params), " ", "") != "q=0"
+		}
+	}
+	return false
+}
+
+func writeGzip(w http.ResponseWriter, r *http.Request, contentType, etag string, body []byte) {
+	h := w.Header()
+	h.Set("Content-Type", contentType)
+	h.Set("Content-Encoding", "gzip")
+	h.Add("Vary", "Accept-Encoding")
+	h.Set("ETag", etag)
+	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(body)
+	}
+}
+
 func (s *Server) staticFiles() http.Handler {
 	sub, err := fs.Sub(webui.FS(), ".")
 	if err != nil {
@@ -192,13 +222,22 @@ func (s *Server) staticFiles() http.Handler {
 	}
 	files := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
-			page, err := webui.Page("index.html")
-			if err == nil {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		get := r.Method == http.MethodGet || r.Method == http.MethodHead
+		gz := get && acceptsGzip(r)
+		if get && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
+			if page, err := webui.Page("index.html"); err == nil {
 				w.Header().Set("Cache-Control", "no-store")
 				w.Header().Set("X-DCC-Build", webui.Build())
-				_, _ = w.Write(page)
+				if gz {
+					if zipped, err := webui.PageGzip("index.html"); err == nil {
+						writeGzip(w, r, "text/html; charset=utf-8", `"`+webui.Build()+`-index-gz"`, zipped)
+						return
+					}
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				if r.Method != http.MethodHead {
+					_, _ = w.Write(page)
+				}
 				return
 			}
 		}
@@ -206,6 +245,17 @@ func (s *Server) staticFiles() http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
+		}
+		if gz && r.Header.Get("Range") == "" {
+			name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+			if zipped := webui.Gzipped(name); zipped != nil {
+				ctype := mime.TypeByExtension(path.Ext(name))
+				if ctype == "" {
+					ctype = "application/octet-stream"
+				}
+				writeGzip(w, r, ctype, `"`+webui.Build()+`-`+name+`-gz"`, zipped)
+				return
+			}
 		}
 		files.ServeHTTP(w, r)
 	})

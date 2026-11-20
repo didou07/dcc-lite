@@ -14,7 +14,6 @@ func (s *Server) registerUpdateRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/update/settings", s.putUpdateSettings)
 }
 
-// Changing the program is only allowed from the local machine, never through remote access.
 func (s *Server) updateWritable(w http.ResponseWriter) bool {
 	if s.app.Updates == nil {
 		writeError(w, http.StatusNotFound, "updates are not available")
@@ -53,7 +52,6 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) {
 	if !s.updateWritable(w) {
 		return
 	}
-	// The download must outlive a closed browser tab, so it is not tied to the request.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	longTransfer(w)

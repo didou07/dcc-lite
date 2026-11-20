@@ -238,7 +238,6 @@ func (d deviceWeb) pressFallback(ctx context.Context, apiPath string) (int, []by
 	return d.press(ctx, apiPath)
 }
 
-// webUnsupported reports that the receiver's web interface has no such address.
 func webUnsupported(status int) bool {
 	return status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented
 }
@@ -252,7 +251,6 @@ var (
 	xmlTextPattern  = regexp.MustCompile(`(?is)<e2statetext>(.*?)</e2statetext>`)
 )
 
-// xmlResult reads the <e2simplexmlresult> answer of the older web interface.
 func xmlResult(body []byte) (state bool, text string, ok bool) {
 	m := xmlStatePattern.FindSubmatch(body)
 	if m == nil {

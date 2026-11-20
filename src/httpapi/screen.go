@@ -8,12 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	grabTimeout     = 25 * time.Second
+	grabTimeout     = 90 * time.Second
 	grabMinInterval = 400 * time.Millisecond
 	grabFailPause   = 5 * time.Second
 	grabFailPauseMx = 30 * time.Second
@@ -30,10 +31,9 @@ type grabState struct {
 	streak  int
 	failMsg string
 	doneAt  time.Time
-	// the address that last gave a picture, so a receiver is probed once and not on every refresh
-	found bool
-	idx   int
-	kind  string
+	found   bool
+	idx     int
+	kind    string
 }
 
 var grabStates sync.Map
@@ -137,13 +137,10 @@ func fetchGrab(ctx context.Context, web deviceWeb, mode string, width int) ([]by
 
 const maxScreenBytes = 16 << 20
 
-// freezeFrameSupported reports whether the Freeze Frame page offers this width.
 func freezeFrameSupported(width int) bool {
 	return width == 720 || width == 1280 || width == 1920 || width == 3840
 }
 
-// freezeFrameWidth rounds up to a width Freeze Frame offers (480 -> 720).
-// Freeze Frame works on 4K channels where /grab fails.
 func freezeFrameWidth(width int) int {
 	for _, w := range []int{720, 1280, 1920, 3840} {
 		if width <= w {
@@ -166,18 +163,24 @@ func dreamOSResolution(width int) string {
 	return fmt.Sprintf("%dx%d", width, height)
 }
 
-func dreamOSFreezeFramePath(mode string, width int) (string, bool) {
+func dreamOSFreezeFramePath(mode string, width int, method string) (string, bool) {
 	if !freezeFrameSupported(width) {
 		return "", false
 	}
-	method := "auto"
-	if mode == "all" {
-		method = "ffmpeg"
+	format := "jpg"
+	if mode == "osd" {
+		format = "png"
 	}
-	return fmt.Sprintf("/freezeframe?screenshot=%s&resolution=%s&format=png&method=%s&refresh=&grab=Download", mode, dreamOSResolution(width), method), true
+	return fmt.Sprintf("/freezeframe?screenshot=%s&resolution=%s&format=%s&method=%s&refresh=&grab=Download", mode, dreamOSResolution(width), format, method), true
 }
 
-// dreamOSScreenshotPath is the receiver's own /screenshot address, used for the menus only.
+func screenMemoName(addr string) string {
+	if strings.HasPrefix(addr, "/freezeframe") {
+		return addr
+	}
+	return pathOnly(addr)
+}
+
 func dreamOSScreenshotPath(mode string, width int) string {
 	format := "format=jpg&jpgquali=90"
 	if mode == "osd" {
@@ -214,7 +217,20 @@ func grabAddresses(mode string, width int, kind string) []string {
 		return []string{fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width)}
 	}
 	var out []string
-	if p, ok := dreamOSFreezeFramePath(mode, freezeFrameWidth(width)); ok {
+	w := freezeFrameWidth(width)
+	if p, ok := dreamOSFreezeFramePath(mode, w, "auto"); ok {
+		out = append(out, p)
+	}
+	if w > 1920 {
+		if p, ok := dreamOSFreezeFramePath(mode, 1920, "auto"); ok {
+			out = append(out, p)
+		}
+	}
+	fw := w
+	if fw > 1920 {
+		fw = 1920
+	}
+	if p, ok := dreamOSFreezeFramePath(mode, fw, "ffmpeg"); ok {
 		out = append(out, p)
 	}
 	out = append(out, dreamOSGrabPath(mode, width))
@@ -245,12 +261,16 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 	st.mu.Unlock()
 	order := []int{0}
 	memoFn := "screen " + mode + " " + strconv.Itoa(width)
+	commandFirst := false
 	if web.kind == "dreamos" {
-		// try the address that worked last time first; the others only if it stops answering
 		order = make([]int, 0, len(all))
-		if name := legacyRecall(web.base, memoFn); name != "" {
-			for i, a := range all {
-				if pathOnly(a) == name {
+		name := legacyRecall(web.base, memoFn)
+		if name == "command" || name == "dreamboxctl" {
+			commandFirst = true
+		}
+		if name != "" && !commandFirst {
+			for i, address := range all {
+				if screenMemoName(address) == name {
 					order = append(order, i)
 					break
 				}
@@ -264,20 +284,60 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 	} else if found && idx < len(all) {
 		order = []int{idx}
 	}
+
 	var lastMsg string
-	for n, i := range order {
-		// the old interface can leave a screenshot request hanging: give each address its own
-		// time, so the next one still has a chance within the overall limit
-		actx, acancel := ctx, context.CancelFunc(func() {})
-		if web.kind == "dreamos" && n < len(order)-1 {
-			actx, acancel = context.WithTimeout(ctx, 12*time.Second)
+	var pluginNote string
+	var commandFailure string
+	pluginBusy := false
+	commandAttempted := false
+	if web.kind == "dreamos" && commandFirst {
+		commandAttempted = true
+		body, err := captureDreamOSWithCommand(ctx, web, mode, width)
+		if err == nil {
+			legacyRemember(web.base, memoFn, "command")
+			st.mu.Lock()
+			st.found = false
+			st.mu.Unlock()
+			return body, nil
 		}
+		commandFailure = cleanText(err.Error(), 240)
+		legacyForget(web.base, memoFn)
+		devLog.Warn("DreamOS screenshot command fallback failed", "base", web.base, "error", err)
+	}
+
+	for _, i := range order {
+		if pluginBusy && strings.HasPrefix(all[i], "/freezeframe") {
+			continue
+		}
+		actx, acancel := ctx, context.CancelFunc(func() {})
+		if web.kind == "dreamos" {
+			timeout := screenAddressTimeout(all[i])
+			if deadline, ok := ctx.Deadline(); ok {
+				reserve := 3 * time.Second
+				if !commandAttempted {
+					reserve += dreamOSCaptureCommandTimeout + dreamOSCaptureFTPTimeout + dreamOSCaptureCleanupTimeout
+				}
+				remaining := time.Until(deadline) - reserve
+				if remaining <= 0 {
+					break
+				}
+				if timeout > remaining {
+					timeout = remaining
+				}
+			}
+			actx, acancel = context.WithTimeout(ctx, timeout)
+		}
+		began := time.Now()
 		resp, err := web.get(actx, all[i])
 		if err != nil {
 			acancel()
-			if web.kind == "dreamos" && n < len(order)-1 && ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
-				devLog.Warn("screenshot address did not answer in time", "base", web.base, "path", pathOnly(all[i]))
-				lastMsg = "The receiver did not answer the screenshot request in time."
+			if web.kind == "dreamos" && ctx.Err() == nil {
+				devLog.Warn("DreamOS screenshot address failed", "base", web.base, "path", pathOnly(all[i]), "ms", time.Since(began).Milliseconds(), "error", err)
+				lastMsg = web.unreachable(err)
+				if strings.HasPrefix(all[i], "/freezeframe") && errors.Is(err, context.DeadlineExceeded) {
+					pluginBusy = true
+					pluginNote = "The Freeze Frame plug-in did not finish in time and may still be running."
+				}
 				continue
 			}
 			msg := web.unreachable(err)
@@ -303,21 +363,29 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 				st.found = false
 				st.mu.Unlock()
 			}
-			continue // only a missing address moves on to the next one
+			continue
 		case resp.StatusCode != http.StatusOK:
 			lastMsg = fmt.Sprintf("The receiver's screenshot address failed (HTTP %d).", resp.StatusCode)
 			devLog.Warn("screenshot address refused", "base", web.base, "path", pathOnly(all[i]), "status", resp.StatusCode)
-			switch resp.StatusCode {
-			case http.StatusBadRequest, http.StatusPreconditionFailed, http.StatusUnsupportedMediaType, http.StatusNotImplemented, http.StatusInternalServerError:
-				if web.kind == "dreamos" && n < len(order)-1 {
-					continue // the request was refused, not crashed: another form of the address may be accepted
-				}
+			if web.kind == "dreamos" {
+				continue
 			}
 		case rerr != nil || len(body) > maxScreenBytes:
 			lastMsg = "The receiver sent an unusable picture."
+			if web.kind == "dreamos" {
+				continue
+			}
 		case !isPicture(body):
-			lastMsg = "The receiver did not return a picture."
-			if web.kind == "dreamos" && n < len(order)-1 {
+			kind, evidence := classifyScreenReply(body)
+			devLog.Warn("screenshot address returned no picture", "base", web.base, "path", pathOnly(all[i]),
+				"status", resp.StatusCode, "kind", kind, "type", resp.Header.Get("Content-Type"),
+				"bytes", len(body), "ms", time.Since(began).Milliseconds(), "reply", evidence)
+			lastMsg = screenKindMessage(kind)
+			if kind == screenReplyBusy && strings.HasPrefix(all[i], "/freezeframe") {
+				pluginBusy = true
+				pluginNote = screenKindMessage(kind)
+			}
+			if web.kind == "dreamos" {
 				continue
 			}
 		default:
@@ -325,11 +393,37 @@ func grabOnce(ctx context.Context, web deviceWeb, st *grabState, mode string, wi
 			st.found, st.idx = true, i
 			st.mu.Unlock()
 			if web.kind == "dreamos" {
-				legacyRemember(web.base, memoFn, pathOnly(all[i]))
+				legacyRemember(web.base, memoFn, screenMemoName(all[i]))
 			}
 			return body, nil
 		}
-		break // a real failure: stop, do not ask again
+		break
+	}
+	if web.kind == "dreamos" && !commandAttempted {
+		commandAttempted = true
+		body, err := captureDreamOSWithCommand(ctx, web, mode, width)
+		if err == nil {
+			legacyRemember(web.base, memoFn, "command")
+			st.mu.Lock()
+			st.found = false
+			st.mu.Unlock()
+			return body, nil
+		}
+		commandFailure = cleanText(err.Error(), 240)
+		legacyForget(web.base, memoFn)
+		devLog.Warn("DreamOS screenshot command fallback failed", "base", web.base, "error", err)
+	}
+	if web.kind == "dreamos" {
+		logScreenVideo(web)
+		if lastMsg == "" {
+			lastMsg = "The receiver could not return a picture through OpenWebif or the DreamOS capture tools."
+		}
+		if commandFailure != "" {
+			lastMsg += " Direct capture failed: " + commandFailure
+		}
+	}
+	if pluginNote != "" && pluginNote != lastMsg {
+		lastMsg = pluginNote + " " + lastMsg
 	}
 	st.fail(lastMsg)
 	return nil, &grabError{"web_error", lastMsg}

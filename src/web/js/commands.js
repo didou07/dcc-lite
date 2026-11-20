@@ -20,7 +20,6 @@
   // Two ways to browse commands.
   const classic = () => store.get("termCmdStyle", "panel") === "classic";
 
-  // Clicking a command types it (press Enter to run); the play triangle runs it at once.
   function typeCommand(item, run = false) {
     const tab = activeTab();
     if (!tab || tab.state !== "connected") { toast("Connect a receiver first"); return; }
@@ -98,7 +97,6 @@
     state.path = typeof data.path === "string" ? data.path : "";
     state.error = null;
 
-    // Migrate commands saved by older DCC Lite versions from WebView2 localStorage.
     const legacy = store.get("snippets", []);
     if (Array.isArray(legacy) && legacy.length) {
       const merged = [...state.commands];
@@ -350,7 +348,6 @@
       { label: "Export as dccscript.ini", icon: "download", disabled: !state.commands.length, run: () => exportLibrary() },
       { label: "Manage scripts (reorder)…", icon: "list", run: () => selectPanel("library", true) },
     ];
-    // The lightning button lists the built-in system commands and, below them, your own scripts…
     const build = () => {
       const items = [{ heading: `Scripts (${state.commands.length})` }];
       if (state.commands.length) items.push(...state.commands.map((c) => row(c, true)));
@@ -359,7 +356,6 @@
       if (name === "system") items.push("-", { heading: "System commands" }, ...builtinCommands().map((c) => row(c, false)));
       openMenu(items, rect.left, rect.bottom + 4, { search: "Search scripts and commands…" });
     };
-    // Always re-read the library file so scripts added or replaced on disk show up at once.
     readLibrary().catch((error) => { state.error = error; }).then(build);
   }
   function applyCommandStyle() {
@@ -418,7 +414,6 @@
     refreshSystem: () => renderSystemCommands(),
   };
 
-  // Classic style: the panel (history only) is a popup over the terminal.
   document.addEventListener("pointerdown", (event) => {
     if (!classic() || dock.hidden || event.target.closest("#termCommandDock, #termDockToggle, dialog")) return;
     toggleDock(false);

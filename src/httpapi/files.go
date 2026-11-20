@@ -302,8 +302,10 @@ func (s *Server) listRemoteFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parent := path.Dir(remotePath)
-	if remotePath == "/" || remotePath == "." {
+	if remotePath == "/" {
 		parent = "/"
+	} else if remotePath == "." {
+		parent = "."
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": remotePath, "parent": parent, "entries": entries})
 }

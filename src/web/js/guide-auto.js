@@ -1,6 +1,5 @@
 "use strict";
 
-// ---- AutoTimer rules (needs the AutoTimer plugin on the receiver) ----
 const auto = { kind: null, rules: null, gen: 0, missing: false, preview: null, previewTitle: "", editing: null, keep: {}, where: "all", picks: new Map(), retry: 0, busy: false };
 const AT_TYPES = { partial: "Title contains", exact: "Title is exactly", start: "Title starts with", description: "Description contains" };
 const AT_AFTER = { default: "", nothing: "Do nothing when over", standby: "Standby when over", deepstandby: "Deep standby when over", auto: "Automatic when over" };
@@ -106,7 +105,6 @@ function autoPaintPreview(list) {
   gdStatus(`${added} programme${added === 1 ? "" : "s"} would be recorded${auto.preview.length > added ? ` · ${auto.preview.length - added} skipped` : ""}`);
 }
 
-// A receiver rule back into a save request, so quick changes (on/off) keep every setting.
 function autoRequest(r, over = {}) {
   return {
     id: r.id, name: r.name, match: r.match, enabled: r.enabled, search_type: r.search_type, case_sensitive: r.case_sensitive,

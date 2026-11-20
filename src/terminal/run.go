@@ -12,10 +12,7 @@ import (
 )
 
 var (
-	// ErrNoShell means the receiver accepted the connection but no shell prompt came
-	// (wrong user name or password, or something other than a shell answered).
 	ErrNoShell = errors.New("no shell prompt over Telnet")
-	// ErrCommandTimeout means the command did not finish in time; it may still be running there.
 	ErrCommandTimeout = errors.New("the command did not finish in time")
 )
 

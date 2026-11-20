@@ -64,10 +64,8 @@ var required = []string{
 	"libvlc_media_player_get_time",
 }
 
-// optional procs are used when this VLC has them; a missing one never stops VLC from loading.
 var optional = []string{"libvlc_video_set_deinterlace", "libvlc_video_set_aspect_ratio", "libvlc_video_set_crop_geometry"}
 
-// Load finds VLC, loads libvlc.dll from it and starts a libvlc instance.
 func Load() (*Lib, error) {
 	dir, err := FindDir()
 	if err != nil {
@@ -78,7 +76,6 @@ func Load() (*Lib, error) {
 
 // LoadFrom loads libvlc.dll from dir.
 func LoadFrom(dir string) (*Lib, error) {
-	// The altered search path makes libvlccore.dll resolve from the same folder.
 	h, err := windows.LoadLibraryEx(filepath.Join(dir, "libvlc.dll"), 0, windows.LOAD_WITH_ALTERED_SEARCH_PATH)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load libvlc.dll from %s: %w", dir, err)
@@ -136,7 +133,6 @@ func (l *Lib) Close() {
 
 func cstr(s string) (*byte, error) { return windows.BytePtrFromString(s) }
 
-// ptr turns an address handed out by libvlc into an unsafe.Pointer without tripping go vet.
 func ptr(p uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&p)) }
 
 // Player plays one stream at a time into a window.
@@ -147,14 +143,12 @@ type Player struct {
 
 	deint string // the deinterlace mode the current picture pipeline was started with
 
-	// What was last asked of the player, so a fresh libvlc player can be given the same.
 	hwnd   uintptr
 	vol    int
 	volSet bool
 	muted  bool
 }
 
-// PlayOptions are the per-channel settings. The zero value means VLC's own defaults.
 type PlayOptions struct {
 	CachingMs   int    // network and live buffering in milliseconds; 0 keeps the default
 	Deinterlace string // "auto" (VLC decides), "yadif" or "off"
@@ -208,8 +202,6 @@ func (p *Player) SetWindow(hwnd uintptr) {
 	p.lib.call("libvlc_media_player_set_hwnd", p.mp, hwnd)
 }
 
-// Play opens the address and starts it. A deinterlace change creates a fresh libvlc player;
-// window, volume and mute settings carry over.
 func (p *Player) Play(mrl string, opt PlayOptions) error {
 	loc, err := cstr(mrl)
 	if err != nil {
@@ -400,7 +392,6 @@ func (p *Player) State() State {
 	return State(int32(p.lib.call("libvlc_media_player_get_state", p.mp)))
 }
 
-// AudioTracks lists the selectable audio tracks and the id of the active one.
 func (p *Player) AudioTracks() ([]Track, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -436,7 +427,6 @@ func (p *Player) SetAudioTrack(id int) {
 	p.lib.call("libvlc_audio_set_track", p.mp, uintptr(id))
 }
 
-// VideoSize returns the size of the decoded picture, or zeros for radio and before the first frame.
 func (p *Player) VideoSize() (int, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

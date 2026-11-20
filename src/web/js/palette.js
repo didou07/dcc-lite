@@ -1,5 +1,4 @@
 "use strict";
-// Command palette (Ctrl+K): type a page, a device, a tool or an action and jump straight to it.
 
 const palette = { items: [], shown: [], index: 0 };
 const PALETTE_VIEWS = [
@@ -111,13 +110,11 @@ $("#cmdDialog").addEventListener("click", (event) => { if (event.target === $("#
 $("#cmdOpen")?.addEventListener("click", paletteOpen);
 document.addEventListener("keydown", (event) => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "k") return;
-  // In the terminal Ctrl+K goes to the shell; the rail button still opens the palette.
   if (event.target.closest?.(".xterm")) return;
   event.preventDefault();
   paletteOpen();
 });
 
-// Keyboard shortcuts window: ? outside a text field, the rail button, or the palette.
 function keysOpen() {
   const dialog = $("#keysDialog");
   if (dialog.open) { dialog.close(); return; }

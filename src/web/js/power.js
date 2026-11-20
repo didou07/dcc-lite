@@ -14,7 +14,6 @@ async function powerAction(action, doing, confirm = null, report = remoteError) 
   } catch (error) { report(error.message); return false; }
 }
 
-// Wake-on-LAN: the MAC is learned while the receiver is on, so it works after deep standby.
 async function wakeOnLan(id, report = remoteError) {
   if (!id) return false;
   report("");

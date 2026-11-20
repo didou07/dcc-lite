@@ -28,9 +28,20 @@ async function screenSetPicture(blob, gen) {
   const url = URL.createObjectURL(blob);
   try {
     const probe = new Image();
-    probe.src = url;
-    if (probe.decode) await probe.decode();
-  } catch { }
+    if (probe.decode) {
+      probe.src = url;
+      await probe.decode();
+    } else {
+      await new Promise((resolve, reject) => {
+        probe.onload = resolve;
+        probe.onerror = () => reject(new Error("Invalid screenshot"));
+        probe.src = url;
+      });
+    }
+  } catch {
+    URL.revokeObjectURL(url);
+    throw new Error("The receiver returned an invalid picture.");
+  }
   if (gen !== screenView.gen) { URL.revokeObjectURL(url); return false; }
   const previous = screenView.objectURL;
   screenView.objectURL = url;
@@ -115,7 +126,6 @@ function screenRestartNow() {
 }
 
 function screenSetWidthOptions() {
-  // every width is offered: the old interface's /screenshot address scales to any size
   for (const option of $("#screenWidth").options) { option.hidden = false; option.disabled = false; }
 }
 

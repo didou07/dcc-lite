@@ -19,8 +19,6 @@ type infoPair struct {
 	V string `json:"v"`
 }
 
-// ecmLabels lists the ecm.info lines worth showing, in display order.
-// Control words (cw0/cw1) are deliberately left out.
 var ecmLabels = []struct{ key, label string }{
 	{"caid", "CAID"}, {"provid", "Provider ID"}, {"prov", "Provider ID"}, {"pid", "ECM PID"}, {"chid", "CHID"},
 	{"reader", "Reader"}, {"from", "From"}, {"source", "Source"}, {"address", "Address"},
@@ -28,7 +26,6 @@ var ecmLabels = []struct{ key, label string }{
 	{"ecm time", "ECM time"}, {"response time", "Response time"},
 }
 
-// parseECM reads the "key: value" lines that oscam, ncam and cccam write to ecm.info.
 func parseECM(text string) []infoPair {
 	values := map[string]string{}
 	for _, line := range strings.Split(text, "\n") {
@@ -152,7 +149,6 @@ const (
 	maxGridPerChan  = 60
 )
 
-// deviceEPGGrid returns every channel of one bouquet with its programmes inside a time window.
 func (s *Server) deviceEPGGrid(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {
@@ -214,7 +210,6 @@ func (s *Server) deviceEPGGrid(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"now": now, "from": from, "to": to, "channels": channels})
 }
 
-// learnMAC remembers the receiver's MAC so Wake-on-LAN works after deep standby.
 func (s *Server) learnMAC(profile config.Profile, about map[string]any) {
 	if profile.MAC != "" {
 		return

@@ -1,11 +1,11 @@
 "use strict";
 const files = {
-  sessionID: "", profileID: "", protocol: "ftp",
+  sessionID: "", profileID: "", sessionInfo: null, sessionKey: "", protocol: "ftp",
   connecting: false, gen: 0, manualOff: false, active: "remote", drag: null,
   transfers: [], queueTimer: 0, queueBusy: false, seenDone: new Set(),
   browserMode: false, ready: null, sync: store.get("filesSync", false), fresh: false, localLeft: store.get("filesLocalLeft", true),
   pending: [], fetched: new Set(), autoDone: new Set(), transfersSeen: false,
-  clipboard: null,
+  clipboard: null, undo: [],
 };
 files.ready = systemInfo().then((info) => {
   files.browserMode = info?.remote === "true";
@@ -21,8 +21,10 @@ function makePane(kind) {
   return {
     kind, root, rows: $(`#${kind}Rows`), table: $(`#${kind}Table`), pathInput: $(`#${kind}Path`), filter: $(`#${kind}Filter`),
     summary: $(`#${kind}Summary`), empty: $(`#${kind}Empty`), hiddenBox: $('[data-role="hidden"]', root),
-    entries: [], path: kind === "remote" ? "/" : ".", parent: kind === "remote" ? "/" : ".",
-    selected: new Set(), anchor: -1, cursor: -1, visible: [],
+    entries: [], path: kind === "remote" ? "/" : ".", parent: kind === "remote" ? "/" : ".", rootPath: kind === "remote" ? "/" : ".",
+    selected: new Set(), anchor: -1, cursor: -1, visible: [], hist: [], hpos: -1,
+    renameTimer: 0, renamePendingPath: "",
+    loadSeq: 0, historyBusy: false,
     sort: { key: saved.key || "name", dir: saved.dir === "desc" ? "desc" : "asc" },
     showHidden: Boolean(saved.hidden), loaded: false,
   };
@@ -32,6 +34,13 @@ for (const pane of Object.values(panes)) pane.hiddenBox.checked = pane.showHidde
 
 function sessionLost(error) { return error?.code === "session_not_found" || /session not found/i.test(error?.message || ""); }
 const requireSession = () => { if (!files.sessionID) { toast("Connect to the device first"); return false; } return true; };
+function fileSessionKey(info = files.sessionInfo) {
+  if (!info) return "";
+  return [info.profile_id || files.profileID, String(info.protocol || files.protocol).toLowerCase(), String(info.host || "").trim().toLowerCase(), Number(info.port) || 0].join("|");
+}
+function isFileSessionCurrent(id, key = "") {
+  return Boolean(id && files.sessionID === id && (!key || files.sessionKey === key));
+}
 
 function setFileStatus(state, text) {
   setStatusDot($("#fileStatus"), state, text);
@@ -69,8 +78,15 @@ function updateFileUI() {
   $("#fileRun").disabled = !(connected && remoteSel.length === 1 && !remoteSel[0].is_dir);
   for (const pane of Object.values(panes)) {
     const off = pane.kind === "remote" && !connected;
+    const atRoot = paneAtRoot(pane);
     pane.pathInput.disabled = off; pane.filter.disabled = off;
-    $$(".pathbar .icon-btn", pane.root).forEach((b) => { b.disabled = off; });
+    $$(".pathbar .icon-btn:not([data-history])", pane.root).forEach((button) => { button.disabled = off; });
+    const parentButton = $('.pathbar .icon-btn[data-act="up"]', pane.root);
+    const rootButton = $('.pathbar .icon-btn[data-act="root"]', pane.root);
+    const refreshButton = $('.pathbar .icon-btn[data-act="refresh"]', pane.root);
+    if (parentButton) parentButton.disabled = off || !pane.loaded || atRoot;
+    if (rootButton) rootButton.disabled = off || !pane.loaded || (pane.kind === "remote" ? atRoot : pane.path === "." || pane.path === "");
+    if (refreshButton) refreshButton.disabled = off || !pane.loaded;
   }
 }
 
@@ -88,10 +104,16 @@ function compareEntries(pane) {
   };
 }
 function computeVisible(pane) {
+  const cursorPath = pane.visible[pane.cursor]?.path || "";
+  const anchorPath = pane.visible[pane.anchor]?.path || "";
   const needle = pane.filter.value.trim().toLocaleLowerCase();
   pane.visible = pane.entries
     .filter((e) => (pane.showHidden || !e.name.startsWith(".")) && (!needle || e.name.toLocaleLowerCase().includes(needle)))
     .sort(compareEntries(pane));
+  const visiblePaths = new Set(pane.visible.map((entry) => entry.path));
+  pane.selected = new Set([...pane.selected].filter((path) => visiblePaths.has(path)));
+  pane.cursor = cursorPath ? pane.visible.findIndex((entry) => entry.path === cursorPath) : -1;
+  pane.anchor = anchorPath ? pane.visible.findIndex((entry) => entry.path === anchorPath) : -1;
   return pane.visible;
 }
 const FILE_TYPES = {
@@ -148,9 +170,13 @@ function entryIcon(entry) {
   const type = fileType(entry.name, entry.mode);
   return type ? icon(`ft-${type}`, `file-ic fi-${type}${hidden}`) : icon("file", `file-ic${hidden}`);
 }
+function paneAtRoot(pane) {
+  if (pane.kind === "remote") return pane.path === pane.rootPath || (!pane.rootPath && (pane.path === "/" || pane.path === "."));
+  return pane.path === "." || pane.path === "" || pane.path === "@computer";
+}
 function renderPane(pane) {
   const visible = computeVisible(pane);
-  const atRoot = pane.kind === "remote" ? (pane.path === "/" || pane.path === ".") : pane.path === ".";
+  const atRoot = paneAtRoot(pane);
   const fragment = document.createDocumentFragment();
   if (pane.loaded && !atRoot) {
     fragment.append(h("tr", { class: "row up", dataset: { up: "1" } }, h("td", { class: "name" }, icon("up", "dir-ic"), h("span", { text: ".." })), h("td"), h("td", { class: "hide-sm" }), h("td", { class: "hide-sm" })));
@@ -182,7 +208,6 @@ function renderCrumbs(pane) {
       const button = event.target.closest("button[data-path]");
       if (button) loadPane(pane.kind, button.dataset.path);
     });
-    // Right-click on the path links.
     pane.crumbs.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       const button = event.target.closest("button[data-path]");
@@ -194,11 +219,14 @@ function renderCrumbs(pane) {
     });
   }
   const remote = pane.kind === "remote";
-  const parts = pane.path.split("/").filter((part) => part && part !== ".");
-  const crumbs = [h("button", { type: "button", class: "crumb", dataset: { path: remote ? "/" : "." }, title: remote ? "Root folder" : "Home folder" }, icon(remote ? "tv" : "home", "sm"))];
-  let current = remote ? "" : ".";
+  const rootPath = remote ? (pane.rootPath || (pane.path.startsWith("/") ? "/" : ".")) : ".";
+  const relative = remote && rootPath === ".";
+  const pathValue = remote && relative ? pane.path.replace(/^\.\//, "") : pane.path;
+  const parts = pathValue.split("/").filter((part) => part && part !== ".");
+  const crumbs = [h("button", { type: "button", class: "crumb", dataset: { path: rootPath }, title: remote ? "Root folder" : "Home folder" }, icon(remote ? "tv" : "home", "sm"))];
+  let current = remote ? (relative ? "." : "") : ".";
   parts.forEach((part, index) => {
-    current = remote ? `${current}/${part}` : (current === "." ? part : `${current}/${part}`);
+    current = remote ? (relative ? (current === "." ? part : `${current}/${part}`) : `${current}/${part}`) : (current === "." ? part : `${current}/${part}`);
     crumbs.push(h("span", { class: "crumb-sep", text: "›" }));
     crumbs.push(h("button", { type: "button", class: `crumb${index === parts.length - 1 ? " last" : ""}`, dataset: { path: current }, text: part }));
   });
@@ -213,7 +241,7 @@ function updateSelectionUI(pane) {
     row.classList.toggle("selected", Boolean(entry) && pane.selected.has(entry.path));
     row.classList.toggle("focus", Number(row.dataset.index) === pane.cursor && files.active === pane.kind);
     const clip = files.clipboard;
-    row.classList.toggle("cut", Boolean(entry && clip && clip.mode === "cut" && clip.kind === pane.kind && clip.entries.some((c) => c.path === entry.path)));
+    row.classList.toggle("cut", Boolean(entry && clip && clip.mode === "cut" && clip.kind === pane.kind && (pane.kind !== "remote" || clip.profileID === files.profileID) && clip.entries.some((c) => c.path === entry.path)));
   });
   const selection = selectedEntries(pane);
   const folders = pane.entries.filter((e) => e.is_dir).length;
@@ -222,10 +250,25 @@ function updateSelectionUI(pane) {
   pane.summary.textContent = pane.loaded ? (selection.length ? `${selection.length} selected${bytes ? ` · ${formatBytes(bytes)}` : ""}  —  ${total}` : total) : "—";
   updateFileUI();
 }
-const selectedEntries = (pane) => pane.entries.filter((entry) => pane.selected.has(entry.path));
+const selectedEntries = (pane) => pane.visible.filter((entry) => pane.selected.has(entry.path));
+
+function cancelPendingRename(pane) {
+  if (pane.renameTimer) window.clearTimeout(pane.renameTimer);
+  pane.renameTimer = 0;
+  pane.renamePendingPath = "";
+}
+
+function clearPaneSelection(pane) {
+  cancelPendingRename(pane);
+  pane.selected.clear();
+  pane.anchor = -1;
+  pane.cursor = -1;
+  updateSelectionUI(pane);
+}
 
 function setActivePane(kind) {
   if (files.browserMode) kind = "remote";
+  for (const pane of Object.values(panes)) if (pane.kind !== kind) cancelPendingRename(pane);
   files.active = kind;
   for (const pane of Object.values(panes)) pane.root.classList.toggle("active", pane.kind === kind);
   $("#commander").dataset.activePane = kind;
@@ -235,7 +278,6 @@ function setActivePane(kind) {
   updateSelectionUI(other);
 }
 
-/* Drive / place picker (Home, This computer, C:, D:, USB…) above the local panel. */
 let placesList = [], placesLoading = null;
 function placeFor(path) {
   const norm = (v) => String(v).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -268,36 +310,63 @@ function syncPlaces(path) {
   if (select && place) select.value = place.path;
 }
 
-async function loadPane(kind, path, { keepSelection = false, quiet = false } = {}) {
+function resetPaneHistory(pane) {
+  pane.loadSeq++;
+  pane.hist = [];
+  pane.hpos = -1;
+  pane.historyBusy = false;
+  updateHistoryButtons(pane);
+}
+async function loadPane(kind, path, { keepSelection = false, quiet = false, record = true } = {}) {
   const pane = panes[kind];
   if (kind === "remote" && !files.sessionID) return false;
+  cancelPendingRename(pane);
+  const request = ++pane.loadSeq;
   const sessionAtStart = files.sessionID, gen = files.gen;
   try {
     const result = kind === "local"
       ? await api(`/api/v1/files/local/list?path=${encodeURIComponent(path)}`)
       : await api(sessionURL(sessionAtStart, `list?path=${encodeURIComponent(path)}`));
-    if (kind === "remote" && (gen !== files.gen || sessionAtStart !== files.sessionID)) return false;
+    if (request !== pane.loadSeq || (kind === "remote" && (gen !== files.gen || sessionAtStart !== files.sessionID))) return false;
+    const cursorPath = pane.visible[pane.cursor]?.path || "";
+    const anchorPath = pane.visible[pane.anchor]?.path || "";
     const previous = keepSelection && pane.path === result.path ? new Set(pane.selected) : new Set();
     pane.path = result.path; pane.parent = result.parent; pane.entries = result.entries || [];
     pane.selected = new Set([...previous].filter((p) => pane.entries.some((e) => e.path === p)));
     pane.anchor = -1; pane.cursor = -1; pane.loaded = true;
+    if (record && pane.hist[pane.hpos] !== result.path) {
+      pane.hist = pane.hist.slice(0, pane.hpos + 1);
+      pane.hist.push(result.path);
+      if (pane.hist.length > 100) pane.hist.splice(0, pane.hist.length - 100);
+      pane.hpos = pane.hist.length - 1;
+    }
+    updateHistoryButtons(pane);
     pane.pathInput.value = result.path;
     if (kind === "local") { $("#localRoot").textContent = result.path === "." ? "Home folder" : "This computer"; syncPlaces(result.path); }
     renderPane(pane);
+    if (keepSelection && pane.selected.size) {
+      const focused = cursorPath && pane.selected.has(cursorPath) ? cursorPath : [...pane.selected][0];
+      pane.cursor = pane.visible.findIndex((entry) => entry.path === focused);
+      pane.anchor = anchorPath && pane.selected.has(anchorPath) ? pane.visible.findIndex((entry) => entry.path === anchorPath) : pane.cursor;
+      updateSelectionUI(pane);
+    }
     if (kind === "local") store.set("localPath", result.path);
     else if (files.profileID) store.set(`remotePath.${files.profileID}.${files.protocol}`, result.path);
     return true;
   } catch (error) {
-    if (kind === "remote" && sessionLost(error)) { handleSessionLost(); return false; }
+    if (request !== pane.loadSeq) return false;
+    if (kind === "remote" && sessionAtStart !== files.sessionID) return false;
+    if (kind === "remote" && sessionLost(error)) { handleSessionLost(sessionAtStart); return false; }
     if (!quiet) toastError(error);
     pane.pathInput.value = pane.path;
     return false;
   }
 }
-function handleSessionLost() {
-  if (!files.sessionID) return;
-  files.sessionID = "";
-  panes.remote.loaded = false; panes.remote.entries = []; panes.remote.selected.clear();
+function handleSessionLost(lostID = files.sessionID) {
+  if (!lostID || files.sessionID !== lostID) return;
+  files.sessionID = ""; files.sessionInfo = null; files.sessionKey = "";
+  resetPaneHistory(panes.remote);
+  panes.remote.loaded = false; panes.remote.entries = []; panes.remote.selected.clear(); panes.remote.rootPath = "/";
   setFileStatus("error", "Connection lost");
   renderPane(panes.remote);
   if (!files.manualOff && !files.connecting && currentDevice()) {
@@ -311,7 +380,7 @@ const goUp = (kind, mirrored = false) => {
   if (files.sync && !mirrored && other.loaded && other.parent && other.parent !== other.path) goUp(other.kind, true);
   return result;
 };
-const goRoot = (kind) => loadPane(kind, kind === "remote" ? "/" : ".");
+const goRoot = (kind) => loadPane(kind, kind === "remote" ? (panes.remote.rootPath || "/") : ".");
 const refreshPane = (kind) => loadPane(kind, panes[kind].path, { keepSelection: true });
 async function refreshBoth() { await Promise.all([refreshPane("local"), files.sessionID ? refreshPane("remote") : null]); }
 
@@ -336,20 +405,33 @@ async function fileConnect() {
     const result = await post("/api/v1/files/sessions", payload);
     opened = result.session.id;
     if (gen !== files.gen) { api(sessionURL(opened), { method: "DELETE" }).catch(() => {}); return; }
-    files.sessionID = opened; files.profileID = device.id;
+    files.sessionID = opened; files.profileID = device.id; files.sessionInfo = result.session;
+    files.sessionKey = fileSessionKey(result.session);
+    resetPaneHistory(panes.remote);
     setFileStatus("connected", `${protoName(protocol)} · ${device.host}`);
     const remembered = files.fresh && device.start_dir ? device.start_dir : store.get(`remotePath.${device.id}.${protocol}`, device.start_dir || "/");
     files.fresh = false;
-    let ok = await loadPane("remote", remembered, { quiet: true });
-    if (!ok && remembered !== "/") ok = await loadPane("remote", "/", { quiet: true });
-    if (!ok) ok = await loadPane("remote", ".", { quiet: true });
+    const remote = panes.remote;
+    remote.rootPath = "";
+    let ok = await loadPane("remote", "/", { quiet: true });
+    if (ok) remote.rootPath = remote.path;
+    if (!ok) {
+      ok = await loadPane("remote", ".", { quiet: true });
+      if (ok) remote.rootPath = remote.path;
+    }
+    if (ok && remembered && remembered !== remote.rootPath && !(remote.rootPath === "." && remembered === "/")) {
+      await loadPane("remote", remembered, { quiet: true });
+    } else if (!ok && remembered && remembered !== "/" && remembered !== ".") {
+      ok = await loadPane("remote", remembered, { quiet: true });
+      if (ok) remote.rootPath = remembered;
+    }
     if (!ok && !files.sessionID) throw new Error("Connected, but the folder list could not be read.");
     if (!ok) toast("Connected, but the folder could not be listed.", "error");
     loadTransfers();
   } catch (error) {
     if (opened) api(sessionURL(opened), { method: "DELETE" }).catch(() => {});
     if (gen === files.gen) {
-      files.sessionID = "";
+      files.sessionID = ""; files.sessionInfo = null; files.sessionKey = "";
       setFileStatus("error", error.message);
       toastError(error);
     }
@@ -364,10 +446,11 @@ window.addEventListener("pagehide", () => {
 async function fileDisconnect(silent = false) {
   files.gen++;
   const id = files.sessionID;
-  files.sessionID = ""; files.connecting = false; files.manualOff = !silent;
+  files.sessionID = ""; files.sessionInfo = null; files.sessionKey = ""; files.connecting = false; files.manualOff = !silent;
   if (id) await api(sessionURL(id), { method: "DELETE" }).catch(() => {});
   const remote = panes.remote;
-  remote.entries = []; remote.selected.clear(); remote.loaded = false; remote.path = "/"; remote.parent = "/"; remote.pathInput.value = "/";
+  resetPaneHistory(remote);
+  remote.entries = []; remote.selected.clear(); remote.loaded = false; remote.path = "/"; remote.parent = "/"; remote.rootPath = "/"; remote.pathInput.value = "/";
   setFileStatus("idle", "Not connected");
   renderPane(remote); updateFileUI();
   if (id && !silent) toast("Disconnected");
@@ -375,7 +458,13 @@ async function fileDisconnect(silent = false) {
 function filesEnter() { files.ready.then(filesEnterNow); }
 function filesEnterNow() {
   syncFilePort();
-  if (!files.browserMode && !panes.local.loaded) loadPane("local", store.get("localPath", "."), { quiet: true }).then((ok) => { if (!ok) loadPane("local", ".", { quiet: true }); });
+  if (!files.browserMode && !panes.local.loaded) {
+    const remembered = store.get("localPath", ".");
+    loadPane("local", ".", { quiet: true }).then(async (ok) => {
+      if (ok && remembered && remembered !== ".") await loadPane("local", remembered, { quiet: true });
+      else if (!ok && remembered && remembered !== ".") await loadPane("local", remembered, { quiet: true });
+    });
+  }
   if (!currentDevice()) { setFileStatus("idle", "No device selected"); renderPane(panes.remote); updateFileUI(); return; }
   if (!files.sessionID && !files.connecting && !files.manualOff) fileConnect();
   else updateFileUI();
@@ -386,15 +475,16 @@ $("#fileDisconnect").addEventListener("click", () => fileDisconnect(false));
 
 for (const pane of Object.values(panes)) {
   if (pane.kind === "local") $("#localPlaces")?.addEventListener("change", (event) => { loadPane("local", event.target.value, {}).then((ok) => { if (!ok) syncPlaces(panes.local.path); else pane.table.focus(); }); });
-  pane.pathInput.addEventListener("dblclick", () => pane.pathInput.select()); // double click selects the whole path
+  pane.pathInput.addEventListener("dblclick", () => pane.pathInput.select());
   pane.pathInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") { event.preventDefault(); loadPane(pane.kind, pane.pathInput.value.trim() || (pane.kind === "remote" ? "/" : "."), {}).then(() => pane.table.focus()); }
     if (event.key === "Escape") { pane.pathInput.value = pane.path; pane.table.focus(); }
   });
-  pane.filter.addEventListener("input", () => { pane.cursor = -1; renderPane(pane); });
-  pane.hiddenBox.addEventListener("change", () => { pane.showHidden = pane.hiddenBox.checked; saveSort(pane); renderPane(pane); });
+  pane.filter.addEventListener("input", () => { cancelPendingRename(pane); pane.cursor = -1; pane.anchor = -1; renderPane(pane); });
+  pane.hiddenBox.addEventListener("change", () => { cancelPendingRename(pane); pane.showHidden = pane.hiddenBox.checked; saveSort(pane); renderPane(pane); });
   $$("th[data-sort]", pane.root).forEach((th) => th.addEventListener("click", () => {
     const key = th.dataset.sort;
+    cancelPendingRename(pane);
     pane.sort = { key, dir: pane.sort.key === key && pane.sort.dir === "asc" ? "desc" : "asc" };
     saveSort(pane); renderPane(pane);
   }));
@@ -406,7 +496,6 @@ for (const pane of Object.values(panes)) {
   pane.root.addEventListener("pointerdown", () => { if (files.active !== pane.kind) setActivePane(pane.kind); });
 }
 makePanesResizable();
-// Drag the strip between the panels to change their width; stored as a ratio in CSS variables.
 function makePanesResizable() {
   const commander = $("#commander"), bridge = commander && $(".bridge", commander);
   if (!commander || !bridge) return;
@@ -465,11 +554,13 @@ function openEntry(pane, entry) {
 for (const pane of Object.values(panes)) {
   pane.rows.addEventListener("click", (event) => {
     const row = event.target.closest("tr.row");
-    if (!row) { if (!event.ctrlKey && !event.shiftKey && pane.selected.size) { pane.selected = new Set(); updateSelectionUI(pane); } return; }
+    if (!row) return;
     setActivePane(pane.kind);
-    if (row.dataset.up) { if (coarsePointer || event.detail === 1) goUp(pane.kind); return; }
+    if (row.dataset.up) { cancelPendingRename(pane); if (coarsePointer || event.detail === 1) goUp(pane.kind); return; }
     const index = Number(row.dataset.index), entry = pane.visible[index];
     if (!entry) return;
+    const nameCell = Boolean(event.target.closest("td.name"));
+    if (pane.renameTimer && (event.detail > 1 || event.ctrlKey || event.metaKey || event.shiftKey || !nameCell || pane.renamePendingPath !== entry.path)) cancelPendingRename(pane);
     if (coarsePointer && !event.ctrlKey && !event.shiftKey) {
       if (entry.is_dir) { loadPane(pane.kind, entry.path); return; }
       if (pane.selected.has(entry.path)) pane.selected.delete(entry.path); else pane.selected.add(entry.path);
@@ -483,44 +574,64 @@ for (const pane of Object.values(panes)) {
       if (pane.selected.has(entry.path)) pane.selected.delete(entry.path); else pane.selected.add(entry.path);
       pane.anchor = index;
     } else {
-      // Clicking the name of an item that is already the only selection starts renaming (like a…
       const wasOnlySelected = pane.selected.size === 1 && pane.selected.has(entry.path);
       pane.selected = new Set([entry.path]); pane.anchor = index;
-      clearTimeout(pane.renameTimer);
-      if (wasOnlySelected && event.detail === 1 && !event.ctrlKey && !event.metaKey && event.target.closest("td.name span") && !(pane.kind === "remote" && !files.sessionID)) {
-        pane.renameTimer = setTimeout(() => inlineRename(pane, entry), 450);
+      cancelPendingRename(pane);
+      if (wasOnlySelected && event.detail === 1 && !event.ctrlKey && !event.metaKey && nameCell && !(pane.kind === "remote" && !files.sessionID)) {
+        pane.renamePendingPath = entry.path;
+        pane.renameTimer = window.setTimeout(() => {
+          pane.renameTimer = 0;
+          pane.renamePendingPath = "";
+          if (pane.selected.has(entry.path) && pane.path === dirOf(pane.kind, entry.path)) inlineRename(pane, entry);
+        }, 450);
       }
     }
     pane.cursor = index;
     updateSelectionUI(pane);
   });
-  const scroller = pane.table.parentElement;
-  scroller?.addEventListener("click", (event) => {
-    if (event.target !== scroller || event.ctrlKey || event.shiftKey || !pane.selected.size) return;
-    setActivePane(pane.kind); pane.selected = new Set(); updateSelectionUI(pane);
+  pane.table.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.target.closest?.("tr.row") || event.target.closest?.("thead") || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    setActivePane(pane.kind);
+    clearPaneSelection(pane);
+    pane.table.focus({ preventScroll: true });
   });
   pane.rows.addEventListener("dblclick", (event) => {
-    clearTimeout(pane.renameTimer);
+    cancelPendingRename(pane);
     if (coarsePointer) return;
     const row = event.target.closest("tr.row");
     if (!row || row.dataset.up) { if (row?.dataset.up) goUp(pane.kind); return; }
     openEntry(pane, rowEntry(pane, row));
   });
   pane.table.addEventListener("contextmenu", (event) => {
+    if (event.target.closest?.(".rename-input")) return;
     event.preventDefault();
     if (pane.kind === "remote" && !files.sessionID) return;
+    cancelPendingRename(pane);
     setActivePane(pane.kind);
     const row = event.target.closest("tr.row[data-index]");
     const entry = rowEntry(pane, row);
-    if (entry && !pane.selected.has(entry.path)) { pane.selected = new Set([entry.path]); pane.anchor = pane.cursor = Number(row.dataset.index); updateSelectionUI(pane); }
+    if (entry) {
+      const index = Number(row.dataset.index);
+      if (!pane.selected.has(entry.path)) pane.selected = new Set([entry.path]);
+      pane.anchor = index;
+      pane.cursor = index;
+      updateSelectionUI(pane);
+    } else {
+      clearPaneSelection(pane);
+    }
+    pane.table.focus({ preventScroll: true });
     openMenu(contextItems(pane, Boolean(entry)), event.clientX, event.clientY);
   });
   pane.rows.addEventListener("dragstart", (event) => {
+    cancelPendingRename(pane);
     const row = event.target.closest("tr.row[data-index]");
     const entry = rowEntry(pane, row);
     if (!entry || (pane.kind === "remote" && !files.sessionID)) { event.preventDefault(); return; }
     if (!pane.selected.has(entry.path)) { pane.selected = new Set([entry.path]); updateSelectionUI(pane); }
-    files.drag = { from: pane.kind, entries: selectedEntries(pane) };
+    pane.cursor = Number(row.dataset.index);
+    if (pane.anchor < 0) pane.anchor = pane.cursor;
+    updateSelectionUI(pane);
+    files.drag = { from: pane.kind, entries: selectedEntries(pane), sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID };
     event.dataTransfer.effectAllowed = "copyMove";
     event.dataTransfer.setData("text/plain", files.drag.entries.map((e) => e.name).join("\n"));
     row.classList.add("dragging");
@@ -545,10 +656,20 @@ for (const pane of Object.values(panes)) {
     if (!plan) return;
     event.preventDefault(); pane.root.classList.remove("drop"); markDropRow(pane, null);
     const dragged = files.drag; files.drag = null;
-    if (plan.same) moveIntoFolder(pane.kind, dragged.entries, plan.target.path);
-    else transferSelection(dragged.from === "remote" ? "download" : "upload", dragged.entries, plan.target ? plan.target.path : null);
+    const expected = { sessionID: dragged.sessionID, sessionKey: dragged.sessionKey, profileID: dragged.profileID };
+    if (plan.same) moveIntoFolder(pane.kind, dragged.entries, plan.target.path, expected);
+    else transferSelection(dragged.from === "remote" ? "download" : "upload", dragged.entries, plan.target ? plan.target.path : null, expected);
   });
 }
+
+document.addEventListener("pointerdown", (event) => {
+  for (const pane of Object.values(panes)) {
+    if (!pane.renameTimer) continue;
+    const row = event.target.closest?.("tr.row[data-index]");
+    const entry = row && pane.rows.contains(row) ? rowEntry(pane, row) : null;
+    if (!entry || entry.path !== pane.renamePendingPath || !event.target.closest("td.name")) cancelPendingRename(pane);
+  }
+}, true);
 
 function dropFolder(pane, event) {
   const row = event.target.closest?.("tr.row[data-index]");
@@ -559,69 +680,119 @@ function markDropRow(pane, row) {
   $$("tr.drop-target", pane.rows).forEach((r) => { if (r !== row) r.classList.remove("drop-target"); });
   if (row) row.classList.add("drop-target");
 }
-async function moveIntoFolder(kind, entries, folderPath) {
+async function moveIntoFolder(kind, entries, folderPath, expected = null) {
   if (kind === "remote" && !requireSession()) return;
+  const sessionID = kind === "remote" ? (expected?.sessionID || files.sessionID) : "";
+  const sessionKey = kind === "remote" ? (expected?.sessionKey || files.sessionKey) : "";
+  const profileID = kind === "remote" ? (expected?.profileID || files.profileID) : "";
+  if (kind === "remote" && (!isFileSessionCurrent(sessionID, sessionKey) || files.profileID !== profileID)) { toast("The receiver connection changed. Move cancelled.", "error"); return; }
   const join = kind === "local" ? joinLocal : joinRemote;
   let existing;
   try {
     const listing = kind === "local"
       ? await api(`/api/v1/files/local/list?path=${encodeURIComponent(folderPath)}`)
-      : await api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(folderPath)}`));
+      : await api(sessionURL(sessionID, `list?path=${encodeURIComponent(folderPath)}`));
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Move cancelled.", "error"); return; }
     existing = new Set((listing.entries || []).map((e) => e.name));
-  } catch (error) { handleOpError(error, kind); return; }
+  } catch (error) { if (kind === "remote" && sessionLost(error)) handleSessionLost(sessionID); else handleOpError(error, kind, sessionID); return; }
   let moved = 0, skipped = 0;
+  const undoPairs = [];
   for (const entry of entries) {
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { skipped += entries.length - moved - skipped; break; }
     if (existing.has(entry.name) || folderPath === entry.path || folderPath.startsWith(`${entry.path}/`)) { skipped++; continue; }
     const body = { old_path: entry.path, new_path: join(folderPath, entry.name) };
     try {
       if (kind === "local") await post("/api/v1/files/local/rename", body);
-      else await post(sessionURL(files.sessionID, "rename"), body);
-      moved++;
-    } catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (kind === "remote" && sessionLost(error)) { handleSessionLost(); return; } }
+      else await post(sessionURL(sessionID, "rename"), body);
+      moved++; undoPairs.push({ from: body.new_path, to: entry.path });
+    } catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (kind === "remote" && sessionLost(error)) { handleSessionLost(sessionID); return; } }
   }
-  if (moved) toast(`${moved} item${moved === 1 ? "" : "s"} moved`);
+  if (undoPairs.length) pushUndo(kind, "Move", undoPairs, profileID, sessionKey);
+  if (moved) toast(`${moved} item${moved === 1 ? "" : "s"} moved · Ctrl+Z to undo`);
   if (skipped) toast(`${skipped} skipped: the name already exists there`);
   panes[kind].selected = new Set();
-  await loadPane(kind, panes[kind].path);
+  panes[kind].anchor = -1;
+  panes[kind].cursor = -1;
+  updateSelectionUI(panes[kind]);
+  if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await loadPane(kind, panes[kind].path);
 }
 
 function contextItems(pane, onEntry) {
   const kind = pane.kind, sel = selectedEntries(pane), single = sel.length === 1 ? sel[0] : null;
+  const many = sel.length > 1;
   const items = [];
   if (onEntry) {
     if (single?.is_dir) items.push({ label: "Open", icon: "folder", run: () => loadPane(kind, single.path) });
+    else if (single) { items.push({ label: "Preview", icon: "search", sub: "Space", run: () => cmdPreview() }); items.push({ label: "Edit as text", icon: "file", sub: "F4", run: () => cmdEdit() }); }
     items.push(kind === "remote"
-      ? { label: files.browserMode ? (sel.length > 1 ? `Download ${sel.length} items to this device` : "Download to this device") : (sel.length > 1 ? `Download ${sel.length} items` : "Download"), icon: "download", disabled: files.browserMode && !sel.some((e) => !e.is_dir), run: () => transferSelection("download") }
-      : { label: sel.length > 1 ? `Upload ${sel.length} items` : "Upload", icon: "upload", run: () => transferSelection("upload") });
+      ? { label: files.browserMode ? (many ? `Download ${sel.length} items to this device` : "Download to this device") : (many ? `Download ${sel.length} items` : "Download"), icon: "download", disabled: files.browserMode && !sel.some((e) => !e.is_dir), run: () => transferSelection("download") }
+      : { label: many ? `Upload ${sel.length} items` : "Upload", icon: "upload", run: () => transferSelection("upload") });
     items.push("-");
-    items.push({ label: "Edit as text", icon: "file", sub: "F4", disabled: !single || single.is_dir, run: () => cmdEdit() });
+    items.push({ label: many ? `Cut ${sel.length} items` : "Cut", icon: "scissors", sub: "Ctrl+X", run: () => cmdCut() });
+    items.push({ label: many ? `Copy ${sel.length} items` : "Copy", icon: "copy", sub: "Ctrl+C", run: () => cmdCopy() });
+    if (kind === "remote") items.push({ label: many ? `Copy ${sel.length} items on the device…` : "Copy on the device…", icon: "copy", run: () => cmdCopyOnDevice() });
+    items.push({ label: many ? "Copy names" : "Copy name", icon: "copy", run: () => cmdCopyName() });
+    items.push({ label: many ? "Copy paths" : "Copy path", icon: "copy", run: () => cmdCopyPath() });
+    items.push("-");
     items.push({ label: "Rename", icon: "edit", sub: "F2", disabled: !single, run: () => cmdRename() });
     items.push({ label: "Permissions…", icon: "lock", sub: "F9", run: () => cmdChmod() });
-    items.push({ label: "Copy path", icon: "copy", run: () => cmdCopyPath() });
-    if (kind === "remote") items.push({ label: sel.length > 1 ? `Copy ${sel.length} items on the device…` : "Copy on the device…", icon: "copy", run: () => cmdCopyOnDevice() }, { label: "New symbolic link…", icon: "link", disabled: sel.length > 1, run: () => cmdSymlink() });
-    items.push("-");
-    items.push({ label: sel.length > 1 ? `Copy ${sel.length} items` : "Copy", icon: "copy", sub: "Ctrl+C", run: () => cmdCopy() });
-    items.push({ label: sel.length > 1 ? `Cut ${sel.length} items` : "Cut", icon: "scissors", sub: "Ctrl+X", run: () => cmdCut() });
+    items.push({ label: many ? `Delete ${sel.length} items` : "Delete", icon: "trash", sub: "F8", danger: true, run: () => cmdDelete() });
     if (kind === "remote") {
       items.push("-");
       items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path) });
-      items.push({ label: "Install .ipk packages…", icon: "box", run: () => cmdIpk() });
-      items.push({ label: "Terminal here, split beside current", icon: "split-h", run: () => openTerminalHere(single?.is_dir ? single.path : pane.path, { split: "row" }) });
       if (single && !single.is_dir) items.push({ label: "Run in terminal…", icon: "play", run: () => runRemoteFile() });
+      if (sel.some((e) => !e.is_dir && /\.(ipk|deb)$/i.test(e.name))) items.push({ label: "Install package…", icon: "box", run: () => cmdIpk() });
     }
-    items.push("-");
-    items.push({ label: sel.length > 1 ? `Delete ${sel.length} items` : "Delete", icon: "trash", sub: "F8", danger: true, run: () => cmdDelete() });
   } else {
     if (files.browserMode && kind === "remote") items.push({ label: "Upload files from this device…", icon: "upload", run: () => chooseDeviceFiles(false) }, { label: "Upload a folder from this device…", icon: "newfolder", run: () => chooseDeviceFiles(true) }, "-");
     items.push({ label: "New folder", icon: "newfolder", sub: "F7", run: () => cmdMkdir() });
     items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() });
-    if (kind === "remote") items.push({ label: "New symbolic link…", icon: "link", run: () => cmdSymlink() });
     items.push({ label: "Paste", icon: "paste", sub: "Ctrl+V", disabled: !files.clipboard?.entries?.length, run: () => cmdPaste() });
-    items.push({ label: "Refresh", icon: "refresh", run: () => refreshPane(kind) });
+    items.push("-");
+    items.push({ label: "Refresh", icon: "refresh", sub: "F5", run: () => refreshPane(kind) });
+    const nextUndo = lastUndo(kind);
+    items.push({ label: nextUndo ? `Undo: ${nextUndo.label}` : "Nothing to undo", icon: "left", sub: "Ctrl+Z", disabled: !nextUndo, run: () => cmdUndo() });
     items.push({ label: pane.visible.length > 0 && pane.visible.every((e) => pane.selected.has(e.path)) ? "Deselect all" : "Select all", icon: "check", sub: "Ctrl+A", run: () => cmdSelectAll() });
-    if (kind === "remote") items.push("-", { label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) }, { label: "Install .ipk packages…", icon: "box", run: () => cmdIpk() });
+    if (kind === "remote") {
+      items.push("-");
+      items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) });
+      items.push({ label: "Install .ipk packages…", icon: "box", run: () => cmdIpk() });
+      items.push({ label: "New symbolic link…", icon: "link", run: () => cmdSymlink() });
+    }
   }
   return items;
+}
+async function cmdCopyName() {
+  const pane = panes[files.active], sel = selectedEntries(pane);
+  if (!sel.length) { toast("Select an item first"); return; }
+  if (await clipboardWrite(sel.map((e) => e.name).join("\n"))) toast(sel.length > 1 ? "Names copied" : "Name copied");
+  else toast("Copy was blocked by the browser", "error");
+}
+
+async function cmdCopyPath() {
+  const pane = panes[files.active], selection = selectedEntries(pane);
+  const value = selection.length ? selection.map((entry) => entry.path).join("\n") : pane.path;
+  if (await clipboardWrite(value)) toast(selection.length > 1 ? "Paths copied" : "Path copied");
+  else toast("Copy was blocked by the browser", "error");
+}
+
+function cmdSelectAll() {
+  const pane = panes[files.active];
+  cancelPendingRename(pane);
+  const all = pane.visible.length > 0 && pane.visible.every((entry) => pane.selected.has(entry.path));
+  if (all) {
+    pane.selected.clear();
+    pane.anchor = -1;
+    pane.cursor = -1;
+  } else {
+    pane.selected = new Set(pane.visible.map((entry) => entry.path));
+    if (pane.cursor < 0 && pane.visible.length) pane.cursor = pane.anchor = 0;
+  }
+  updateSelectionUI(pane);
+}
+
+function cmdSelectNone() {
+  clearPaneSelection(panes[files.active]);
 }
 
 function bookmarkKey(kind) { return kind === "remote" ? `bookmarks.remote.${files.profileID || devices.currentID}` : "bookmarks.local"; }
@@ -660,56 +831,118 @@ function openBookmarks(kind, x, y) {
 async function cmdMkdir() {
   const kind = files.active;
   if (kind === "remote" && !requireSession()) return;
+  const pane = panes[kind], path = pane.path;
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
   const name = await ask({ title: "New folder", label: "Folder name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid folder name (no slashes).") });
   if (!name) return;
+  if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Folder creation was cancelled.", "error"); return; }
   try {
-    if (kind === "local") await post("/api/v1/files/local/mkdir", { path: joinLocal(panes.local.path, name) });
-    else await post(sessionURL(files.sessionID, "mkdir"), { path: joinRemote(panes.remote.path, name) });
-    await refreshPane(kind);
+    if (kind === "local") await post("/api/v1/files/local/mkdir", { path: joinLocal(path, name) });
+    else await post(sessionURL(sessionID, "mkdir"), { path: joinRemote(path, name) });
+    if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await loadPane(kind, path, { keepSelection: true });
     toast(`Folder “${name}” created`);
-  } catch (error) { handleOpError(error, kind); }
+  } catch (error) { if (kind === "remote" && sessionLost(error)) handleSessionLost(sessionID); else handleOpError(error, kind, sessionID); }
 }
-async function applyRename(kind, entry, name) {
-  if (!name || name === entry.name) return;
-  const parentPath = kind === "local" ? panes.local.path : panes.remote.path;
+async function applyRename(kind, entry, name, expected = null) {
+  if (!validName(name) || name === entry.name) return;
+  const pane = panes[kind];
+  const parentPath = pane.path;
+  const sessionID = kind === "remote" ? (expected?.sessionID || files.sessionID) : "";
+  const profileID = kind === "remote" ? (expected?.profileID || files.profileID) : "";
+  const sessionKey = kind === "remote" ? (expected?.sessionKey || files.sessionKey) : "";
+  if (kind === "remote" && (!isFileSessionCurrent(sessionID, sessionKey) || files.profileID !== profileID)) { toast("The receiver connection changed. Rename cancelled.", "error"); return; }
   const target = kind === "local" ? joinLocal(parentPath, name) : joinRemote(parentPath, name);
   try {
     if (kind === "local") await post("/api/v1/files/local/rename", { old_path: entry.path, new_path: target });
-    else await post(sessionURL(files.sessionID, "rename"), { old_path: entry.path, new_path: target });
-    panes[kind].selected = new Set([target]);
-    await loadPane(kind, panes[kind].path, { keepSelection: true });
-    toast("Renamed");
-  } catch (error) { handleOpError(error, kind); }
+    else await post(sessionURL(sessionID, "rename"), { old_path: entry.path, new_path: target });
+    const sameSession = kind === "local" || isFileSessionCurrent(sessionID, sessionKey);
+    if (sameSession && pane.path === parentPath) {
+      if (pane.selected.has(entry.path)) {
+        const selection = new Set(pane.selected);
+        selection.delete(entry.path);
+        selection.add(target);
+        pane.selected = selection;
+      }
+      await loadPane(kind, parentPath, { keepSelection: true });
+    }
+    pushUndo(kind, "Rename", [{ from: target, to: entry.path }], profileID, sessionKey);
+    toast(kind === "remote" && !sameSession ? "Renamed on the previous receiver" : "Renamed · Ctrl+Z to undo");
+  } catch (error) {
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) toast(`${entry.name}: ${error.message}`, "error");
+    else if (kind === "remote" && sessionLost(error)) handleSessionLost(sessionID);
+    else handleOpError(error, kind, sessionID);
+  }
 }
-// Edit the name right in the list (Enter saves, Esc cancels).
 function inlineRename(pane, entry) {
   const kind = pane.kind;
   if (kind === "remote" && !files.sessionID) return false;
+  const expected = kind === "remote" ? { sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID } : null;
+  if (files.active !== kind || !pane.selected.has(entry.path) || pane.path !== dirOf(kind, entry.path)) return false;
   const index = pane.visible.findIndex((e) => e.path === entry.path);
   const row = index >= 0 ? pane.rows.querySelector(`tr.row[data-index="${index}"]`) : null;
   const label = row?.querySelector("td.name span");
   if (!label || row.querySelector(".rename-input")) return Boolean(label);
   const input = h("input", { class: "rename-input", type: "text", value: entry.name, spellcheck: "false", autocomplete: "off", "aria-label": "New name" });
   input.value = entry.name;
+  const cell = label.parentElement;
+  cell?.classList.add("renaming");
+  const wasDraggable = row.getAttribute("draggable");
+  row.setAttribute("draggable", "false");
   let done = false;
   const finish = (save) => {
     if (done) return;
+    const name = input.value;
+    if (save && !validName(name)) {
+      toast("Enter a valid name (no slashes).", "error");
+      input.focus({ preventScroll: true });
+      input.select();
+      return;
+    }
     done = true;
-    const name = input.value.trim();
+    document.removeEventListener("pointerdown", outside, true);
+    if (wasDraggable === null) row.removeAttribute("draggable"); else row.setAttribute("draggable", wasDraggable);
+    cell?.classList.remove("renaming");
     input.replaceWith(label);
     if (!save) { pane.table.focus?.(); return; }
-    if (name && name !== entry.name && !validName(name)) { toast("Enter a valid name (no slashes).", "error"); return; }
-    applyRename(kind, entry, name);
+    applyRename(kind, entry, name, expected);
   };
   input.addEventListener("keydown", (event) => {
     event.stopPropagation();
     if (event.key === "Enter") { event.preventDefault(); finish(true); }
     else if (event.key === "Escape") { event.preventDefault(); finish(false); }
   });
-  input.addEventListener("click", (event) => event.stopPropagation());
-  input.addEventListener("dblclick", (event) => event.stopPropagation());
-  input.addEventListener("contextmenu", (event) => event.stopPropagation());
-  input.addEventListener("blur", () => finish(true));
+  for (const type of ["click", "dblclick", "mousedown", "mouseup", "pointerdown", "pointerup", "dragstart", "selectstart"]) {
+    input.addEventListener(type, (event) => { event.stopPropagation(); });
+  }
+  input.addEventListener("dragstart", (event) => event.preventDefault());
+  let keepSel = true, press = null;
+  input.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || !keepSel || input.selectionStart === input.selectionEnd) { keepSel = false; return; }
+    press = { x: event.clientX, y: event.clientY, a: input.selectionStart, b: input.selectionEnd, dir: input.selectionDirection };
+  });
+  input.addEventListener("mouseup", (event) => {
+    const p = press; press = null;
+    if (!p) return;
+    keepSel = false;
+    const still = Math.abs(event.clientX - p.x) < 4 && Math.abs(event.clientY - p.y) < 4;
+    if (!still || event.detail > 1) return;
+    window.setTimeout(() => { if (!done) { input.focus({ preventScroll: true }); input.setSelectionRange(p.a, p.b, p.dir || "none"); } }, 0);
+  });
+  let menuOpen = false;
+  input.addEventListener("contextmenu", () => {
+    menuOpen = true;
+    const menu = $("#menu");
+    const watch = new MutationObserver(() => {
+      if (!menu.hidden) return;
+      watch.disconnect();
+      window.setTimeout(() => { menuOpen = false; if (!done) input.focus({ preventScroll: true }); }, 30);
+    });
+    watch.observe(menu, { attributes: true, attributeFilter: ["hidden"] });
+  });
+  input.addEventListener("blur", () => { if (!menuOpen) finish(true); });
+  const outside = (event) => { if (event.target === input || event.target.closest?.("#menu")) return; menuOpen = false; finish(true); };
+  document.addEventListener("pointerdown", outside, true);
   label.replaceWith(input);
   input.focus();
   const dot = entry.is_dir ? -1 : entry.name.lastIndexOf(".");
@@ -717,34 +950,40 @@ function inlineRename(pane, entry) {
   return true;
 }
 async function cmdRename() {
-  const kind = files.active, sel = selectedEntries(panes[kind]);
+  const kind = files.active;
+  cancelPendingRename(panes[kind]);
+  const sel = selectedEntries(panes[kind]);
   if (sel.length !== 1) { toast("Select one item to rename"); return; }
   if (kind === "remote" && !requireSession()) return;
   const entry = sel[0];
+  const expected = kind === "remote" ? { sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID } : null;
   if (inlineRename(panes[kind], entry)) return;
   const name = await ask({ title: "Rename", label: "New name", value: entry.name, ok: "Rename", validate: (v) => (validName(v) ? "" : "Enter a valid name (no slashes).") });
-  await applyRename(kind, entry, name);
+  await applyRename(kind, entry, name, expected);
 }
 async function cmdDelete() {
   const kind = files.active, sel = selectedEntries(panes[kind]);
   if (!sel.length) { toast("Select items to delete"); return; }
   if (kind === "remote" && !requireSession()) return;
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
   const names = sel.slice(0, 6).map((e) => `${e.is_dir ? "📁" : "•"} ${e.name}`).join("\n") + (sel.length > 6 ? `\n… and ${sel.length - 6} more` : "");
   const where = kind === "remote" ? "on the device" : "on this computer";
   const confirmed = await ask({ title: `Delete ${sel.length === 1 ? "item" : `${sel.length} items`}?`, message: `${names}\n\nThis permanently deletes the selection ${where}${sel.some((e) => e.is_dir) ? ", including everything inside folders" : ""}. It cannot be undone.`, input: false, ok: "Delete", danger: true });
   if (!confirmed) return;
+  if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Delete cancelled.", "error"); return; }
   let failed = 0, last = null;
   for (const entry of sel) {
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Remaining items were not deleted."); break; }
     try {
       if (kind === "local") await post("/api/v1/files/local/remove", { path: entry.path });
-      else await post(sessionURL(files.sessionID, "remove"), { path: entry.path, directory: entry.is_dir });
-    } catch (error) { failed++; last = error; if (sessionLost(error)) break; }
+      else await post(sessionURL(sessionID, "remove"), { path: entry.path, directory: entry.is_dir });
+    } catch (error) { failed++; last = error; if (sessionLost(error)) { handleSessionLost(sessionID); break; } }
   }
-  await refreshPane(kind);
-  if (failed) { toast(`${failed} item(s) could not be deleted: ${last.message}`, "error"); if (sessionLost(last)) handleSessionLost(); }
+  if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await refreshPane(kind);
+  if (failed) { toast(`${failed} item(s) could not be deleted: ${last.message}`, "error"); if (kind === "remote" && sessionLost(last)) handleSessionLost(sessionID); }
   else toast(`${sel.length} item${sel.length === 1 ? "" : "s"} deleted`);
 }
-// Permissions dialog: tick rwx boxes, pick a preset (644 / 755 / 777) or type the octal mode.
 function askPermissions(title, info, initial, hasFolder = false) {
   const dialog = $("#chmodDialog"), input = $("#chmodInput"), error = $("#chmodError"), form = $("#chmodForm");
   const boxes = $$("input[data-bit]", dialog);
@@ -794,32 +1033,41 @@ async function cmdChmod() {
   const kind = files.active, sel = selectedEntries(panes[kind]);
   if (!sel.length) { toast("Select items first"); return; }
   if (kind === "remote" && !requireSession()) return;
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
   const current = sel.length === 1 ? permissionOctal(sel[0].mode) : "";
   const choice = await askPermissions("Permissions", sel.length === 1 ? `${sel[0].name} — now ${current}` : `${sel.length} items`, current, sel.some((e) => e.is_dir));
   if (!choice) return;
   const { mode, recursive } = choice;
-  const chmodOne = (path) => (kind === "local" ? post("/api/v1/files/local/chmod", { path, mode }) : post(sessionURL(files.sessionID, "chmod"), { path, mode }));
-  const listDir = (path) => (kind === "local" ? api(`/api/v1/files/local/list?path=${encodeURIComponent(path)}`) : api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(path)}`)));
+  if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Permission changes were cancelled.", "error"); return; }
+  const chmodOne = (path) => (kind === "local" ? post("/api/v1/files/local/chmod", { path, mode }) : post(sessionURL(sessionID, "chmod"), { path, mode }));
+  const listDir = (path) => (kind === "local" ? api(`/api/v1/files/local/list?path=${encodeURIComponent(path)}`) : api(sessionURL(sessionID, `list?path=${encodeURIComponent(path)}`)));
   const isLink = (e) => /^l/.test(String(e.mode || ""));
   const LIMIT = 5000;
   let failed = 0, done = 0, last = null, capped = false;
   const queue = sel.map((entry) => ({ entry, depth: 0 }));
   while (queue.length) {
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Remaining items were not changed."); break; }
     const { entry, depth } = queue.shift();
     if (done + failed >= LIMIT) { capped = true; break; }
-    try { await chmodOne(entry.path); done++; } catch (error) { failed++; last = error; if (kind === "remote" && sessionLost(error)) break; continue; }
+    try { await chmodOne(entry.path); done++; } catch (error) { failed++; last = error; if (kind === "remote" && sessionLost(error)) { handleSessionLost(sessionID); break; } continue; }
     if (recursive && entry.is_dir && !isLink(entry) && depth < 12) {
-      try { const result = await listDir(entry.path); for (const child of result.entries || []) if (!isLink(child)) queue.push({ entry: child, depth: depth + 1 }); }
-      catch (error) { failed++; last = error; }
+      try {
+        const result = await listDir(entry.path);
+        if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Remaining items were not changed."); break; }
+        for (const child of result.entries || []) if (!isLink(child)) queue.push({ entry: child, depth: depth + 1 });
+      } catch (error) {
+        failed++; last = error;
+        if (kind === "remote" && sessionLost(error)) { handleSessionLost(sessionID); break; }
+      }
     }
   }
-  await loadPane(kind, panes[kind].path, { keepSelection: true });
+  if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await loadPane(kind, panes[kind].path, { keepSelection: true });
   if (failed) toast(`Permissions failed for ${failed} item(s): ${last.message}`, "error");
   else if (capped) toast(`Permissions set to ${mode} on the first ${LIMIT} items only`, "error");
   else toast(recursive ? `Permissions set to ${mode} on ${done} items` : `Permissions set to ${mode}`);
 }
 
-/* ── Copy / Cut / Paste ───────────────────────────────────────────────── */
 const LocalParentPath = (value) => { const index = value.lastIndexOf("/"); return index < 0 ? "." : index === 0 ? "/" : /^[A-Za-z]:$/.test(value.slice(0, index)) ? value.slice(0, index) + "/" : value.slice(0, index); };
 function uniqueName(baseName, existingNames) {
   if (!existingNames.has(baseName)) return baseName;
@@ -833,17 +1081,22 @@ function uniqueName(baseName, existingNames) {
   return `${stem} (copy ${Date.now()})${ext}`;
 }
 function cmdCopy() {
-  const kind = files.active, sel = selectedEntries(panes[kind]);
+  const kind = files.active;
+  if (kind === "remote" && !requireSession()) return;
+  cancelPendingRename(panes[kind]);
+  const sel = selectedEntries(panes[kind]);
   if (!sel.length) { toast("Select items to copy"); return; }
-  files.clipboard = { mode: "copy", kind, entries: sel.map((e) => ({ path: e.path, name: e.name, is_dir: e.is_dir })) };
+  files.clipboard = { mode: "copy", kind, profileID: kind === "remote" ? files.profileID : "", sessionKey: kind === "remote" ? files.sessionKey : "", entries: sel.map((e) => ({ path: e.path, name: e.name, is_dir: e.is_dir })) };
   Object.values(panes).forEach(updateSelectionUI);
   toast(`${sel.length} item${sel.length === 1 ? "" : "s"} copied`);
 }
 function cmdCut() {
-  const kind = files.active, sel = selectedEntries(panes[kind]);
+  const kind = files.active;
+  cancelPendingRename(panes[kind]);
+  const sel = selectedEntries(panes[kind]);
   if (!sel.length) { toast("Select items to cut"); return; }
   if (kind === "remote" && !requireSession()) return;
-  files.clipboard = { mode: "cut", kind, entries: sel.map((e) => ({ path: e.path, name: e.name, is_dir: e.is_dir })) };
+  files.clipboard = { mode: "cut", kind, profileID: kind === "remote" ? files.profileID : "", sessionKey: kind === "remote" ? files.sessionKey : "", entries: sel.map((e) => ({ path: e.path, name: e.name, is_dir: e.is_dir })) };
   toast(`${sel.length} item${sel.length === 1 ? "" : "s"} ready to paste`);
   Object.values(panes).forEach(updateSelectionUI);
 }
@@ -852,60 +1105,67 @@ async function cmdPaste() {
   if (!clip || !clip.entries.length) { toast("Nothing to paste"); return; }
   const kind = files.active;
   if (kind === "remote" && !requireSession()) return;
-  if (clip.kind === "remote" && !files.sessionID) { toast("Connect to the device to paste items copied or cut from it"); return; }
+  if (clip.kind === "remote" && (!files.sessionID || clip.profileID !== files.profileID || clip.sessionKey !== files.sessionKey)) { toast("Reconnect to the source device before pasting its items", "error"); return; }
   if (clip.kind === kind) await pasteWithinPane(clip, kind);
   else await pasteAcrossPanes(clip, kind);
 }
 async function pasteWithinPane(clip, kind) {
   const destDir = panes[kind].path;
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
+  const profileID = kind === "remote" ? files.profileID : "";
   const existingNames = new Set(panes[kind].entries.map((e) => e.name));
   let done = 0, failed = 0, last = null;
+  const undoPairs = [];
   for (const entry of clip.entries) {
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Remaining items were not pasted."); break; }
     let name = entry.name;
     let dst = kind === "local" ? joinLocal(destDir, name) : joinRemote(destDir, name);
     if (clip.mode === "copy" && dst === entry.path) { name = uniqueName(entry.name, existingNames); dst = kind === "local" ? joinLocal(destDir, name) : joinRemote(destDir, name); }
-    else if (dst === entry.path) { continue; } // cutting into the same folder it's already in: nothing to do
+    else if (dst === entry.path) { continue; }
     existingNames.add(name);
     const paste = async (overwrite) => {
       if (clip.mode === "cut") {
-        if (overwrite) await post(kind === "local" ? "/api/v1/files/local/remove" : sessionURL(files.sessionID, "remove"), kind === "local" ? { path: dst } : { path: dst, directory: entry.is_dir });
-        await post(kind === "local" ? "/api/v1/files/local/rename" : sessionURL(files.sessionID, "rename"), { old_path: entry.path, new_path: dst });
+        if (overwrite) await post(kind === "local" ? "/api/v1/files/local/remove" : sessionURL(sessionID, "remove"), kind === "local" ? { path: dst } : { path: dst, directory: entry.is_dir });
+        await post(kind === "local" ? "/api/v1/files/local/rename" : sessionURL(sessionID, "rename"), { old_path: entry.path, new_path: dst });
       } else {
-        await post(kind === "local" ? "/api/v1/files/local/copy" : sessionURL(files.sessionID, "copy"), { src_path: entry.path, dst_path: dst, overwrite });
+        await post(kind === "local" ? "/api/v1/files/local/copy" : sessionURL(sessionID, "copy"), { src_path: entry.path, dst_path: dst, overwrite });
       }
     };
     try {
       await paste(false);
       done++;
+      if (clip.mode === "cut") undoPairs.push({ from: dst, to: entry.path });
     } catch (error) {
       if (error.code === "exists") {
         const overwrite = await ask({ title: "Replace existing item?", message: `“${name}” already exists. Replace it?`, input: false, ok: "Replace", danger: true });
+        if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Paste cancelled."); break; }
         if (overwrite) {
           try { await paste(true); done++; } catch (error2) { failed++; last = error2; }
         }
-      } else { failed++; last = error; if (sessionLost(error)) break; }
+      } else { failed++; last = error; if (sessionLost(error)) { if (kind === "remote") handleSessionLost(sessionID); break; } }
     }
   }
   if (clip.mode === "cut" && !failed) { files.clipboard = null; Object.values(panes).forEach(updateSelectionUI); }
-  await refreshPane(kind);
+  if (undoPairs.length) pushUndo(kind, "Move", undoPairs, profileID, sessionKey);
+  if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await refreshPane(kind);
   if (failed) toast(`${failed} item(s) could not be pasted: ${last.message}`, "error");
   else if (done) toast(`${done} item${done === 1 ? "" : "s"} ${clip.mode === "cut" ? "moved" : "copied"}`);
 }
 async function pasteAcrossPanes(clip, kind) {
   const direction = kind === "remote" ? "upload" : "download";
+  const sourceSessionID = clip.kind === "remote" ? files.sessionID : "";
+  const sourceProfileID = clip.kind === "remote" ? files.profileID : "";
+  const sourceSessionKey = clip.kind === "remote" ? files.sessionKey : "";
   const destDir = panes[kind].path;
-  const beforeIDs = new Set(files.transfers.map((t) => t.id));
-  await transferSelection(direction, clip.entries, destDir);
+  const created = await transferSelection(direction, clip.entries, destDir);
   if (clip.mode !== "cut") return;
-  let transfers = [];
-  try { ({ transfers } = await api("/api/v1/files/transfers")); } catch { return; }
-  files.transfers = transfers || [];
-  const matchEntry = (task) => clip.entries.find((e) => (direction === "upload" ? task.local_path === e.path : task.remote_path === e.path));
-  const pending = new Map();
-  for (const task of files.transfers) { if (!beforeIDs.has(task.id)) { const entry = matchEntry(task); if (entry) pending.set(task.id, entry); } }
+  const pending = new Map((created || []).filter((item) => item?.id && item.entry).map((item) => [item.id, item.entry]));
   if (!pending.size) return;
   files.clipboard = null;
+  Object.values(panes).forEach(updateSelectionUI);
   toast(`Moving ${pending.size} item${pending.size === 1 ? "" : "s"} — the original is removed once the transfer finishes`);
+  let sourceChangedNotified = false;
   const poll = async () => {
     let current;
     try { ({ transfers: current } = await api("/api/v1/files/transfers")); } catch { window.setTimeout(poll, 1500); return; }
@@ -916,7 +1176,16 @@ async function pasteAcrossPanes(clip, kind) {
         if (task?.state === "completed") {
           try {
             if (clip.kind === "local") await post("/api/v1/files/local/remove", { path: entry.path });
-            else await post(sessionURL(files.sessionID, "remove"), { path: entry.path, directory: entry.is_dir });
+            else {
+              if (!isFileSessionCurrent(sourceSessionID, sourceSessionKey) || files.profileID !== sourceProfileID) {
+                if (!sourceChangedNotified) {
+                  toast("The receiver connection changed. Downloaded originals were kept on the source device.", "error");
+                  sourceChangedNotified = true;
+                }
+                continue;
+              }
+              await post(sessionURL(sourceSessionID, "remove"), { path: entry.path, directory: entry.is_dir });
+            }
             await refreshPane(clip.kind);
           } catch (error) { toast(`Could not remove the original “${entry.name}” after moving it: ${error.message}`, "error"); }
         } else if (task) {
@@ -929,8 +1198,8 @@ async function pasteAcrossPanes(clip, kind) {
   window.setTimeout(poll, 1200);
 }
 
-const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false, kind: "remote" };
-const editorURL = () => (editor.kind === "local" ? "/api/v1/files/local/content" : sessionURL(files.sessionID, "content"));
+const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false, kind: "remote", sessionID: "", sessionKey: "" };
+const editorURL = () => (editor.kind === "local" ? "/api/v1/files/local/content" : sessionURL(editor.sessionID, "content"));
 const editorDirty = () => $("#editorText").value !== editor.original;
 function editorStatus(message, kind = "") { const node = $("#editorStatus"); node.textContent = message; node.dataset.kind = kind; }
 function editorRender() {
@@ -1014,10 +1283,10 @@ const editorLines = (() => {
   if (window.ResizeObserver) new ResizeObserver(() => update()).observe(text);
   return { update };
 })();
-function showEditor(kind, file, create) {
+function showEditor(kind, file, create, sessionID = "", sessionKey = "") {
   Object.assign(editor, {
     kind, path: file.path, name: file.path.split("/").filter(Boolean).pop() || file.path, size: Number(file.size) || 0,
-    modifiedAt: file.modified_at || "", hash: file.hash || "", lineEnding: file.line_ending || "lf", create, original: file.content, busy: false,
+    modifiedAt: file.modified_at || "", hash: file.hash || "", lineEnding: file.line_ending || "lf", create, original: file.content, busy: false, sessionID, sessionKey,
   });
   const text = $("#editorText");
   text.value = file.content;
@@ -1035,16 +1304,20 @@ function showEditor(kind, file, create) {
   editorCursor();
   editorLines.update(true);
 }
-function editorError(kind, error) {
-  if (error?.code === "file_not_found") { toast(error.message, "error"); refreshPane(kind); return; }
-  handleOpError(error, kind);
+function editorError(kind, error, sessionID = "") {
+  if (error?.code === "file_not_found") { toast(error.message, "error"); if (kind === "local" || isFileSessionCurrent(sessionID, editor.sessionKey)) refreshPane(kind); return; }
+  handleOpError(error, kind, sessionID);
 }
 async function openEditor(kind, path) {
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
+  if (kind === "remote" && !requireSession()) return;
   try {
-    const url = kind === "local" ? "/api/v1/files/local/content" : sessionURL(files.sessionID, "content");
+    const url = kind === "local" ? "/api/v1/files/local/content" : sessionURL(sessionID, "content");
     const data = await api(`${url}?path=${encodeURIComponent(path)}`);
-    showEditor(kind, data.file, false);
-  } catch (error) { editorError(kind, error); }
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) return;
+    showEditor(kind, data.file, false, sessionID, sessionKey);
+  } catch (error) { editorError(kind, error, sessionID); }
 }
 async function cmdEdit() {
   const kind = files.active, sel = selectedEntries(panes[kind]);
@@ -1055,13 +1328,19 @@ async function cmdEdit() {
 async function cmdNewFile() {
   const kind = files.active;
   if (kind === "remote" && !requireSession()) return;
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
+  const basePath = panes[kind].path;
   const name = await ask({ title: "New text file", label: "File name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid file name (no slashes).") });
   if (!name) return;
-  const path = kind === "local" ? joinLocal(panes.local.path, name) : joinRemote(panes.remote.path, name);
-  showEditor(kind, { path, content: "", size: 0, line_ending: "lf" }, true);
+  if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. New file creation was cancelled.", "error"); return; }
+  const path = kind === "local" ? joinLocal(basePath, name) : joinRemote(basePath, name);
+  showEditor(kind, { path, content: "", size: 0, line_ending: "lf" }, true, sessionID, sessionKey);
 }
 async function editorSave(force = false) {
   if (editor.busy) return;
+  const sessionID = editor.sessionID, sessionKey = editor.sessionKey, editorPath = editor.path, editorKind = editor.kind;
+  if (editorKind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { editorStatus("The original device connection is no longer active. Reconnect to that device before saving.", "error"); return; }
   editor.busy = true; editorRender(); editorStatus("Saving…");
   const content = $("#editorText").value;
   try {
@@ -1072,6 +1351,7 @@ async function editorSave(force = false) {
         expected_modified_at: editor.modifiedAt || undefined, expected_hash: editor.hash || undefined, force, create: editor.create,
       }),
     });
+    if (editor.path !== editorPath || editor.kind !== editorKind || editor.sessionID !== sessionID) return;
     Object.assign(editor, {
       size: Number(data.file.size) || 0, modifiedAt: data.file.modified_at || "", hash: data.file.hash || "", lineEnding: data.file.line_ending || "lf",
       create: false, original: content,
@@ -1080,22 +1360,23 @@ async function editorSave(force = false) {
     editorStatus(data.file.mode_unknown
       ? `Saved ${new Date().toLocaleTimeString()}.`
       : `Saved ${new Date().toLocaleTimeString()}`, data.file.mode_unknown ? "" : "ok");
-    if (panes[editor.kind].path === (editor.kind === "local" ? LocalParentPath(editor.path) : RemoteParentPath(editor.path))) loadPane(editor.kind, panes[editor.kind].path, { keepSelection: true });
+    if ((editor.kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) && panes[editor.kind].path === (editor.kind === "local" ? LocalParentPath(editor.path) : RemoteParentPath(editor.path))) loadPane(editor.kind, panes[editor.kind].path, { keepSelection: true });
   } catch (error) {
+    if (editor.path !== editorPath || editor.kind !== editorKind || editor.sessionID !== sessionID) return;
     editor.busy = false; editorRender();
     editorStatus(error.message, "error");
     if (error.code === "conflict") {
       const overwrite = await ask({ title: "File changed since it was opened", message: `“${editor.name}” changed after you opened it. Overwrite?`, input: false, ok: "Overwrite", danger: true });
-      if (overwrite) await editorSave(true);
+      if (overwrite && editor.path === editorPath && editor.sessionID === sessionID && (editor.kind === "local" || isFileSessionCurrent(sessionID, sessionKey))) await editorSave(true);
     } else if (error.code === "exists") {
       editor.create = false;
       editorRender();
     } else if (sessionLost(error)) {
-      handleSessionLost();
+      handleSessionLost(sessionID);
     }
   }
 }
-const RemoteParentPath = (value) => { const index = value.lastIndexOf("/"); return index <= 0 ? "/" : value.slice(0, index); };
+const RemoteParentPath = (value) => { const index = value.lastIndexOf("/"); return index < 0 ? "." : index === 0 ? "/" : value.slice(0, index); };
 async function editorDiscardOK(title) {
   if (!editorDirty()) return true;
   return Boolean(await ask({ title, message: `“${editor.name}” has unsaved changes.`, input: false, ok: "Discard changes", danger: true }));
@@ -1108,12 +1389,15 @@ async function editorClose() {
 }
 async function editorReload() {
   if (editor.busy || editor.create) return;
+  const sessionID = editor.sessionID, sessionKey = editor.sessionKey, editorPath = editor.path, editorKind = editor.kind;
   if (!(await editorDiscardOK(editor.kind === "local" ? "Reload from this computer?" : "Reload from the device?"))) return;
+  if (editor.path !== editorPath || editor.kind !== editorKind || (editor.kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey))) { editorStatus("The original device connection is no longer active.", "error"); return; }
   try {
     const data = await api(`${editorURL()}?path=${encodeURIComponent(editor.path)}`);
-    showEditor(editor.kind, data.file, false);
+    if (editor.path !== editorPath || editor.sessionID !== sessionID) return;
+    showEditor(editor.kind, data.file, false, sessionID, sessionKey);
     editorStatus(editor.kind === "local" ? "Reloaded from this computer" : "Reloaded from the device", "ok");
-  } catch (error) { editorStatus(error.message, "error"); editorError(editor.kind, error); }
+  } catch (error) { editorStatus(error.message, "error"); if (sessionLost(error)) handleSessionLost(sessionID); else editorError(editor.kind, error, sessionID); }
 }
 {
   const dialog = $("#editorDialog"), text = $("#editorText");
@@ -1131,7 +1415,6 @@ async function editorReload() {
 }
 
 
-/* ── Layout helpers: swap panels, synchronised browsing, saved-site drawer ── */
 function applyFilesLayout() {
   $("#commander").dataset.localLeft = files.localLeft ? "1" : "0";
   const sync = $("#fileSync");
@@ -1174,7 +1457,6 @@ $("#sitesSideAdd").addEventListener("click", () => openDeviceDialog());
 $("#sitesSide").hidden = !store.get("filesSitesOpen", false);
 applyFilesLayout();
 
-// ---- Editor: find and replace -------------------------------------------------
 (function editorFindReplace() {
   const bar = $("#editorFind"), text = $("#editorText"), needleInput = $("#findText"), replaceInput = $("#replaceText"), info = $("#findInfo");
   const matchCase = () => $("#findCase").checked;
@@ -1258,3 +1540,208 @@ applyFilesLayout();
   });
   $("#editorDialog").addEventListener("close", () => { bar.hidden = true; setInfo(""); });
 })();
+
+
+function updateHistoryButtons(pane) {
+  if (!pane.backBtn) return;
+  const available = pane.loaded && !pane.historyBusy && (pane.kind !== "remote" || Boolean(files.sessionID));
+  const rootFallback = Boolean(pane.rootPath && pane.path !== pane.rootPath && pane.hpos <= 0);
+  pane.backBtn.disabled = !available || (pane.hpos <= 0 && !rootFallback);
+  pane.fwdBtn.disabled = !available || pane.hpos < 0 || pane.hpos >= pane.hist.length - 1;
+}
+async function stepPaneHistory(kind, delta) {
+  const pane = panes[kind];
+  const to = pane.hpos + delta;
+  if (pane.historyBusy || (kind === "remote" && !files.sessionID)) return false;
+  const target = to >= 0 && to < pane.hist.length ? pane.hist[to] : delta < 0 && pane.rootPath && pane.path !== pane.rootPath ? pane.rootPath : "";
+  if (!target) return false;
+  pane.historyBusy = true;
+  updateHistoryButtons(pane);
+  try {
+    const ok = await loadPane(kind, target, { record: false });
+    if (ok) {
+      if (to >= 0 && to < pane.hist.length) pane.hpos = to;
+      else { pane.hist = [pane.rootPath]; pane.hpos = 0; }
+    }
+    return ok;
+  } finally {
+    pane.historyBusy = false;
+    updateHistoryButtons(pane);
+  }
+}
+for (const pane of Object.values(panes)) {
+  const up = $('.pathbar .icon-btn[data-act="up"]', pane.root);
+  if (!up) continue;
+  const make = (name, title, delta, direction) => h("button", {
+    type: "button", class: `icon-btn history-${direction}`, title, "aria-label": title,
+    dataset: { history: String(delta) }, disabled: true,
+  }, icon(name));
+  pane.backBtn = make("left", "Back (Alt+Left)", -1, "back");
+  pane.fwdBtn = make("right", "Forward (Alt+Right)", 1, "forward");
+  up.before(pane.backBtn, pane.fwdBtn);
+  pane.root.addEventListener("click", (event) => {
+    const button = event.target.closest?.("button[data-history]");
+    if (!button || !pane.root.contains(button)) return;
+    event.preventDefault();
+    stepPaneHistory(pane.kind, Number(button.dataset.history));
+  });
+  updateHistoryButtons(pane);
+  pane.root.addEventListener("mousedown", (event) => {
+    if (event.button === 3 || event.button === 4) {
+      event.preventDefault();
+      stepPaneHistory(pane.kind, event.button === 3 ? -1 : 1);
+    }
+  });
+}
+const filesKeyReady = () => view.current === "files" && !$("dialog[open]");
+document.addEventListener("keydown", (event) => {
+  if (!filesKeyReady() || !event.altKey || event.ctrlKey || event.metaKey) return;
+  const tag = event.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (event.key === "ArrowLeft") { event.preventDefault(); stepPaneHistory(files.active, -1); }
+  else if (event.key === "ArrowRight") { event.preventDefault(); stepPaneHistory(files.active, 1); }
+});
+
+const typeAhead = { text: "", timer: 0 };
+document.addEventListener("keydown", (event) => {
+  if (!filesKeyReady() || event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1 || event.key === " ") return;
+  const tag = event.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target.isContentEditable) return;
+  const pane = panes[files.active];
+  if (!pane.visible.length) return;
+  cancelPendingRename(pane);
+  event.preventDefault();
+  typeAhead.text += event.key.toLowerCase();
+  window.clearTimeout(typeAhead.timer);
+  typeAhead.timer = window.setTimeout(() => { typeAhead.text = ""; }, 900);
+  const names = pane.visible.map((e) => e.name.toLowerCase());
+  const repeat = typeAhead.text.length > 1 && [...typeAhead.text].every((c) => c === typeAhead.text[0]);
+  const needle = repeat ? typeAhead.text[0] : typeAhead.text;
+  const from = repeat || typeAhead.text.length === 1 ? pane.cursor + 1 : Math.max(pane.cursor, 0);
+  let index = -1;
+  for (let i = 0; i < names.length && index < 0; i++) { const at = (from + i) % names.length; if (names[at].startsWith(needle)) index = at; }
+  if (index < 0) return;
+  pane.selected = new Set([pane.visible[index].path]); pane.anchor = pane.cursor = index;
+  updateSelectionUI(pane);
+  $(`tr[data-index="${index}"]`, pane.rows)?.scrollIntoView({ block: "nearest" });
+});
+
+const preview = { pane: null, index: -1, seq: 0, sessionID: "", sessionKey: "" };
+async function showPreview(pane, index) {
+  const entry = pane.visible[index];
+  if (!entry || entry.is_dir) return false;
+  const sessionID = pane.kind === "remote" ? files.sessionID : "";
+  const sessionKey = pane.kind === "remote" ? files.sessionKey : "";
+  if (pane.kind === "remote" && !requireSession()) return false;
+  cancelPendingRename(pane);
+  const seq = ++preview.seq;
+  const dialog = $("#previewDialog");
+  $("#previewTitle").textContent = entry.name;
+  $("#previewPath").textContent = entry.path;
+  $("#previewMeta").textContent = `${formatBytes(entry.size)} · ${formatDate(entry.modified_at)}`;
+  $("#previewNote").hidden = true;
+  const body = $("#previewText");
+  body.textContent = "Loading…";
+  preview.pane = pane; preview.index = index; preview.sessionID = sessionID; preview.sessionKey = sessionKey;
+  pane.selected = new Set([entry.path]); pane.anchor = pane.cursor = index; updateSelectionUI(pane);
+  $(`tr[data-index="${index}"]`, pane.rows)?.scrollIntoView({ block: "nearest" });
+  if (!dialog.open) openDialog(dialog);
+  try {
+    const url = pane.kind === "local" ? "/api/v1/files/local/content" : sessionURL(sessionID, "content");
+    const data = await api(`${url}?path=${encodeURIComponent(entry.path)}`);
+    if (seq !== preview.seq) return true;
+    if (pane.kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) return true;
+    const text = String(data.file?.content ?? "");
+    const CUT = 200000;
+    body.textContent = text.length > CUT ? text.slice(0, CUT) : (text || "(empty file)");
+    body.scrollTop = 0;
+    $("#previewNote").hidden = text.length <= CUT;
+    $("#previewNote").textContent = "Only the beginning is shown.";
+  } catch (error) {
+    if (seq !== preview.seq) return true;
+    if (pane.kind === "remote" && sessionLost(error)) { dialog.close(); handleSessionLost(sessionID); return true; }
+    body.textContent = error.code === "not_text" ? "This file is not text, so it cannot be previewed here."
+      : error.code === "too_large" ? "This file is too large to preview here. Download it instead."
+      : error.message;
+  }
+  return true;
+}
+function cmdPreview() {
+  const pane = panes[files.active];
+  if (pane.kind === "remote" && !requireSession()) return;
+  let index = pane.cursor;
+  if (index < 0 || !pane.visible[index]) index = pane.visible.findIndex((e) => pane.selected.has(e.path));
+  const entry = pane.visible[index];
+  if (!entry || entry.is_dir) { toast("Select a file first"); return; }
+  showPreview(pane, index);
+}
+{
+  const dialog = $("#previewDialog");
+  const step = (delta) => {
+    const pane = preview.pane;
+    if (!pane) return;
+    for (let i = preview.index + delta; i >= 0 && i < pane.visible.length; i += delta) if (!pane.visible[i].is_dir) { showPreview(pane, i); return; }
+  };
+  dialog.addEventListener("keydown", (event) => {
+    const onButton = event.target.tagName === "BUTTON";
+    if (event.key === " " && !onButton) { event.preventDefault(); dialog.close(); }
+    else if ((event.key === "ArrowDown" || event.key === "ArrowRight") && !onButton) { event.preventDefault(); step(1); }
+    else if ((event.key === "ArrowUp" || event.key === "ArrowLeft") && !onButton) { event.preventDefault(); step(-1); }
+  });
+  $("#previewClose").addEventListener("click", () => dialog.close());
+  $("#previewEdit").addEventListener("click", () => {
+    const pane = preview.pane, entry = pane?.visible[preview.index];
+    dialog.close();
+    if (entry) { setActivePane(pane.kind); openEditor(pane.kind, entry.path); }
+  });
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", () => { preview.seq++; $("#previewText").textContent = ""; preview.pane?.table.focus?.(); });
+}
+
+const dirOf = (kind, path) => (kind === "local" ? LocalParentPath(path) : RemoteParentPath(path));
+const baseOf = (path) => path.split("/").filter(Boolean).pop() || path;
+function pushUndo(kind, label, pairs, profileID = files.profileID, sessionKey = files.sessionKey) {
+  if (!pairs.length) return;
+  files.undo.push({ kind, label: pairs.length > 1 ? `${label} ${pairs.length} items` : `${label} “${baseOf(pairs[0].to)}”`, pairs, profileID: kind === "remote" ? profileID : "", sessionKey: kind === "remote" ? sessionKey : "" });
+  if (files.undo.length > 20) files.undo.shift();
+}
+function lastUndo(kind) {
+  for (let i = files.undo.length - 1; i >= 0; i--) {
+    const item = files.undo[i];
+    if (item.kind === kind && (kind === "local" || (files.sessionID && item.profileID === files.profileID && item.sessionKey === files.sessionKey))) return item;
+  }
+  return null;
+}
+async function cmdUndo() {
+  const kind = files.active;
+  if (kind === "remote" && !requireSession()) return;
+  const sessionID = kind === "remote" ? files.sessionID : "";
+  const sessionKey = kind === "remote" ? files.sessionKey : "";
+  const item = lastUndo(kind);
+  if (!item) { toast("Nothing to undo"); return; }
+  files.undo.splice(files.undo.indexOf(item), 1);
+  const list = (dir) => (kind === "local" ? api(`/api/v1/files/local/list?path=${encodeURIComponent(dir)}`) : api(sessionURL(sessionID, `list?path=${encodeURIComponent(dir)}`)));
+  const taken = new Map();
+  let restored = 0, blocked = 0, failed = 0, last = null;
+  for (const pair of [...item.pairs].reverse()) {
+    if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Undo stopped before changing another device."); break; }
+    try {
+      const dir = dirOf(kind, pair.to);
+      if (!taken.has(dir)) {
+        const result = await list(dir);
+        if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { failed++; last = new Error("The receiver connection changed. Undo cancelled."); break; }
+        taken.set(dir, new Set((result.entries || []).map((e) => e.name)));
+      }
+      const names = taken.get(dir);
+      if (names.has(baseOf(pair.to))) { blocked++; continue; }
+      const body = { old_path: pair.from, new_path: pair.to };
+      if (kind === "local") await post("/api/v1/files/local/rename", body); else await post(sessionURL(sessionID, "rename"), body);
+      names.add(baseOf(pair.to)); restored++;
+    } catch (error) { failed++; last = error; if (kind === "remote" && sessionLost(error)) { handleSessionLost(sessionID); return; } }
+  }
+  if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await refreshPane(kind);
+  if (failed) toast(`Could not undo: ${last.message}`, "error");
+  else if (blocked && !restored) toast("Could not undo: the original name is taken now", "error");
+  else if (blocked) toast(`Undone ${restored}, ${blocked} skipped: the original name is taken now`);
+  else toast(`Undone: ${item.label}`);
+}

@@ -942,6 +942,9 @@
         <h3>Files</h3>
         <dl>
           <dt><kbd>F2</kbd></dt><dd>Rename</dd>
+          <dt><kbd>Space</kbd> / <kbd>F3</kbd></dt><dd>Preview a file</dd>
+          <dt><kbd>Ctrl</kbd> <kbd>Z</kbd></dt><dd>Undo the last rename or move</dd>
+          <dt><kbd>Insert</kbd> / <kbd>Ctrl</kbd> <kbd>Space</kbd></dt><dd>Add the current item to the selection</dd>
           <dt><kbd>F4</kbd></dt><dd>Edit as text</dd>
           <dt><kbd>Shift</kbd> <kbd>F4</kbd></dt><dd>New text file</dd>
           <dt><kbd>F5</kbd></dt><dd>Copy to the other panel</dd>
@@ -1192,6 +1195,26 @@
       <button class="btn primary" id="bqStreamOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg><span class="lbl">Add</span></button>
     </div>
   </form>
+</dialog>
+
+<dialog id="previewDialog" aria-labelledby="previewTitle">
+  <div class="dialog-card editor-card">
+    <header class="editor-head">
+      <div class="editor-title">
+        <h2 id="previewTitle">Preview</h2>
+        <code id="previewPath" class="ellipsis"></code>
+      </div>
+      <span class="badge" id="previewMeta"></span>
+    </header>
+    <p class="form-error" id="previewNote" role="status" hidden></p>
+    <pre id="previewText" class="preview-text" tabindex="0" aria-label="File content"></pre>
+    <div class="dialog-actions">
+      <span class="muted small preview-hint"><kbd>↑</kbd> <kbd>↓</kbd> <span>Next file</span> · <kbd>Space</kbd> <span>Close</span></span>
+      <span class="spacer"></span>
+      <button class="btn" id="previewEdit" type="button"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>Edit as text</button>
+      <button class="btn primary" id="previewClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="editorDialog" aria-labelledby="editorTitle">
@@ -1558,6 +1581,7 @@
     <div class="dialog-actions"><span class="spacer"></span>
       <button class="btn" id="askCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
       <button class="btn" id="askAlt" type="button" hidden></button>
+      <button class="btn" id="askAlt2" type="button" hidden></button>
       <button class="btn primary" id="askOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>OK</button>
     </div>
   </form>

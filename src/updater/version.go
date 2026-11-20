@@ -35,7 +35,6 @@ func parseVersion(v string) (semver, bool) {
 	return s, true
 }
 
-// newer reports whether candidate is a strictly newer version than current.
 func newer(candidate, current string) bool {
 	c, ok1 := parseVersion(candidate)
 	cur, ok2 := parseVersion(current)

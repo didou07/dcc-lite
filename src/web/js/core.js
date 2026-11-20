@@ -17,7 +17,6 @@ function authExpired(status, data) {
   return true;
 }
 
-// Turns a raw failure into "what happened, and what to do"; messages that already say so are kept.
 const ERROR_ACTIONABLE = /\b(check|try|edit|press|enable|untick|choose|use|reload|restart|wait|open|add|install|set)\b/i;
 const ERROR_BY_CODE = {
   session_not_found: "Connection closed. Press Connect.",
@@ -232,7 +231,7 @@ const validName = (name) => name && name !== "." && name !== ".." && !/[\\/\0\r\
 
 function openDialog(dialog) { if (!dialog.open) dialog.showModal(); }
 
-function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", alt = "", danger = false, validate = null }) {
+function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", alt = "", alt2 = "", danger = false, validate = null }) {
   const dialog = $("#askDialog");
   $("#askTitle").textContent = title;
   $("#askMessage").textContent = message;
@@ -247,6 +246,9 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
   const altButton = $("#askAlt");
   altButton.hidden = !alt;
   altButton.textContent = alt;
+  const alt2Button = $("#askAlt2");
+  alt2Button.hidden = !alt2;
+  alt2Button.textContent = alt2;
   const error = $("#askError");
   error.hidden = true;
   return new Promise((resolve) => {
@@ -257,6 +259,7 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
       form.removeEventListener("submit", onSubmit);
       $("#askCancel").removeEventListener("click", onCancel);
       altButton.removeEventListener("click", onAlt);
+      alt2Button.removeEventListener("click", onAlt2);
       dialog.removeEventListener("cancel", onCancel);
       dialog.removeEventListener("close", onClose);
       if (dialog.open) dialog.close();
@@ -275,8 +278,10 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
     const onCancel = (event) => { event?.preventDefault?.(); finish(null); };
     form.addEventListener("submit", onSubmit);
     const onAlt = () => finish("alt");
+    const onAlt2 = () => finish("alt2");
     $("#askCancel").addEventListener("click", onCancel);
     altButton.addEventListener("click", onAlt);
+    alt2Button.addEventListener("click", onAlt2);
     dialog.addEventListener("cancel", onCancel);
     const onClose = () => { if (!dialog.open) finish(null); };
     dialog.addEventListener("close", onClose);
@@ -310,7 +315,6 @@ function openMenu(items, x, y, { search = "" } = {}) {
       ...extras.map((extra) => h("button", { type: "button", role: "menuitem", class: extra.cls, title: extra.title, "aria-label": extra.label, onClick: () => { closeMenu(); extra.run(); } }, icon(extra.icon, "sm")))));
   }
   if (box) {
-    // Typing narrows the rows that have a find key (scripts and commands).
     box.addEventListener("input", () => {
       const q = box.value.trim().toLowerCase();
       menu.querySelectorAll("button[data-find]").forEach((b) => { const row = b.closest(".menu-row") || b; row.hidden = Boolean(q) && b.dataset.searchable !== undefined && !b.dataset.find.includes(q); });

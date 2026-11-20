@@ -21,7 +21,6 @@ const COMMON_COMMANDS = [
   { id: "hdd-free", name: "Recording disk space", command: "df -h /media/hdd /hdd 2>/dev/null" },
   { id: "reboot", name: "Reboot receiver", command: "reboot" },
 ];
-// System commands follow the device web interface: OpenWebif = opkg/init, DreamOS = apt/systemd.
 const isDreamOSDevice = (device) => ["dreamos", "webinterface"].includes(String(device?.web_kind || "").toLowerCase());
 function builtinCommands() {
   const dream = isDreamOSDevice(currentDevice());
@@ -165,7 +164,6 @@ function tabTitle(tab) {
   return `${device ? device.name : "New tab"}${same.length > 1 ? ` #${index}` : ""}`;
 }
 
-/* ── Panes: each tab is a group of terminal sessions in a split layout ── */
 const leaf = (tabId) => ({ kind: "leaf", tabId });
 const treeHas = (node, id) => (node.kind === "leaf" ? node.tabId === id : treeHas(node.a, id) || treeHas(node.b, id));
 function treeLeaves(node, out = []) { if (node.kind === "leaf") out.push(node.tabId); else { treeLeaves(node.a, out); treeLeaves(node.b, out); } return out; }
@@ -211,7 +209,6 @@ function renderTabs() {
 }
 async function closeGroup(group) { for (const id of treeLeaves(group.root)) await closeTab(id); }
 
-/* Builds the active group's split layout; the DOM is rebuilt only when the shape changes. */
 function layoutTerminals() {
   const host = $("#terminalScreens");
   let layout = host.querySelector(":scope > .tlayout"), park = host.querySelector(":scope > .tparking");
@@ -281,7 +278,6 @@ function splitActive(dir) {
   if (treeLeaves(groupOfTab(tab.id).root).length >= 8) { toast("A tab holds at most 8 panels"); return; }
   createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port, directory: tab.directory, split: { of: tab.id, dir }, autoConnect: !!tab.profileID });
 }
-/* Moves focus to the neighbouring panel in a direction (Alt+Shift+arrows). */
 function focusNeighbour(dir) {
   const group = groupOfTab(term.active);
   const ids = group ? treeLeaves(group.root) : [];
@@ -800,12 +796,14 @@ function canRecallHistory(tab) {
   return Boolean(tab) && tab.state === "connected" && view.current === "terminal" && tab.terminal.buffer.active.type !== "alternate";
 }
 function historyStep(tab, direction) {
+  if (!tab || typeof tab !== "object" || !tab.terminal || typeof tab.profileID !== "string") return;
+  const line = typeof tab.line === "string" ? tab.line : "";
   const list = loadHistory(tab.profileID);
-  if (tab.histIndex < 0 && direction > 0) tab.histDraft = tab.dirty ? "" : tab.line;
+  if (tab.histIndex < 0 && direction > 0) tab.histDraft = tab.dirty ? "" : line;
   const next = tab.histIndex + direction;
   if (next < -1 || next >= list.length) return;
   const text = next === -1 ? tab.histDraft : list[next];
-  const erase = tab.dirty ? "\u0005\u0015" : "\u007f".repeat([...tab.line].length);
+  const erase = tab.dirty ? "\u0005\u0015" : "\u007f".repeat([...line].length);
   termSend(tab, erase + text);
   tab.line = text; tab.dirty = false; tab.histIndex = next;
 }
@@ -1039,7 +1037,6 @@ $("#scanForm").addEventListener("submit", async (event) => {
   }
 });
 
-// The terminal command menu and library are implemented in commands.js.
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "t" && view.current === "terminal") { event.preventDefault(); newTabFromActive(); }

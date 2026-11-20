@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,7 +35,6 @@ const nativeBuild = true
 var nativeLog = logx.For("native")
 
 func init() {
-	// The window and its message loop must stay on the program's first thread.
 	runtime.LockOSThread()
 }
 
@@ -126,7 +126,6 @@ const (
 
 type winRect struct{ Left, Top, Right, Bottom int32 }
 
-// SetClassLongPtrW does not exist in 32-bit Windows, where SetClassLongW is the same call.
 func classLongName() string {
 	if bits.UintSize == 64 {
 		return "SetClassLongPtrW"
@@ -156,8 +155,6 @@ type winMsg struct {
 	X, Y    int32
 }
 
-// placed is a rectangle for the video window: relative to the page's window in last, in screen
-// coordinates in applied.
 type placed struct {
 	x, y, w, h int32
 	show, ok   bool
@@ -226,7 +223,6 @@ var (
 	nativeView webview2.WebView
 )
 
-// nativeClose asks the window to close. It is safe to call from any goroutine.
 func nativeClose() {
 	nativeMu.Lock()
 	v := nativeView
@@ -388,7 +384,7 @@ type nativeLive struct {
 	snap         stateOut
 	fit          string      // how the picture fills its window (vlc.Fit...)
 	fitTimer     *time.Timer // debounces a re-fit after the box changed size
-	lastVW       float64     // the page's viewport size at the last box, to turn screen pixels back into CSS pixels
+	lastVW       float64
 	lastVH       float64
 	cursorHidden atomic.Bool
 	events       []mouseEvent // mouse events for the page, newest last
@@ -396,7 +392,7 @@ type nativeLive struct {
 	evLogs       int
 	mouseLogs    int
 	fsFlag       atomic.Bool // fsOn, readable from the mouse hook
-	fsOn         bool        // the window is borderless over the whole screen; used on the window thread only
+	fsOn         bool
 	fsStyle      uintptr
 	fsPlace      winPlacement
 	boxLogs      int
@@ -428,7 +424,6 @@ func (n *nativeLive) vlc() (*vlc.Player, error) {
 	return n.player, n.vlcErr
 }
 
-// close is called when the window has gone; the process is about to end, so nothing here may block.
 func (n *nativeLive) close() {
 	n.closed.Store(true)
 	if n.vlcDone.Load() && n.player != nil {
@@ -437,7 +432,6 @@ func (n *nativeLive) close() {
 	}
 }
 
-// withPlayer runs f on its own goroutine once VLC is ready. It returns at once.
 func (n *nativeLive) withPlayer(f func(p *vlc.Player)) {
 	if !n.vlcDone.Load() || n.player == nil {
 		return
@@ -548,7 +542,6 @@ func (n *nativeLive) place(force bool) {
 		return
 	}
 	if n.iconic() {
-		// No owner any more, so the picture window no longer minimises with the page window.
 		if prev.show {
 			prev.show = false
 			n.mu.Lock()
@@ -586,8 +579,6 @@ func (n *nativeLive) place(force bool) {
 		}
 	}
 	_, _, _ = procSetWindowPos.Call(host, after, uintptr(cur.x), uintptr(cur.y), uintptr(cur.w), uintptr(cur.h), flags)
-	// VLC's own video window lives inside ours on yet another thread. Make it fill ours on every
-	// change rather than relying on VLC to notice.
 	if cur.show {
 		if inner, _, _ := procGetWindow.Call(host, gwChild); inner != 0 {
 			_, _, _ = procSetWindowPos.Call(inner, 0, 0, 0, uintptr(cur.w), uintptr(cur.h), swpNoZOrder|swpNoActivate|swpAsyncPos)
@@ -609,8 +600,6 @@ func (n *nativeLive) insertAfter(host uintptr) (after uintptr, change bool) {
 	return above, true
 }
 
-// stack puts the picture window back directly above the page window when something else has been
-// raised between them or above both.
 func (n *nativeLive) stack(host uintptr) {
 	after, change := n.insertAfter(host)
 	if !change {
@@ -859,7 +848,6 @@ func validFit(mode string) string {
 	return vlc.FitOriginal
 }
 
-// applyFit gives the running picture the current fit for the window's present size.
 func (n *nativeLive) applyFit() {
 	n.mu.Lock()
 	mode, w, h := n.fit, n.last.w, n.last.h
@@ -867,8 +855,6 @@ func (n *nativeLive) applyFit() {
 	n.withPlayer(func(p *vlc.Player) { p.SetFit(mode, int(w), int(h)) })
 }
 
-// refit repeats the fit a moment after the window stopped changing size: only fill and stretch
-// depend on the window's shape.
 func (n *nativeLive) refit() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -1086,7 +1072,6 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 	return "", fmt.Errorf("unknown request %q", op)
 }
 
-// playOptions turns what the page asked for into safe player settings.
 func playOptions(a playArgs) vlc.PlayOptions {
 	o := vlc.PlayOptions{CachingMs: a.Caching, Deinterlace: vlc.DeinterlaceAuto}
 	if o.CachingMs < 200 || o.CachingMs > 10000 {
@@ -1132,6 +1117,10 @@ func (n *nativeLive) startPlayback(gen int, id, ref string, child uintptr) {
 		return
 	}
 
+	if u, perr := url.Parse(mrl); perr == nil {
+		u.User = nil
+		nativeLog.Info("live start", "ref", ref, "url", u.String())
+	}
 	n.playMu.Lock()
 	defer n.playMu.Unlock()
 	n.mu.Lock()
@@ -1157,7 +1146,6 @@ func (n *nativeLive) startPlayback(gen int, id, ref string, child uintptr) {
 
 var langInBrackets = regexp.MustCompile(`\[([^\]]+)\]`)
 
-// trackKey makes "Track 2 - [English]" and "Track 1 - [English]" compare equal.
 func trackKey(name string) string {
 	if m := langInBrackets.FindStringSubmatch(name); m != nil {
 		return strings.ToLower(strings.TrimSpace(m[1]))
@@ -1165,17 +1153,15 @@ func trackKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// stallAfter is how long a "playing" stream may stand still before the page is told to reconnect.
 const stallAfter = 6 * time.Second
 
-// poll refreshes the snapshot the page reads. It is the only place that asks VLC for its state.
 func (n *nativeLive) poll() {
 	tick := time.NewTicker(300 * time.Millisecond)
 	defer tick.Stop()
 	lastState := ""
 	var trackAt, movedAt time.Time
 	var lastT int64 = -1
-	var moved, deintDone bool
+	var moved, deintDone, noPicWarned bool
 	for range tick.C {
 		if n.closed.Load() {
 			return
@@ -1236,7 +1222,11 @@ func (n *nativeLive) poll() {
 		}
 		now := time.Now()
 		if !at.Equal(trackAt) { // a new channel: start watching afresh
-			trackAt, lastT, moved, movedAt, deintDone = at, -1, false, now, false
+			trackAt, lastT, moved, movedAt, deintDone, noPicWarned = at, -1, false, now, false, false
+		}
+		if out.State == "playing" && out.Width == 0 && !noPicWarned && since > 8*time.Second {
+			noPicWarned = true
+			nativeLog.Warn("VLC reports playing but no picture was decoded", "after_s", int(since.Seconds()), "audio_tracks", len(out.Audio), "time_ms", p.Time())
 		}
 		if out.State == "playing" {
 			if t := p.Time(); t >= 0 {

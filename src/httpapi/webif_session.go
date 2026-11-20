@@ -1,6 +1,5 @@
 package httpapi
 
-// Older DreamOS (DreamOS) only; never runs for receivers set to OpenWebif.
 
 import (
 	"context"
@@ -25,7 +24,6 @@ var webSessions sync.Map // device base -> sessionEntry
 var sessionIDPattern = regexp.MustCompile(`(?is)sessionid[^>]*>\s*([^<\s]+)\s*<`)
 var sessionArgPattern = regexp.MustCompile(`([?&])sessionid=[^&]*&?`)
 
-// wantsSession: only a receiver the owner set to DreamOS ever gets a session id.
 func (d deviceWeb) wantsSession(pathAndQuery string) bool {
 	if d.kind != "dreamos" {
 		return false
@@ -41,7 +39,6 @@ func (d deviceWeb) wantsSession(pathAndQuery string) bool {
 	return true
 }
 
-// webUnsupportedError: this receiver is set to DreamOS, which has no such feature.
 type webUnsupportedError struct{ feature string }
 
 func (e *webUnsupportedError) Error() string {
@@ -157,9 +154,7 @@ func (d deviceWeb) get(ctx context.Context, pathAndQuery string) (*http.Response
 	return d.getSession(ctx, pathAndQuery)
 }
 
-// getSession requests an address; on HTTP 412 it fetches a session id and retries once.
 func (d deviceWeb) getSession(ctx context.Context, pathAndQuery string) (*http.Response, error) {
-	// Only old /web/ addresses may carry a session id (and /grab when the owner chose DreamOS).
 	if !d.wantsSession(pathAndQuery) {
 		return d.getOnce(ctx, pathAndQuery)
 	}

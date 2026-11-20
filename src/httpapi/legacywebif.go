@@ -18,7 +18,6 @@ import (
 
 var legacyWarned sync.Map
 
-// legacyWarnDue limits the same warning to once a minute so polling does not fill the log.
 func legacyWarnDue(base, route string) bool {
 	key := base + "|" + route
 	if v, ok := legacyWarned.Load(key); ok && time.Since(v.(time.Time)) < time.Minute {
@@ -66,7 +65,6 @@ func init() {
 	add("/api/signal", legacySignal)
 	add("/api/getaudiotracks", legacyAudioTracks)
 	add("/api/recordnow", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
-		// OpenWebif says infinite=1; the old interface says recordnow=infinite|current.
 		nq := url.Values{}
 		if v := q.Get("infinite"); v == "1" || strings.EqualFold(v, "true") {
 			nq.Set("recordnow", "infinite")
@@ -84,7 +82,6 @@ func init() {
 	add("/api/epgbouquet", func(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 		return legacyEvents(ctx, d, "/web/epgmulti", q)
 	})
-	// Documented DreamOS twins whose name or answer differs only slightly.
 	add("/api/timertogglestatus", legacyTimerToggle)
 	for _, name := range []string{"timerchange", "selectaudiotrack"} {
 		web := "/web/" + name
@@ -215,7 +212,6 @@ const (
 	legacyMaxLists  = 256
 )
 
-// legacyServices answers /api/getallservices: every bouquet with its channels.
 func legacyServices(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 	radio := q.Get("type") == "radio"
 	var bouquets []xBouquet
@@ -311,13 +307,11 @@ type xEvent struct {
 	Name     string `xml:"e2eventservicename"`
 }
 
-// noTitle is what the old interface sends for "no programme information".
 func noTitle(t string) bool {
 	t = strings.TrimSpace(t)
 	return t == "" || strings.EqualFold(t, "none") || t == "N/A"
 }
 
-// legacyEvents answers the programme guide requests (now, one channel, search, grid).
 func legacyEvents(ctx context.Context, d deviceWeb, webPath string, q url.Values) ([]byte, error) {
 	var list struct {
 		Events []xEvent `xml:"e2event"`
@@ -349,7 +343,6 @@ func legacyEvents(ctx context.Context, d deviceWeb, webPath string, q url.Values
 	return asJSON(map[string]any{"result": true, "events": out})
 }
 
-// legacyCurrent answers /api/getcurrent: the channel being watched and its now/next programme.
 func legacyCurrent(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error) {
 	var cur struct {
 		Service struct {
@@ -375,7 +368,6 @@ func legacyCurrent(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, erro
 		if !errors.As(err, &bad) {
 			return nil, err
 		}
-		// Some images (e.g. DreamOS) lack /web/getcurrent; /web/about also names the current channel.
 		var about struct {
 			Service struct {
 				Ref      string `xml:"e2servicereference"`
@@ -458,7 +450,6 @@ func legacyPower(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error)
 	return asJSON(map[string]any{"result": true, "instandby": xmlBool(st.Standby)})
 }
 
-// legacyResult answers the commands that only say whether they worked (<e2simplexmlresult>).
 func legacyResult(ctx context.Context, d deviceWeb, webPath string, q url.Values) ([]byte, error) {
 	var res struct {
 		State      string `xml:"e2state"`
@@ -482,7 +473,6 @@ func legacyResult(ctx context.Context, d deviceWeb, webPath string, q url.Values
 	return asJSON(map[string]any{"result": ok, "message": text})
 }
 
-// legacyAbout answers /api/about with what the old interface knows about the receiver.
 type legacyAboutData struct {
 	Device string `xml:"e2devicename"`
 	Model  string `xml:"e2model"` // /web/about of the official DreamOS plugin
@@ -762,7 +752,6 @@ func legacyMovies(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error
 	return asJSON(map[string]any{"result": true, "directory": keep.Get("dirname"), "bookmarks": []string{}, "movies": movies})
 }
 
-// legacySleepTimer answers /api/sleeptimer from /web/sleeptimer (<e2sleeptimer>).
 func legacySleepTimer(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 	var st struct {
 		Enabled string `xml:"e2enabled"`
@@ -782,7 +771,6 @@ func legacySleepTimer(ctx context.Context, d deviceWeb, q url.Values) ([]byte, e
 	})
 }
 
-// legacyLocations answers /api/getlocations from /web/getlocations (<e2locations><e2location>).
 func legacyLocations(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error) {
 	var l struct {
 		Locations []string `xml:"e2location"`

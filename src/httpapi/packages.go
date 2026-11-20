@@ -13,10 +13,8 @@ import (
 	"time"
 )
 
-// Package management goes through OpenWebif's /ipkg endpoint, which runs opkg on the receiver.
 var packageNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+._-]{0,99}$`)
 
-// protectedPackages cannot be removed: doing so breaks the receiver or its web interface.
 func protectedPackage(name string) bool {
 	switch name {
 	case "enigma2", "opkg", "busybox", "base-files", "base-passwd", "libc6", "udev", "systemd", "sysvinit", "initscripts", "enigma2-plugin-extensions-openwebif":
@@ -185,7 +183,6 @@ func (s *Server) devicePackageAction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// The server gives up on a reply after three minutes, so stop a little earlier and say so.
 	const limit = 165 * time.Second
 	web := newDeviceWeb(profile, limit)
 	ctx, cancel := context.WithTimeout(r.Context(), limit)

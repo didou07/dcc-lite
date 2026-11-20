@@ -88,7 +88,6 @@ func parseDreamOSPackages(out string) ([]packageEntry, error) {
 	return out2, nil
 }
 
-// dreamOSProtectedPackage adds the packages that DreamOS and this program depend on.
 func dreamOSProtectedPackage(name string) bool {
 	switch name {
 	case "dpkg", "apt", "bash", "dash", "coreutils", "util-linux", "login", "openssh-server", "dropbear", "telnetd",
@@ -139,8 +138,6 @@ func dreamOSPackageList(ctx context.Context, w http.ResponseWriter, profile conf
 
 const dreamOSPackageLog = "/tmp/dcc-pkg.log"
 
-// dreamOSPackageCommand builds the command for one action. The package name has already been
-// checked against packageNamePattern. nohup keeps apt running if the connection is cut.
 func dreamOSPackageCommand(action, pkg string) string {
 	apt := "DEBIAN_FRONTEND=noninteractive nohup apt-get -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef "
 	var run string

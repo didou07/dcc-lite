@@ -46,7 +46,6 @@
     if (compactQuery.matches) { if (railFoot.parentElement !== topbar) topbar.append(railFoot); }
     else if (railFoot.parentElement !== rail) rail.append(railFoot);
   }
-  // Very narrow phones: language picker moves into the Appearance window.
   const narrowQuery = window.matchMedia("(max-width: 599px)");
   let langRow = null;
   function placeLanguage() {
@@ -73,14 +72,12 @@
   document.addEventListener("DOMContentLoaded", placeLanguage);
   if (document.readyState !== "loading") placeLanguage();
   if (narrowQuery.addEventListener) narrowQuery.addEventListener("change", placeLanguage); else narrowQuery.addListener(placeLanguage);
-  // Buttons that lose their text on small screens keep it as a tooltip / accessible name.
   for (const button of document.querySelectorAll(".view-actions .btn, .logs-tools .btn, .screen-tools > .btn")) {
     const text = button.textContent.trim();
     if (text && !button.title) button.title = text;
     if (text && !button.getAttribute("aria-label")) button.setAttribute("aria-label", text);
   }
   if (compactQuery.addEventListener) compactQuery.addEventListener("change", placeRailFoot); else compactQuery.addListener(placeRailFoot);
-  // The side rail shows icons only: keep the names as tooltips / accessible names.
   for (const tab of document.querySelectorAll("#mainTabs .tab")) {
     const label = tab.querySelector("span");
     if (label && !tab.title) tab.title = label.textContent.trim();
@@ -112,7 +109,6 @@
     } else head = anchor;
     head.classList.add("dlg-head");
     head.prepend(icon(DIALOG_ICONS[dialog.id] || "info"));
-    // A header that already carries its own close button (the guide) must not get a second one.
     const hasClose = Boolean(head.querySelector('[aria-label="Close"], [id$="Close"]'));
     const close = document.createElement("button");
     close.type = "button";
@@ -125,7 +121,6 @@
       if (existing) existing.click(); else dialog.close();
     });
     if (!hasClose) head.append(close);
-    // Keep initial focus on the first real field, not on the close button.
     const field = dialog.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea');
     if (field && !dialog.querySelector("[autofocus]")) field.setAttribute("autofocus", "");
   }

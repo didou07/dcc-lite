@@ -41,7 +41,6 @@ func (s *Server) restorePointDir(profileID string) string {
 	return filepath.Join(s.app.DataDir, "restore-points", profileID)
 }
 
-// autoSnapshot is called before an edit. It never blocks or fails the edit.
 func (s *Server) autoSnapshot(ctx context.Context, sessionID, dir, reason string) {
 	profile, ok := s.sessionProfile(sessionID)
 	if !ok {

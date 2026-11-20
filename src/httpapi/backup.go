@@ -213,7 +213,6 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	s.applyChannelFiles(ctx, w, id, profile, dir, files, skipped)
 }
 
-// applyChannelFiles writes the channel files to the receiver and asks it to reload them.
 func (s *Server) applyChannelFiles(ctx context.Context, w http.ResponseWriter, id string, profile config.Profile, dir string, files []filetransfer.RemoteFile, skipped []restoreSkip) {
 	restored := []string{}
 	for _, f := range files {

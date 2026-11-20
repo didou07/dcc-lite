@@ -1,5 +1,4 @@
 "use strict";
-// UI translation by exact English match (also covers text added later).
 (() => {
   const KEY = "dcclite.lang";
   const NAMES = { en: "English", ar: "العربية", fr: "Français", es: "Español", de: "Deutsch", tr: "Türkçe", ru: "Русский", zh: "中文" };
@@ -16,10 +15,10 @@
     if (saved === "en" || data[saved]) lang = saved;
   } catch { }
 
-  const tpl = {}; // per language: [regex, translation] built from keys containing {1}, {2}...
+  const tpl = {};
   function templates(code) {
     return tpl[code] ||= Object.entries(data[code] || {}).filter(([k]) => k.includes("{")).map(([k, v]) => {
-      let n = 0; // {n} placeholders are numbered by position: first {..} is {1}, second {2}...
+      let n = 0;
       const esc = k.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{\d\}/g, () => `(?<g${++n}>[\\s\\S]+?)`);
       return [new RegExp("^" + esc + "$"), v];
     });
@@ -95,7 +94,6 @@
       (document.querySelector(".login-card") || document.body).append(row);
       return;
     }
-    // Side bar: the current flag; click it to pick another flag from a small grid.
     const button = make(lang, "lang-btn");
     button.setAttribute("aria-haspopup", "true");
     const pop = document.createElement("div");

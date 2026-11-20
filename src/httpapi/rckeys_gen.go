@@ -1,8 +1,6 @@
-// Code generated from the Linux input-event-codes header; DO NOT EDIT.
 
 package httpapi
 
-// linuxKeys maps KEY_* names (as used by OE-Alliance remote definitions) to Linux key codes.
 var linuxKeys = map[string]int{
 	"KEY_0":               11,
 	"KEY_1":               2,

@@ -59,7 +59,6 @@ function channelsEnter() {
   ch.tick = window.setInterval(renderNow, 1000);
 }
 
-// The chosen bouquet is remembered per receiver and per TV / radio list.
 const chBouquetKey = () => `channels.bouquet.${ch.profileID}.${ch.kind}`;
 async function loadChannels(force = false) {
   const id = ch.profileID, kind = ch.kind;

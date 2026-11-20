@@ -31,7 +31,6 @@ func caSystemName(caid int) string {
 
 var hexOnly = regexp.MustCompile(`[^0-9A-Fa-f]`)
 
-// formatCW turns the control word text of an ecm.info line into "AA BB CC DD EE FF 00 11".
 func formatCW(raw string) string {
 	hex := strings.ToUpper(hexOnly.ReplaceAllString(raw, ""))
 	if len(hex) != 16 {

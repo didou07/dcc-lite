@@ -13,7 +13,6 @@ import (
 	"time"
 )
 
-// EPGRefresh keeps the receiver's guide fresh by visiting channels (OpenWebif /epgrefresh).
 type erSettingsXML struct {
 	Settings []struct {
 		Name  string `xml:"e2settingname"`
@@ -56,7 +55,6 @@ type erSettings struct {
 
 func erBool(v string) bool { return strings.EqualFold(strings.TrimSpace(v), "true") }
 
-// receiverOffset derives the receiver's UTC offset from its clock, rounded to 15 minutes.
 func receiverOffset(local string, now time.Time) (time.Duration, bool) {
 	parts := strings.Split(strings.TrimSpace(local), ":")
 	if len(parts) < 2 {
@@ -84,13 +82,11 @@ func sign(n int) float64 {
 	return 1
 }
 
-// clockText turns the epoch the plugin reports (today at HH:MM, receiver time) into "HH:MM".
 func clockText(epoch int64, offset time.Duration) string {
 	secs := ((epoch+int64(offset/time.Second))%86400 + 86400) % 86400
 	return fmt.Sprintf("%02d:%02d", secs/3600, (secs%3600)/60)
 }
 
-// clockEpoch maps any day's HH:MM in receiver time to an epoch (all the plugin reads).
 func clockEpoch(text string, offset time.Duration, now time.Time) (int64, bool) {
 	if !hhmmPattern.MatchString(text) {
 		return 0, false
@@ -294,7 +290,6 @@ func (s *Server) deviceEPGRefreshSave(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// Channels first: "multi" makes the plugin forget the old list before it stores the new one.
 	if len(in.Services) > 0 {
 		var sq strings.Builder
 		sq.WriteString("multi=1")
@@ -319,7 +314,6 @@ func (s *Server) deviceEPGRefreshSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": text, "code": "epgrefresh_refused"})
 		return
 	}
-	// Read the settings back: the plugin silently ignores a choice the receiver does not support.
 	saved, ok := s.erFetch(w, r, profile)
 	if !ok {
 		return

@@ -1,7 +1,5 @@
 //go:build ignore
 
-// Embeds a .ico file into a built Windows executable as its application icon.
-// Usage: go run src/dcclite/embed_windows_icon.go DCCLite.exe packaging/DCCLite.ico
 package main
 
 import (

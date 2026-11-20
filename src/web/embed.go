@@ -1,10 +1,13 @@
 package web
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
 	"io/fs"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -49,12 +52,71 @@ func Build() string {
 
 var assetRef = regexp.MustCompile(`(src|href)="(/(?:js/|vendor/|assets/|app\.css|login\.js)[^"?#]*)"`)
 
-func Page(name string) ([]byte, error) {
+type pageEntry struct{ raw, gz []byte }
+
+var pages sync.Map
+
+func gzipBytes(data []byte) []byte {
+	var buf bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	_, _ = zw.Write(data)
+	_ = zw.Close()
+	return buf.Bytes()
+}
+
+func page(name string) (*pageEntry, error) {
+	if v, ok := pages.Load(name); ok {
+		return v.(*pageEntry), nil
+	}
 	data, err := files.ReadFile(name)
 	if err != nil {
 		return nil, err
 	}
-	return assetRef.ReplaceAll(data, []byte(`$1="$2?v=`+Build()+`"`)), nil
+	raw := assetRef.ReplaceAll(data, []byte(`$1="$2?v=`+Build()+`"`))
+	v, _ := pages.LoadOrStore(name, &pageEntry{raw: raw, gz: gzipBytes(raw)})
+	return v.(*pageEntry), nil
+}
+
+func Page(name string) ([]byte, error) {
+	e, err := page(name)
+	if err != nil {
+		return nil, err
+	}
+	return e.raw, nil
+}
+
+func PageGzip(name string) ([]byte, error) {
+	e, err := page(name)
+	if err != nil {
+		return nil, err
+	}
+	return e.gz, nil
+}
+
+var compressible = map[string]bool{".js": true, ".css": true, ".html": true, ".svg": true, ".json": true, ".txt": true}
+
+var assets sync.Map
+
+// Gzipped returns the gzip form of a bundled text file, or nil.
+func Gzipped(name string) []byte {
+	name = strings.TrimPrefix(path.Clean("/"+name), "/")
+	if !compressible[path.Ext(name)] {
+		return nil
+	}
+	if v, ok := assets.Load(name); ok {
+		b, _ := v.([]byte)
+		return b
+	}
+	data, err := files.ReadFile(name)
+	if err != nil {
+		return nil
+	}
+	var out []byte
+	if len(data) >= 1024 {
+		out = gzipBytes(data)
+	}
+	assets.Store(name, out)
+	return out
 }
 
 var (
@@ -73,7 +135,6 @@ func boxKey(name string) string {
 	return b.String()
 }
 
-// Box returns the bundled picture of a receiver model, matching names without regard to…
 func Box(name string) ([]byte, bool) {
 	boxOnce.Do(func() {
 		boxFiles = map[string]string{}

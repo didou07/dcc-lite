@@ -145,7 +145,6 @@ func (c *FTPClient) List(ctx context.Context, remotePath string) ([]core.FileEnt
 	return c.checkEmptyListingLocked(remotePath, parseFTPList(data, remotePath))
 }
 
-// isFTPListRejected: the server refused MLSD/LIST for this path (550 = no such folder or no…
 func isFTPListRejected(err error) bool {
 	if err == nil {
 		return false
@@ -154,7 +153,6 @@ func isFTPListRejected(err error) bool {
 	return strings.Contains(text, "rejected (550)") || strings.Contains(text, "rejected (450)")
 }
 
-// Many FTP servers (vsftpd, busybox, some Dreambox images) answer MLSD/LIST of a folder…
 func (c *FTPClient) checkEmptyListingLocked(remotePath string, entries []core.FileEntry) ([]core.FileEntry, error) {
 	if len(entries) > 0 || remotePath == "" || remotePath == "." || remotePath == "/" {
 		return entries, nil
@@ -168,7 +166,7 @@ func (c *FTPClient) checkEmptyListingLocked(remotePath string, entries []core.Fi
 		original = parsePWDReply(reply)
 	}
 	if original == "" {
-		return entries, nil // cannot go back safely: keep the old behaviour rather than disturb the session
+		return entries, nil
 	}
 	code, _, err = c.command("CWD", remotePath)
 	if err != nil {
@@ -431,6 +429,20 @@ func (c *FTPClient) remoteSizeLocked(remotePath string) (int64, error) {
 		return 0, errors.New("FTP SIZE returned an invalid file length")
 	}
 	return value, nil
+}
+
+func (c *FTPClient) Size(ctx context.Context, remotePath string) (int64, error) {
+	if err := validateRemotePath(remotePath); err != nil {
+		return 0, err
+	}
+	stop := c.beginContext(ctx, ftpControlTimeout)
+	defer func() { stop(); _ = c.control.SetDeadline(time.Time{}) }()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return 0, net.ErrClosed
+	}
+	return c.remoteSizeLocked(remotePath)
 }
 
 func (c *FTPClient) Mkdir(ctx context.Context, remotePath string) error {
@@ -989,6 +1001,7 @@ func parseMLSD(data []byte, directory string) []core.FileEntry {
 
 func parseFTPList(data []byte, directory string) []core.FileEntry {
 	var entries []core.FileEntry
+	now := time.Now().UTC()
 	for _, line := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 9 || len(fields[0]) < 10 {
@@ -1009,7 +1022,13 @@ func parseFTPList(data []byte, directory string) []core.FileEntry {
 		stamp := strings.Join(fields[5:8], " ")
 		for _, layout := range []string{"Jan _2 15:04", "Jan _2 2006"} {
 			if parsed, e := time.Parse(layout, stamp); e == nil {
-				entry.ModifiedAt = parsed
+				if layout == "Jan _2 15:04" {
+					parsed = time.Date(now.Year(), parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(), 0, 0, time.UTC)
+					if parsed.After(now.Add(24 * time.Hour)) {
+						parsed = parsed.AddDate(-1, 0, 0)
+					}
+				}
+				entry.ModifiedAt = parsed.UTC()
 				break
 			}
 		}

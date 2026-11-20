@@ -1,6 +1,5 @@
 "use strict";
 
-// ---- Programme grid: every channel of a bouquet against a time axis ----
 const GRID_PX_HOUR = 260;
 const grid = { from: 0, hours: Number(store.get("guide.gridHours", 3)) || 3, bouquetRef: "", data: null, key: "", gen: 0, retry: 0, tick: 0 };
 if (![2, 3, 6].includes(grid.hours)) grid.hours = 3;
@@ -139,7 +138,6 @@ $("#gridNow").addEventListener("click", () => { grid.from = gridFloor(Date.now()
 $("#gridSpan").addEventListener("change", () => { grid.hours = Number($("#gridSpan").value) || 3; store.set("guide.gridHours", grid.hours); gridLoad(); });
 $("#guideDialog").addEventListener("close", () => { window.clearInterval(grid.tick); window.clearTimeout(grid.retry); });
 
-// ---- Channel details: PIDs, card information from the receiver's ecm.info ----
 const svc = { gen: 0, timer: 0, text: "" };
 function svcSection(title, pairs, empty) {
   const body = pairs.length

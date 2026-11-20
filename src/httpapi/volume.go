@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// legacyVolume answers /api/vol for the older DreamOS interface (/web/vol, <e2volume>).
 func legacyVolume(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 	keep := url.Values{}
 	if v := q.Get("set"); v != "" {
@@ -32,7 +31,6 @@ type volumeRequest struct {
 	Mute  bool `json:"mute"`
 }
 
-// deviceVolume reads (GET) or changes (POST) the receiver's own volume.
 func (s *Server) deviceVolume(w http.ResponseWriter, r *http.Request) {
 	profile, ok := s.enabledProfile(w, r)
 	if !ok {

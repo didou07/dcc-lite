@@ -31,7 +31,6 @@ func rawNum(m json.RawMessage) int64 {
 	return 0
 }
 
-// rawNumOr is rawNum with a fallback for a missing or non-numeric value.
 func rawNumOr(m json.RawMessage, fallback int64) int64 {
 	if len(m) == 0 || string(m) == "null" {
 		return fallback

@@ -38,8 +38,6 @@ func liveUpstreamURL(ctx context.Context, profile config.Profile, ref string) st
 	return fallback
 }
 
-// ValidServiceRef reports whether ref looks like an Enigma2 service reference that is safe to
-// place in a stream address.
 func ValidServiceRef(ref string) bool {
 	return serviceRefPattern.MatchString(ref) && !strings.ContainsAny(ref, " \"'<>\\")
 }

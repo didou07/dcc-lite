@@ -171,7 +171,6 @@ func Load() (*Lib, error) {
 	return LoadFrom(path)
 }
 
-// LoadFrom loads the libvlc shared library at path (or by soname) and starts an instance.
 func LoadFrom(path string) (*Lib, error) {
 	loadMu.Lock()
 	defer loadMu.Unlock()
@@ -187,7 +186,6 @@ func LoadFrom(path string) (*Lib, error) {
 		}
 		return nil, fmt.Errorf("cannot load libvlc from %s: %s", path, msg)
 	}
-	// --no-xlib: the program's own toolkit owns Xlib; libvlc then talks to X through xcb only.
 	args := []string{
 		"--no-xlib", "--no-video-title-show", "--no-osd", "--no-snapshot-preview", "--no-stats",
 		"--no-media-library", "--network-caching=1500", "--live-caching=1500",
@@ -227,14 +225,12 @@ type Player struct {
 
 	deint string // the deinterlace mode the current picture pipeline was started with
 
-	// What was last asked of the player, so a fresh libvlc player can be given the same.
 	xid    uintptr
 	vol    int
 	volSet bool
 	muted  bool
 }
 
-// PlayOptions are the per-channel settings. The zero value means VLC's own defaults.
 type PlayOptions struct {
 	CachingMs   int    // network and live buffering in milliseconds; 0 keeps the default
 	Deinterlace string // "auto" (VLC decides), "yadif" or "off"
@@ -277,8 +273,6 @@ func (p *Player) SetWindow(xid uintptr) {
 	C.dcc_mp_xwindow(p.mp, C.ulong(xid))
 }
 
-// Play opens the address and starts it. A deinterlace change creates a fresh libvlc player;
-// window, volume and mute settings carry over.
 func (p *Player) Play(mrl string, opt PlayOptions) error {
 	mode := opt.Deinterlace
 	if mode != DeinterlaceYadif && mode != DeinterlaceOff {
@@ -379,7 +373,6 @@ func (p *Player) SetFit(mode string, w, h int) {
 	}
 }
 
-// cstrConst returns a C string that lives for the whole run (the arguments are fixed names).
 func cstrConst(s string) *C.char {
 	constMu.Lock()
 	defer constMu.Unlock()
@@ -480,7 +473,6 @@ func (p *Player) State() State {
 	return State(C.dcc_mp_state(p.mp))
 }
 
-// AudioTracks lists the selectable audio tracks and the id of the active one.
 func (p *Player) AudioTracks() ([]Track, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -513,7 +505,6 @@ func (p *Player) SetAudioTrack(id int) {
 	}
 }
 
-// VideoSize returns the size of the decoded picture, or zeros for radio and before the first frame.
 func (p *Player) VideoSize() (int, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

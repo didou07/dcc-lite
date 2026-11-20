@@ -5,7 +5,6 @@
 
 int dcc_gtk_run(const char *url, const char *origin, const char *datadir, const char *title, int w, int h);
 
-// The calls below may be made from any thread; they run on the GTK thread.
 void dcc_gtk_quit(void);
 void dcc_gtk_box(int x, int y, int w, int h, int show);
 void dcc_gtk_fullscreen(int on);

@@ -20,12 +20,15 @@ import (
 var devLog = logx.For("device")
 
 type deviceWeb struct {
-	base   string
-	port   int
-	user   string
-	pass   string
-	client *http.Client
-	kind   string // "openwebif" or "dreamos": what the owner said the receiver runs (never guessed)
+	base       string
+	host       string
+	port       int
+	ftpPort    int
+	telnetPort int
+	user       string
+	pass       string
+	client     *http.Client
+	kind       string
 }
 
 func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
@@ -44,13 +47,20 @@ func newDeviceWeb(profile config.Profile, timeout time.Duration) deviceWeb {
 		transport.TLSHandshakeTimeout = timeout
 		transport.TLSClientConfig = &tls.Config{
 			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true, // #nosec G402 -- explicit per-device opt-in for receivers with self-signed certificates.
+			InsecureSkipVerify: true,
 		}
 		client.Transport = transport
 	}
 	return deviceWeb{
-		base: scheme + "://" + net.JoinHostPort(strings.Trim(profile.Host, "[]"), strconv.Itoa(port)),
-		port: port, user: user, pass: profile.Password, client: client, kind: profile.EffectiveWebKind(),
+		base:       scheme + "://" + net.JoinHostPort(strings.Trim(profile.Host, "[]"), strconv.Itoa(port)),
+		host:       strings.Trim(profile.Host, "[]"),
+		port:       port,
+		ftpPort:    profile.EffectiveFTPPort(),
+		telnetPort: profile.EffectiveTelnetPort(),
+		user:       user,
+		pass:       profile.Password,
+		client:     client,
+		kind:       profile.EffectiveWebKind(),
 	}
 }
 
@@ -82,7 +92,6 @@ func (d deviceWeb) getOnce(ctx context.Context, pathAndQuery string) (*http.Resp
 	return d.sendOnce(ctx, http.MethodGet, pathAndQuery, "")
 }
 
-// sendOnce makes one request. A non-empty form is sent as an urlencoded POST/GET body.
 func (d deviceWeb) sendOnce(ctx context.Context, method, pathAndQuery, form string) (*http.Response, error) {
 	var body io.Reader
 	if form != "" {
@@ -285,7 +294,6 @@ func (d deviceWeb) unreachable(err error) string {
 	case "refused", "reset":
 		p := d.probe()
 		if webAnsweredRecently(d.base) {
-			// This port worked a moment ago, so it is not the wrong port: the receiver is restarting or off.
 			if p.telnet || p.ftp {
 				return "The receiver's web interface is restarting or not answering right now."
 			}

@@ -16,7 +16,6 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// computerPath is the virtual folder that lists every drive / mount point of this computer.
 const computerPath = "@computer"
 
 // LocalFS is a view of this computer's files.
@@ -136,7 +135,7 @@ func (f *LocalFS) cleanRelativePath(relative string) (string, error) {
 		}
 		clean := pathClean(relative)
 		if runtime.GOOS == "windows" && filepath.VolumeName(filepath.FromSlash(clean)) == clean {
-			clean += "/" // "D:" alone means "the current folder of D:"; we always mean its root
+			clean += "/"
 		}
 		return clean, nil
 	}
@@ -230,7 +229,6 @@ func (f *LocalFS) Rename(oldRelative, newRelative string) error {
 	return os.Rename(oldPath, newPath)
 }
 
-// Remove deletes a file or a link, or a folder with everything inside it.
 func (f *LocalFS) Remove(relative string) error {
 	clean, err := f.cleanRelativePath(relative)
 	if err != nil {
@@ -312,6 +310,31 @@ func (f *LocalFS) ReplaceTemp(tempPath, targetRelative string, overwrite bool) e
 }
 
 func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, overwrite bool) error {
+	srcClean, err := f.cleanRelativePath(srcRelative)
+	if err != nil {
+		return err
+	}
+	dstClean, err := f.cleanRelativePath(dstRelative)
+	if err != nil {
+		return err
+	}
+	if srcClean == computerPath || dstClean == computerPath {
+		return errors.New("choose a drive first")
+	}
+	srcLexical := f.lexicalPath(srcClean)
+	srcInfo, err := os.Lstat(srcLexical)
+	if err != nil {
+		return err
+	}
+	if srcInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.New("copying symbolic links is not supported")
+	}
+	dstLexical := f.lexicalPath(dstClean)
+	if info, statErr := os.Lstat(dstLexical); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("copy destination is a symbolic link")
+	} else if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
 	srcAbsolute, srcClean, err := f.Resolve(srcRelative, false)
 	if err != nil {
 		return err
@@ -323,15 +346,17 @@ func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, ove
 	if dstClean == "." || f.isRootPath(dstClean) {
 		return errors.New("the local root cannot be a copy destination")
 	}
-	if dstClean == srcClean || strings.HasPrefix(dstClean, srcClean+"/") {
-		return errors.New("cannot copy a folder into itself")
+	if filepath.Clean(srcAbsolute) == filepath.Clean(dstAbsolute) {
+		return errors.New("source and destination are the same path")
 	}
-	srcInfo, err := os.Lstat(srcAbsolute)
-	if err != nil {
-		return err
-	}
-	if srcInfo.Mode()&os.ModeSymlink != 0 {
-		return errors.New("copying symbolic links is not supported")
+	if srcInfo.IsDir() {
+		relative, relErr := filepath.Rel(srcAbsolute, dstAbsolute)
+		if relErr != nil {
+			return relErr
+		}
+		if relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
+			return errors.New("cannot copy a folder into itself")
+		}
 	}
 	dstInfo, statErr := os.Lstat(dstAbsolute)
 	dstExists := statErr == nil
@@ -342,41 +367,213 @@ func (f *LocalFS) Copy(ctx context.Context, srcRelative, dstRelative string, ove
 		if !overwrite {
 			return errors.New("destination already exists")
 		}
+		if dstInfo.Mode()&os.ModeSymlink != 0 {
+			return errors.New("copy destination is a symbolic link")
+		}
 		if dstInfo.IsDir() != srcInfo.IsDir() {
 			return errors.New("destination exists with a different file type")
 		}
 	}
 	if srcInfo.IsDir() {
-		entries := 0
-		return copyLocalDir(ctx, srcAbsolute, dstAbsolute, overwrite, 0, &entries)
+		return copyLocalDirTransaction(ctx, srcAbsolute, dstAbsolute, srcInfo, dstExists)
 	}
-	return copyLocalFile(srcAbsolute, dstAbsolute, srcInfo.Mode())
+	return copyLocalFile(ctx, srcAbsolute, dstAbsolute, srcInfo, overwrite)
 }
 
-func copyLocalFile(src, dst string, mode os.FileMode) error {
+func (f *LocalFS) lexicalPath(clean string) string {
+	if f.isAbsolute(clean) {
+		return filepath.Clean(filepath.FromSlash(clean))
+	}
+	return filepath.Join(f.root, filepath.FromSlash(clean))
+}
+
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (r contextReader) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.r.Read(buffer)
+}
+
+func copyLocalFile(ctx context.Context, src, dst string, sourceInfo os.FileInfo, overwrite bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	before, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
+		return errors.New("copy source is not a regular file")
+	}
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
+	opened, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(before, opened) || !os.SameFile(sourceInfo, opened) {
+		return errors.New("copy source changed while it was being opened")
+	}
+	sourceSize, sourceModTime := opened.Size(), opened.ModTime()
 	tmp, err := os.CreateTemp(filepath.Dir(dst), ".dcclite-copy-*.tmp")
 	if err != nil {
 		return err
 	}
 	tmpPath := tmp.Name()
-	_, copyErr := io.Copy(tmp, in)
+	_, copyErr := io.Copy(tmp, contextReader{ctx: ctx, r: in})
 	closeErr := tmp.Close()
 	if copyErr == nil {
 		copyErr = closeErr
+	}
+	finalSource, statErr := in.Stat()
+	if copyErr == nil && statErr != nil {
+		copyErr = statErr
+	}
+	if copyErr == nil && (!os.SameFile(opened, finalSource) || finalSource.Size() != sourceSize || !finalSource.ModTime().Equal(sourceModTime)) {
+		copyErr = errors.New("copy source changed while it was being copied")
 	}
 	if copyErr != nil {
 		os.Remove(tmpPath)
 		return copyErr
 	}
-	_ = os.Chmod(tmpPath, mode.Perm())
-	if err := os.Rename(tmpPath, dst); err != nil {
-		os.Remove(tmpPath)
+	if err := ctx.Err(); err != nil {
+		_ = os.Remove(tmpPath)
 		return err
+	}
+	if err := os.Chmod(tmpPath, sourceInfo.Mode().Perm()); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if !sourceInfo.ModTime().IsZero() {
+		if err := os.Chtimes(tmpPath, time.Now(), sourceInfo.ModTime()); err != nil {
+			_ = os.Remove(tmpPath)
+			return err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := commitLocalFile(tmpPath, dst, overwrite); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
+func reserveSiblingPath(target, prefix string) (string, error) {
+	file, err := os.CreateTemp(filepath.Dir(target), prefix)
+	if err != nil {
+		return "", err
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := os.Remove(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func commitLocalFile(tempPath, target string, overwrite bool) error {
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return os.Rename(tempPath, target)
+	}
+	if err != nil {
+		return err
+	}
+	if !overwrite {
+		return errors.New("destination already exists")
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("copy destination is a symbolic link")
+	}
+	if info.IsDir() {
+		return errors.New("destination exists with a different file type")
+	}
+	backup, err := reserveSiblingPath(target, ".dcclite-backup-")
+	if err != nil {
+		return fmt.Errorf("prepare destination backup: %w", err)
+	}
+	if err := os.Rename(target, backup); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, target); err != nil {
+		if restoreErr := os.Rename(backup, target); restoreErr != nil {
+			return fmt.Errorf("replace destination: %v; restore previous file: %w", err, restoreErr)
+		}
+		return err
+	}
+	if err := os.Remove(backup); err != nil {
+		return fmt.Errorf("file copied but previous destination backup could not be removed: %w", err)
+	}
+	return nil
+}
+
+func copyLocalDirTransaction(ctx context.Context, src, dst string, sourceInfo os.FileInfo, overwrite bool) error {
+	stage, err := os.MkdirTemp(filepath.Dir(dst), ".dcclite-copy-")
+	if err != nil {
+		return fmt.Errorf("create copy staging directory: %w", err)
+	}
+	defer os.RemoveAll(stage)
+	entries := 0
+	if overwrite {
+		if err := copyLocalDir(ctx, dst, stage, true, 0, &entries); err != nil {
+			return fmt.Errorf("preserve existing destination: %w", err)
+		}
+	}
+	if err := copyLocalDir(ctx, src, stage, true, 0, &entries); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.Chmod(stage, sourceInfo.Mode().Perm()); err != nil {
+		return fmt.Errorf("set copied directory permissions: %w", err)
+	}
+	if !sourceInfo.ModTime().IsZero() {
+		if err := os.Chtimes(stage, time.Now(), sourceInfo.ModTime()); err != nil {
+			return fmt.Errorf("set copied directory modification time: %w", err)
+		}
+	}
+	if !overwrite {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := os.Rename(stage, dst); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	backup, err := reserveSiblingPath(dst, ".dcclite-backup-")
+	if err != nil {
+		return fmt.Errorf("prepare destination backup: %w", err)
+	}
+	if err := os.Rename(dst, backup); err != nil {
+		return err
+	}
+	if err := os.Rename(stage, dst); err != nil {
+		if restoreErr := os.Rename(backup, dst); restoreErr != nil {
+			return fmt.Errorf("replace destination: %v; restore previous directory: %w", err, restoreErr)
+		}
+		return err
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		return fmt.Errorf("directory copied but previous destination backup could not be removed: %w", err)
 	}
 	return nil
 }
@@ -385,8 +582,28 @@ func copyLocalDir(ctx context.Context, src, dst string, overwrite bool, depth in
 	if depth > maxDirectoryDepth {
 		return errors.New("folder copy exceeds the maximum directory depth")
 	}
-	if err := os.MkdirAll(dst, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+	srcInfo, err := os.Lstat(src)
+	if err != nil {
 		return err
+	}
+	if srcInfo.Mode()&os.ModeSymlink != 0 || !srcInfo.IsDir() {
+		return errors.New("copy source is not a regular directory")
+	}
+	dstInfo, err := os.Lstat(dst)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(dst, 0o700); err != nil {
+			return err
+		}
+		dstInfo, err = os.Lstat(dst)
+	}
+	if err != nil {
+		return err
+	}
+	if dstInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("copy destination contains a symbolic link: %s", filepath.Base(dst))
+	}
+	if !dstInfo.IsDir() {
+		return fmt.Errorf("copy destination is not a directory: %s", filepath.Base(dst))
 	}
 	items, err := os.ReadDir(src)
 	if err != nil {
@@ -410,6 +627,16 @@ func copyLocalDir(ctx context.Context, src, dst string, overwrite bool, depth in
 		srcChild := filepath.Join(src, item.Name())
 		dstChild := filepath.Join(dst, item.Name())
 		if item.IsDir() {
+			if existing, statErr := os.Lstat(dstChild); statErr == nil {
+				if existing.Mode()&os.ModeSymlink != 0 {
+					return fmt.Errorf("copy destination contains a symbolic link: %s", item.Name())
+				}
+				if !existing.IsDir() {
+					return fmt.Errorf("destination %q exists with a different file type", item.Name())
+				}
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				return statErr
+			}
 			if err := copyLocalDir(ctx, srcChild, dstChild, overwrite, depth+1, entries); err != nil {
 				return err
 			}
@@ -419,6 +646,9 @@ func copyLocalDir(ctx context.Context, src, dst string, overwrite bool, depth in
 			return fmt.Errorf("unsupported local file type: %s", item.Name())
 		}
 		if existing, statErr := os.Lstat(dstChild); statErr == nil {
+			if existing.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("copy destination contains a symbolic link: %s", item.Name())
+			}
 			if !overwrite {
 				return fmt.Errorf("destination already contains %q", item.Name())
 			}
@@ -428,9 +658,15 @@ func copyLocalDir(ctx context.Context, src, dst string, overwrite bool, depth in
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return statErr
 		}
-		if err := copyLocalFile(srcChild, dstChild, info.Mode()); err != nil {
+		if err := copyLocalFile(ctx, srcChild, dstChild, info, overwrite); err != nil {
 			return err
 		}
+	}
+	if err := os.Chmod(dst, srcInfo.Mode().Perm()); err != nil {
+		return err
+	}
+	if !srcInfo.ModTime().IsZero() {
+		return os.Chtimes(dst, time.Now(), srcInfo.ModTime())
 	}
 	return nil
 }
@@ -468,7 +704,6 @@ func withinRoot(root, candidate string) bool {
 	return true
 }
 
-// isAbsolute reports whether value names a place outside the home folder (a drive path on…
 func (f *LocalFS) isAbsolute(value string) bool {
 	if !f.multi || value == computerPath {
 		return false
@@ -488,7 +723,6 @@ func (f *LocalFS) isRootPath(clean string) bool {
 	return base != "" && strings.Trim(rest, "/") == ""
 }
 
-// splitAbsolute splits an absolute slash path into its OS root ("D:\\" or "/") and the…
 func splitAbsolute(clean string) (string, string) {
 	if runtime.GOOS == "windows" {
 		vol := filepath.VolumeName(filepath.FromSlash(clean))
@@ -513,7 +747,6 @@ func (f *LocalFS) resolveAbsolute(clean string, allowMissing bool) (string, stri
 	return resolved, clean, nil
 }
 
-// ParentOf returns the folder one level above current, for the "up" button.
 func (f *LocalFS) ParentOf(current string) string {
 	if !f.multi {
 		return pathParent(current)
@@ -547,7 +780,6 @@ func pathParent(current string) string {
 	return filepath.ToSlash(filepath.Dir(filepath.FromSlash(current)))
 }
 
-// driveEntries lists every drive / mount point as folders, for the virtual "This computer" folder.
 func (f *LocalFS) driveEntries() []core.FileEntry {
 	drives := listDrives()
 	out := make([]core.FileEntry, 0, len(drives))
@@ -557,7 +789,6 @@ func (f *LocalFS) driveEntries() []core.FileEntry {
 	return out
 }
 
-// Place is one entry of the drive / location picker above the local panel.
 type Place struct {
 	Label string `json:"label"`
 	Path  string `json:"path"`

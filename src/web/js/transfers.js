@@ -1,8 +1,12 @@
 "use strict";
-async function transferSelection(direction, given = null, destPath = null) {
+async function transferSelection(direction, given = null, destPath = null, expected = null) {
   if (!requireSession()) return;
+  const sessionID = expected ? expected.sessionID : files.sessionID;
+  const sessionKey = expected ? expected.sessionKey : files.sessionKey;
+  const profileID = expected ? expected.profileID : files.profileID;
+  if (!isFileSessionCurrent(sessionID, sessionKey) || files.profileID !== profileID) { toast("The receiver connection changed. Transfer cancelled.", "error"); return []; }
   if (files.browserMode) {
-    if (direction === "download") return downloadToDevice(given || selectedEntries(panes.remote));
+    if (direction === "download") return downloadToDevice(given || selectedEntries(panes.remote), expected);
     return chooseDeviceFiles(false);
   }
   const source = direction === "upload" ? panes.local : panes.remote;
@@ -10,34 +14,47 @@ async function transferSelection(direction, given = null, destPath = null) {
   if (!entries.length) { toast(direction === "upload" ? "Select local items to upload" : "Select remote items to download"); return; }
   const destPane = direction === "upload" ? panes.remote : panes.local;
   const destBase = destPath || destPane.path;
-  let existing;
+  let existing, existingMap;
   try {
     const listing = direction === "upload"
-      ? await api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(destBase)}`))
+      ? await api(sessionURL(sessionID, `list?path=${encodeURIComponent(destBase)}`))
       : await api(`/api/v1/files/local/list?path=${encodeURIComponent(destBase)}`);
-    existing = new Set((listing.entries || []).map((e) => e.name));
-  } catch (error) { handleOpError(error, direction === "upload" ? "remote" : "local"); return; }
+    if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Transfer cancelled.", "error"); return []; }
+    existingMap = new Map((listing.entries || []).map((e) => [e.name, e]));
+    existing = new Set(existingMap.keys());
+  } catch (error) { if (sessionLost(error)) handleSessionLost(sessionID); else handleOpError(error, direction === "upload" ? "remote" : "local", sessionID); return []; }
   const clashes = entries.filter((e) => existing.has(e.name));
   let overwrite = false;
   if (clashes.length) {
     const list = clashes.slice(0, 5).map((e) => `• ${e.name}`).join("\n") + (clashes.length > 5 ? `\n… and ${clashes.length - 5} more` : "");
-    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} ${direction === "upload" ? "on the device" : "on this computer"}.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
+    const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} ${direction === "upload" ? "on the device" : "on this computer"}.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", alt2: "Only if newer", danger: true });
     if (!answer) return;
+    if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Transfer cancelled.", "error"); return []; }
     if (answer === "alt") {
       entries = entries.filter((e) => !existing.has(e.name));
       if (!entries.length) { toast("Nothing to transfer: every item already exists"); return; }
+    } else if (answer === "alt2") {
+      const time = (e) => Date.parse(e?.modified_at || "") || 0;
+      entries = entries.filter((e) => !existing.has(e.name) || time(e) > time(existingMap.get(e.name)));
+      if (!entries.length) { toast("Nothing to transfer: the existing items are already up to date"); return; }
+      overwrite = true;
     } else overwrite = true;
   }
   let queued = 0;
+  const queuedTasks = [];
   for (const entry of entries) {
+    if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Remaining transfers were not queued.", "error"); break; }
     const payload = direction === "upload"
       ? { direction, local_path: entry.path, remote_path: joinRemote(destBase, entry.name), is_directory: entry.is_dir, overwrite: existing.has(entry.name) && overwrite }
       : { direction, local_path: joinLocal(destBase, entry.name), remote_path: entry.path, is_directory: entry.is_dir, overwrite: existing.has(entry.name) && overwrite };
-    try { await post(sessionURL(files.sessionID, "transfer"), payload); queued++; }
-    catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (sessionLost(error)) { handleSessionLost(); break; } }
+    try {
+      const result = await post(sessionURL(sessionID, "transfer"), payload);
+      queued++; if (result?.task?.id) queuedTasks.push({ id: result.task.id, entry });
+    } catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (sessionLost(error)) { handleSessionLost(sessionID); break; } }
   }
   if (queued) toast(`${queued} ${direction}${queued === 1 ? "" : "s"} queued`);
   loadTransfers();
+  return queuedTasks;
 }
 $("#btnDownload").addEventListener("click", () => transferSelection("download"));
 $("#btnUpload").addEventListener("click", () => transferSelection("upload"));
@@ -102,8 +119,9 @@ function pendingRow(item) {
     : [item.total && item.loaded >= item.total ? "Handing over…" : `Sending ${percent}%`, item.speed > 0 ? `${formatBytes(item.speed)}/s` : ""].filter(Boolean).join(" · ");
   const bar = h("div", { class: `bar${item.state === "waiting" ? " indeterminate" : ""}` }, h("i"));
   bar.firstElementChild.style.width = `${percent}%`;
+  const canRetry = isFileSessionCurrent(item.sessionID, item.sessionKey);
   const buttons = item.state === "failed"
-    ? [iconButton("refresh", "Try again", () => { item.state = "waiting"; item.error = ""; pumpUploads(); renderQueue(); }), iconButton("x", "Remove", () => { files.pending = files.pending.filter((p) => p !== item); renderQueue(); })]
+    ? [canRetry ? iconButton("refresh", "Try again", () => { item.state = "waiting"; item.error = ""; pumpUploads(); renderQueue(); }) : null, iconButton("x", "Remove", () => { files.pending = files.pending.filter((p) => p !== item); renderQueue(); })]
     : [iconButton("x", "Cancel", () => { item.xhr?.abort(); files.pending = files.pending.filter((p) => p !== item); renderQueue(); pumpUploads(); })];
   return h("div", { class: "transfer", dataset: { state: item.state === "failed" ? "failed" : "running", pending: item.key } },
     h("span", { class: "t-dir" }, icon("upload", "sm")),
@@ -123,14 +141,15 @@ function pumpUploads() {
   for (const item of files.pending) {
     if (sending >= PENDING_PARALLEL || room <= 0) break;
     if (item.state !== "waiting") continue;
-    if (!files.sessionID) { item.state = "failed"; item.error = "Not connected to the device."; continue; }
+    if (!isFileSessionCurrent(item.sessionID, item.sessionKey)) { item.state = "failed"; item.error = "The receiver connection changed before this upload started. Queue it again from the original device."; continue; }
     sendPending(item); sending++; room--;
   }
   startQueuePolling();
 }
 function sendPending(item) {
+  if (!isFileSessionCurrent(item.sessionID, item.sessionKey)) { item.state = "failed"; item.error = "The receiver connection changed before this upload started."; renderQueue(); return; }
   item.state = "sending"; item.loaded = 0; item.speed = 0; item.error = "";
-  const session = files.sessionID;
+  const session = item.sessionID;
   let last = performance.now(), lastLoaded = 0;
   const xhr = new XMLHttpRequest();
   item.xhr = xhr;
@@ -150,7 +169,7 @@ function sendPending(item) {
     let data = {};
     try { data = JSON.parse(xhr.responseText); } catch { }
     if (authExpired(xhr.status, data)) return;
-    if (xhr.status === 404 && /session not found/i.test(data.error || "")) { handleSessionLost(); }
+    if (xhr.status === 404 && /session not found/i.test(data.error || "")) { handleSessionLost(session); }
     fail(data.error || `Upload failed (${xhr.status})`);
   };
   xhr.onerror = () => fail("The connection was interrupted. Press Try again.");
@@ -162,29 +181,62 @@ function scheduleQueueRender() { if (!renderTimer) renderTimer = window.setTimeo
 
 function chooseDeviceFiles(folder) {
   if (!requireSession()) return;
+  files.devicePicker = { sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID, destPath: panes.remote.path };
   const input = $(folder ? "#deviceFolderInput" : "#deviceFileInput");
   input.value = "";
   input.click();
 }
-async function uploadFromDevice(items, destPath = null) {
+async function uploadFromDevice(items, destPath = null, expected = null) {
   if (!requireSession()) return;
-  const dest = destPath || panes.remote.path;
-  if (!dest || !dest.startsWith("/")) { toast("Open a folder on the device first.", "error"); return; }
+  const sessionID = expected ? expected.sessionID : files.sessionID;
+  const sessionKey = expected ? expected.sessionKey : files.sessionKey;
+  const profileID = expected ? expected.profileID : files.profileID;
+  const dest = destPath ?? expected?.destPath ?? panes.remote.path;
+  if (!isFileSessionCurrent(sessionID, sessionKey) || files.profileID !== profileID) { toast("The receiver connection changed. Upload cancelled.", "error"); return; }
+  if (typeof dest !== "string" || !dest.trim() || /[\x00\r\n]/.test(dest)) { toast("Open a valid folder on the device first.", "error"); return; }
   items = items.filter((it) => it.dir || it.file);
   if (!items.length) return;
+  if (items.length > 100000) { toast("That folder contains too many items to upload in one batch.", "error"); return; }
+  const filePaths = new Set();
+  const directoryPaths = new Set();
+  for (const item of items) {
+    const isDirectory = Boolean(item.dir);
+    const raw = String(isDirectory ? item.dir : item.rel || "").replace(/\\/g, "/");
+    const relative = isDirectory ? raw.replace(/\/+$/, "") : raw;
+    const parts = relative.split("/");
+    if (!relative || relative.length > 4096 || relative.startsWith("/") || /^[A-Za-z]:(?:\/|$)/.test(relative) || /[\x00-\x1f\x7f]/.test(relative) || parts.some((part) => !part || part === "." || part === "..")) {
+      toast(`Upload cancelled: an item has an unsafe relative path (${relative || "empty"}).`, "error"); return;
+    }
+    if (isDirectory) { item.dir = relative; directoryPaths.add(relative); }
+    else {
+      item.rel = relative;
+      if (filePaths.has(relative)) { toast(`Upload cancelled: duplicate file path ${relative}.`, "error"); return; }
+      filePaths.add(relative);
+    }
+  }
+  const requiredDirectories = new Set(directoryPaths);
+  for (const filePath of filePaths) {
+    const parts = filePath.split("/");
+    for (let i = 1; i < parts.length; i++) requiredDirectories.add(parts.slice(0, i).join("/"));
+  }
+  if ([...filePaths].some((filePath) => [...requiredDirectories].some((dirPath) => dirPath === filePath || dirPath.startsWith(`${filePath}/`)))) {
+    toast("Upload cancelled: a file path conflicts with a folder path.", "error"); return;
+  }
   let fileItems = items.filter((it) => it.file);
   if (fileItems.length > 5000) { toast("That is more than 5000 files. Upload them in smaller batches.", "error"); return; }
 
   const tops = [...new Set(items.map((it) => (it.dir || it.rel).split("/")[0]))];
   let existing = new Set();
-  try { const listing = await api(sessionURL(files.sessionID, `list?path=${encodeURIComponent(dest)}`)); existing = new Set((listing.entries || []).map((e) => e.name)); }
-  catch (error) { handleOpError(error, "remote"); return; }
+  try { const listing = await api(sessionURL(sessionID, `list?path=${encodeURIComponent(dest)}`)); existing = new Set((listing.entries || []).map((e) => e.name)); }
+  catch (error) { if (sessionLost(error)) handleSessionLost(sessionID); else handleOpError(error, "remote", sessionID); return; }
+  if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Upload cancelled.", "error"); return; }
   const clashes = tops.filter((name) => existing.has(name));
   let overwrite = false;
   if (clashes.length) {
     const list = clashes.slice(0, 5).map((n) => `• ${n}`).join("\n") + (clashes.length > 5 ? `\n… and ${clashes.length - 5} more` : "");
     const answer = await ask({ title: "Replace existing items?", message: `${list}\n\nalready exist${clashes.length === 1 ? "s" : ""} on the device.`, input: false, ok: clashes.length === 1 ? "Replace" : "Replace all", alt: "Skip existing", danger: true });
     if (!answer) return;
+    if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Upload cancelled.", "error"); return; }
     if (answer === "alt") {
       const skip = new Set(clashes);
       items = items.filter((it) => !skip.has((it.dir || it.rel).split("/")[0]));
@@ -194,37 +246,61 @@ async function uploadFromDevice(items, destPath = null) {
   }
 
   const dirs = new Set();
-  for (const it of items) {
-    const parts = (it.dir ? it.dir : it.rel.split("/").slice(0, -1).join("/")).split("/").filter(Boolean);
+  for (const item of items) {
+    const parts = (item.dir ? item.dir : item.rel.split("/").slice(0, -1).join("/")).split("/").filter(Boolean);
     for (let i = 1; i <= parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
   }
+  let createdDirs = 0;
   for (const rel of [...dirs].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b))) {
-    try { await post(sessionURL(files.sessionID, "mkdir"), { path: joinRemote(dest, rel) }); }
-    catch (error) { if (sessionLost(error)) { handleSessionLost(); return; } }
+    if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Remaining folders were not created.", "error"); return; }
+    const remoteDir = joinRemote(dest, rel);
+    try { await post(sessionURL(sessionID, "mkdir"), { path: remoteDir }); createdDirs++; }
+    catch (error) {
+      if (sessionLost(error)) { handleSessionLost(sessionID); return; }
+      let alreadyDirectory = false;
+      try {
+        const parent = RemoteParentPath(remoteDir);
+        const listing = await api(sessionURL(sessionID, `list?path=${encodeURIComponent(parent)}`));
+        alreadyDirectory = (listing.entries || []).some((entry) => entry.name === baseOf(remoteDir) && entry.is_dir);
+      } catch (checkError) {
+        if (sessionLost(checkError)) handleSessionLost(sessionID);
+      }
+      if (!alreadyDirectory) {
+        if (createdDirs) toast(`${createdDirs} folder(s) created, but ${rel} could not be created. No files were queued.`, "error");
+        else toast(`Could not create folder ${rel}: ${error.message}. No files were queued.`, "error");
+        if (isFileSessionCurrent(sessionID, sessionKey)) refreshPane("remote");
+        return;
+      }
+    }
   }
   for (const it of fileItems) {
-    files.pending.push({ key: `p${++pendingSeq}`, file: it.file, name: it.rel, destPath: joinRemote(dest, it.rel), overwrite, state: "waiting", loaded: 0, total: it.file.size, speed: 0, error: "", xhr: null });
+    files.pending.push({ key: `p${++pendingSeq}`, file: it.file, name: it.rel, destPath: joinRemote(dest, it.rel), overwrite, sessionID, sessionKey, profileID, state: "waiting", loaded: 0, total: it.file.size, speed: 0, error: "", xhr: null });
   }
   if (fileItems.length) toast(`${fileItems.length} file${fileItems.length === 1 ? "" : "s"} queued for upload`);
   else toast("Folders created");
   pumpUploads(); renderQueue();
-  if (!fileItems.length) refreshPane("remote");
+  if (!fileItems.length && isFileSessionCurrent(sessionID, sessionKey)) refreshPane("remote");
 }
-$("#deviceFileInput").addEventListener("change", (event) => uploadFromDevice([...event.target.files].map((file) => ({ file, rel: file.name }))));
-$("#deviceFolderInput").addEventListener("change", (event) => uploadFromDevice([...event.target.files].map((file) => ({ file, rel: file.webkitRelativePath || file.name }))));
+$("#deviceFileInput").addEventListener("change", (event) => { const target = files.devicePicker; files.devicePicker = null; uploadFromDevice([...event.target.files].map((file) => ({ file, rel: file.name })), null, target); });
+$("#deviceFolderInput").addEventListener("change", (event) => { const target = files.devicePicker; files.devicePicker = null; uploadFromDevice([...event.target.files].map((file) => ({ file, rel: file.webkitRelativePath || file.name })), null, target); });
 $("#deviceUpload").addEventListener("click", () => chooseDeviceFiles(false));
 $("#deviceUploadFolder").addEventListener("click", () => chooseDeviceFiles(true));
 $("#deviceDownload").addEventListener("click", () => downloadToDevice(selectedEntries(panes.remote)));
 
-async function downloadToDevice(entries) {
+async function downloadToDevice(entries, expected = null) {
   if (!requireSession()) return;
+  const sessionID = expected ? expected.sessionID : files.sessionID;
+  const sessionKey = expected ? expected.sessionKey : files.sessionKey;
+  const profileID = expected ? expected.profileID : files.profileID;
+  if (!isFileSessionCurrent(sessionID, sessionKey) || files.profileID !== profileID) { toast("The receiver connection changed. Download cancelled.", "error"); return; }
   const wanted = (entries || []).filter((e) => !e.is_dir);
   if (!wanted.length) { toast((entries || []).length ? "Folders cannot be saved here yet." : "Select remote files to download"); return; }
   if (wanted.length < entries.length) toast("Folders were skipped.");
   let queued = 0;
   for (const entry of wanted) {
-    try { await post(sessionURL(files.sessionID, "download-prepare"), { remote_path: entry.path }); queued++; }
-    catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (sessionLost(error)) { handleSessionLost(); break; } }
+    if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Remaining downloads were not queued.", "error"); break; }
+    try { await post(sessionURL(sessionID, "download-prepare"), { remote_path: entry.path }); queued++; }
+    catch (error) { toast(`${entry.name}: ${error.message}`, "error"); if (sessionLost(error)) { handleSessionLost(sessionID); break; } }
   }
   if (queued) toast(`${queued} file${queued === 1 ? "" : "s"} will be saved to this device when ready`);
   loadTransfers();
@@ -265,7 +341,8 @@ async function droppedItems(dataTransfer) {
     event.preventDefault(); target.classList.remove("drop-os");
     const folder = dropFolder(panes.remote, event); markDropRow(panes.remote, null);
     if (!files.sessionID) { toast("Connect to the device first"); return; }
-    try { await uploadFromDevice(await droppedItems(event.dataTransfer), folder ? folder.path : null); } catch (error) { toastError(error); }
+    const expected = { sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID, destPath: folder ? folder.path : panes.remote.path };
+    try { await uploadFromDevice(await droppedItems(event.dataTransfer), expected.destPath, expected); } catch (error) { toastError(error); }
   });
   for (const type of ["dragover", "drop"]) window.addEventListener(type, (event) => { if (hasOSFiles(event) && !target.contains(event.target)) event.preventDefault(); });
 }
@@ -278,11 +355,7 @@ async function transferAction(id, action) {
   } catch (error) { toastError(error); }
 }
 async function retryTransfer(task) {
-  if (!files.sessionID) { toast("Connect to the device first"); return; }
-  try {
-    await post(sessionURL(files.sessionID, "transfer"), { direction: task.direction, local_path: task.local_path, remote_path: task.remote_path, is_directory: task.is_directory, overwrite: true });
-    loadTransfers();
-  } catch (error) { toastError(error); }
+  return transferAction(task.id, "restart");
 }
 
 const queueRows = new Map();
@@ -302,7 +375,6 @@ function syncQueueList(list, wanted) {
   });
   list.scrollTop = scroll;
 }
-// Top-bar badge: overall progress of everything still running, visible on every page.
 function syncTransferBadge(active) {
   const badge = $("#xferBadge");
   if (!badge) return;
@@ -430,14 +502,15 @@ function defaultRunCommand(entry) {
 async function runRemoteFile() {
   const sel = selectedEntries(panes.remote);
   if (!requireSession() || sel.length !== 1 || sel[0].is_dir) { toast("Select one remote file to run"); return; }
+  const sessionID = files.sessionID, sessionKey = files.sessionKey;
   const device = currentDevice();
   const command = await ask({ title: `Run ${sel[0].name}`, message: `Runs on ${device.name}. Review it first.`, label: "Command", value: defaultRunCommand(sel[0]), ok: "Run in terminal", validate: (v) => (!v ? "Enter a command." : /[\r\n\0]/.test(v) ? "Use a single line." : "") });
   if (!command) return;
+  if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Command cancelled.", "error"); return; }
   createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: panes.remote.path, initialCommand: command });
   showView("terminal");
 }
-function runOnDevice(command, directory) {
-  const device = currentDevice();
+function runOnDevice(command, directory, device = currentDevice()) {
   if (!device) return;
   createTerminalTab({ profileID: device.id, protocol: term.protocol, port: defaultPort(device, term.protocol), directory: directory || panes.remote.path, initialCommand: command });
   showView("terminal");
@@ -445,6 +518,9 @@ function runOnDevice(command, directory) {
 const remoteAbsolute = (v) => (!v ? "Enter a path." : !v.startsWith("/") ? "Use a full path that starts with /." : /[\r\n\0]/.test(v) ? "Use a single line." : "");
 async function cmdSymlink() {
   if (!requireSession()) return;
+  const sessionID = files.sessionID, sessionKey = files.sessionKey;
+  const device = currentDevice();
+  const directory = panes.remote.path;
   const sel = selectedEntries(panes.remote);
   let target = sel.length === 1 ? sel[0].path : "";
   if (!target) {
@@ -452,23 +528,28 @@ async function cmdSymlink() {
     if (!target) return;
   }
   const base = target.replace(/\/+$/, "").split("/").pop() || "link";
-  const linkPath = await ask({ title: "New symbolic link", message: `Target: ${target}`, label: "Link path (the new file)", value: joinRemote(panes.remote.path, `${base}-link`), ok: "Create in terminal", validate: remoteAbsolute });
+  const linkPath = await ask({ title: "New symbolic link", message: `Target: ${target}`, label: "Link path (the new file)", value: joinRemote(directory, `${base}-link`), ok: "Create in terminal", validate: remoteAbsolute });
   if (!linkPath) return;
-  runOnDevice(`ln -s ${shellQuote(target)} ${shellQuote(linkPath)} && ls -l ${shellQuote(linkPath)}`);
+  if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Link creation cancelled.", "error"); return; }
+  runOnDevice(`ln -s ${shellQuote(target)} ${shellQuote(linkPath)} && ls -l ${shellQuote(linkPath)}`, directory, device);
   toast("Created in the terminal.");
 }
 const copyName = (name) => { const dot = name.lastIndexOf("."); return dot > 0 ? `${name.slice(0, dot)}-copy${name.slice(dot)}` : `${name}-copy`; };
 async function cmdCopyOnDevice() {
   if (!requireSession()) return;
+  const sessionID = files.sessionID, sessionKey = files.sessionKey;
+  const device = currentDevice();
+  const directory = panes.remote.path;
   const sel = selectedEntries(panes.remote);
   if (!sel.length) { toast("Select the items to copy on the device"); return; }
   const dest = await ask({ title: sel.length === 1 ? `Copy ${sel[0].name}` : `Copy ${sel.length} items`, message: "Copied on the device itself.", label: "Destination folder on the device", value: panes.remote.path, ok: "Copy in terminal", validate: remoteAbsolute });
   if (!dest) return;
+  if (!isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Copy cancelled.", "error"); return; }
   const clean = dest.replace(/\/+$/, "") || "/";
   if (sel.length > 1 || sel[0].is_dir || clean !== panes.remote.path) {
-    runOnDevice(`cp -a ${sel.map((e) => shellQuote(e.path)).join(" ")} ${shellQuote(clean + "/")} && echo Done`);
+    runOnDevice(`cp -a ${sel.map((e) => shellQuote(e.path)).join(" ")} ${shellQuote(clean + "/")} && echo Done`, directory, device);
   } else {
-    runOnDevice(`cp -a ${shellQuote(sel[0].path)} ${shellQuote(joinRemote(clean, copyName(sel[0].name)))} && echo Done`);
+    runOnDevice(`cp -a ${shellQuote(sel[0].path)} ${shellQuote(joinRemote(clean, copyName(sel[0].name)))} && echo Done`, directory, device);
   }
   toast("The copy runs in the terminal.");
 }
@@ -480,7 +561,8 @@ document.addEventListener("keydown", (event) => {
   const tag = event.target.tagName;
   const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
   const pane = panes[files.active], key = event.key;
-  const fkeys = { F2: cmdRename, F5: () => transferSelection(files.active === "remote" ? "download" : "upload"), F7: cmdMkdir, F8: cmdDelete, F9: cmdChmod };
+  if (pane.renameTimer) cancelPendingRename(pane);
+  const fkeys = { F2: cmdRename, F3: cmdPreview, F5: () => transferSelection(files.active === "remote" ? "download" : "upload"), F7: cmdMkdir, F8: cmdDelete, F9: cmdChmod };
   if (key === "F4" && !event.ctrlKey && !event.altKey) { event.preventDefault(); if (event.shiftKey) cmdNewFile(); else cmdEdit(); return; }
   if (fkeys[key] && !event.ctrlKey && !event.altKey) { event.preventDefault(); fkeys[key](); return; }
   if (typing) return;
@@ -489,10 +571,14 @@ document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "c") { event.preventDefault(); cmdCopy(); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "x") { event.preventDefault(); cmdCut(); return; }
   if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === "v") { event.preventDefault(); cmdPaste(); return; }
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key.toLowerCase() === "z") { event.preventDefault(); cmdUndo(); return; }
+  const toggleAt = () => { const entry = pane.visible[pane.cursor]; if (!entry) return; cancelPendingRename(pane); if (pane.selected.has(entry.path)) pane.selected.delete(entry.path); else pane.selected.add(entry.path); pane.anchor = pane.cursor; updateSelectionUI(pane); };
+  if ((event.ctrlKey || event.metaKey) && key === " ") { event.preventDefault(); toggleAt(); return; }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   const count = pane.visible.length;
   const move = (to, extend) => {
     if (!count) return;
+    cancelPendingRename(pane);
     to = Math.max(0, Math.min(count - 1, to));
     if (extend) {
       if (pane.anchor < 0) pane.anchor = pane.cursor < 0 ? to : pane.cursor;
@@ -511,6 +597,12 @@ document.addEventListener("keydown", (event) => {
   else if (key === "Enter") { event.preventDefault(); const entry = pane.visible[pane.cursor]; if (entry) openEntry(pane, entry); }
   else if (key === "Backspace") { event.preventDefault(); goUp(files.active); }
   else if (key === "Delete") { event.preventDefault(); cmdDelete(); }
-  else if (key === " ") { event.preventDefault(); const entry = pane.visible[pane.cursor]; if (entry) { if (pane.selected.has(entry.path)) pane.selected.delete(entry.path); else pane.selected.add(entry.path); updateSelectionUI(pane); } }
-  else if (key === "Escape") { pane.selected.clear(); updateSelectionUI(pane); }
+  else if (key === " ") { event.preventDefault(); if (pane.selected.size > 1) toggleAt(); else cmdPreview(); }
+  else if (key === "Insert") {
+    event.preventDefault();
+    if (pane.cursor < 0 && count) pane.cursor = 0;
+    toggleAt();
+    if (pane.cursor < count - 1) { pane.cursor++; updateSelectionUI(pane); $(`tr[data-index="${pane.cursor}"]`, pane.rows)?.scrollIntoView({ block: "nearest" }); }
+  }
+  else if (key === "Escape") cmdSelectNone();
 });

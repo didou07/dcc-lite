@@ -1,6 +1,5 @@
 "use strict";
 
-// ---- Packages: browse, install and remove software (opkg via OpenWebif) ----
 const pk = { profileID: "", mode: "all", q: "", gen: 0, busy: false, timer: 0, upgradable: 0 };
 
 function pkError(message) {

@@ -185,7 +185,6 @@ $("#toolsDrop").addEventListener("drop", (event) => {
   $("#toolsRestoreFile").files = transfer.files; bkDropRefresh();
 });
 
-// ---- Restore points: copies the program saved before it changed the receiver ----
 const REASONS = { "bouquet-edit": "Before editing the channel lists", "before-restore": "Before a restore" };
 async function rpRefresh() {
   const list = $("#rpList"); if (!list) return;

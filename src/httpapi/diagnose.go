@@ -15,8 +15,6 @@ import (
 	"github.com/didou07/dcc-lite/src/filetransfer"
 )
 
-// One line of the per-service connection check: what was tried, whether it worked, why it did not,
-// and what the owner can do about it.
 type diagnoseCheck struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`

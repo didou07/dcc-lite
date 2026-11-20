@@ -60,7 +60,6 @@ func Candidates() []string {
 	return dirs
 }
 
-// machineOf reads the CPU type a DLL was built for ("amd64", "386", "arm64") or "".
 func machineOf(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
@@ -88,7 +87,6 @@ func machineOf(path string) string {
 	return ""
 }
 
-// FindDir returns the folder of a VLC installation this program can load.
 func FindDir() (string, error) {
 	var wrongKind string
 	seen := map[string]bool{}

@@ -26,7 +26,6 @@ const (
 	driveRAMDisk   = 6
 )
 
-// listDrives returns the drive letters present, e.g. "(C:) Local Disk" -> "C:/".
 func listDrives() []drive {
 	// Do not pop up "insert a disk" dialogs for empty card readers.
 	previous, _, _ := procSetErrorMode.Call(1)

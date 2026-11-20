@@ -161,8 +161,6 @@ func decodeINI(data []byte) (Document, error) {
 			if err != nil || n < 1 || n < nextDevice || fmt.Sprintf("device%d", n) != name {
 				return fmt.Errorf("device sections must be unique and in ascending order ([Device1], [Device2], ...)")
 			}
-			// Gaps are tolerated so a hand-deleted device doesn't break startup;
-			// encodeINI renumbers sequentially on the next save.
 			nextDevice = n + 1
 		}
 		return nil

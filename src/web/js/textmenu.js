@@ -47,7 +47,6 @@
       "-",
       { label: "Select all", icon: "check", sub: "Ctrl+A", disabled: !field.value, run: () => { acted = true; field.focus({ preventScroll: true }); field.select(); } },
     ], event.clientX, event.clientY);
-    // Menu closed without choosing anything: drop the highlight instead of leaving it on the text.
     const menu = $("#menu");
     const watch = new MutationObserver(() => {
       if (!menu.hidden) return;

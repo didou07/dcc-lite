@@ -49,7 +49,6 @@ var (
 	nativeOnce  sync.Once
 )
 
-// nativeClose asks the window to close. It is safe to call from any goroutine.
 func nativeClose() {
 	if nativeUp.Load() {
 		C.dcc_gtk_quit()
@@ -57,7 +56,6 @@ func nativeClose() {
 	nativeOnce.Do(func() { close(nativeStop) })
 }
 
-// nativeNotice tells the user something when the program has no console (best effort).
 func nativeNotice(text string) {
 	nativeLog.Info(text)
 	if p, err := exec.LookPath("notify-send"); err == nil {
@@ -194,7 +192,6 @@ type stateOut struct {
 	AudioCurrent int        `json:"audioCurrent"`
 }
 
-// placed is where the picture window was last put, in the page window's pixels.
 type placed struct {
 	x, y, w, h int
 	show       bool
@@ -233,7 +230,7 @@ type nativeLive struct {
 	snap         stateOut
 	fit          string      // how the picture fills its window (vlc.Fit...)
 	fitTimer     *time.Timer // debounces a re-fit after the box changed size
-	lastVW       float64     // the page's viewport size at the last box, to turn pixels back into CSS pixels
+	lastVW       float64
 	lastVH       float64
 	events       []mouseEvent // mouse events for the page, newest last
 	evMu         sync.Mutex
@@ -268,7 +265,6 @@ func (n *nativeLive) vlc() (*vlc.Player, error) {
 	return n.player, n.vlcErr
 }
 
-// close is called when the window has gone; the process is about to end, so nothing here may block.
 func (n *nativeLive) close() {
 	n.closed.Store(true)
 	if n.vlcDone.Load() && n.player != nil {
@@ -277,7 +273,6 @@ func (n *nativeLive) close() {
 	}
 }
 
-// withPlayer runs f on its own goroutine once VLC is ready. It returns at once.
 func (n *nativeLive) withPlayer(f func(p *vlc.Player)) {
 	if !n.vlcDone.Load() || n.player == nil {
 		return
@@ -286,7 +281,6 @@ func (n *nativeLive) withPlayer(f func(p *vlc.Player)) {
 	go f(p)
 }
 
-// xid waits briefly for the picture window to exist (it is made while the window opens).
 func (n *nativeLive) xid() (uintptr, error) {
 	for i := 0; i < 100; i++ {
 		if x := uintptr(C.dcc_gtk_video_xid()); x != 0 {
@@ -586,7 +580,6 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 	return "", fmt.Errorf("unknown request %q", op)
 }
 
-// playOptions turns what the page asked for into safe player settings.
 func playOptions(a playArgs) vlc.PlayOptions {
 	o := vlc.PlayOptions{CachingMs: a.Caching, Deinterlace: vlc.DeinterlaceAuto}
 	if o.CachingMs < 200 || o.CachingMs > 10000 {
@@ -657,7 +650,6 @@ func (n *nativeLive) startPlayback(gen int, id, ref string, xid uintptr) {
 
 var langInBrackets = regexp.MustCompile(`\[([^\]]+)\]`)
 
-// trackKey makes "Track 2 - [English]" and "Track 1 - [English]" compare equal.
 func trackKey(name string) string {
 	if m := langInBrackets.FindStringSubmatch(name); m != nil {
 		return strings.ToLower(strings.TrimSpace(m[1]))
@@ -665,10 +657,8 @@ func trackKey(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// stallAfter is how long a "playing" stream may stand still before the page is told to reconnect.
 const stallAfter = 6 * time.Second
 
-// poll refreshes the snapshot the page reads. It is the only place that asks VLC for its state.
 func (n *nativeLive) poll() {
 	tick := time.NewTicker(300 * time.Millisecond)
 	defer tick.Stop()

@@ -37,8 +37,6 @@ func Candidates() []string {
 	return out
 }
 
-// FindLib returns the libvlc to load: a file found on disk, or the bare name so the system's
-// library search gets a chance too.
 func FindLib() (string, error) {
 	if c := Candidates(); len(c) > 0 {
 		return c[0], nil

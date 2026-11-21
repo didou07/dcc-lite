@@ -79,6 +79,7 @@ func (s *Server) deviceRemoteKey(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 8*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
+	ctx = context.WithValue(ctx, keyPriorityKey{}, true)
 
 	suffix := "?command=" + strconv.Itoa(code)
 	if input.Long {

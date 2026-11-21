@@ -18,7 +18,7 @@ var ipkFileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+~-]{0,150}\.ipk$`
 func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 	logAction(w, r, "plugin install (.ipk) requested")
 	id := r.PathValue("id")
-	profile, ok := s.sessionProfile(id)
+	_, ok := s.sessionProfile(id)
 	if !ok {
 		writeSessionNotFound(w)
 		return
@@ -92,11 +92,7 @@ func (s *Server) uploadIPK(w http.ResponseWriter, r *http.Request) {
 	}
 	command := install + remote + " && rm -f " + remote
 	if r.URL.Query().Get("restart") == "1" {
-		if profile.EffectiveWebKind() == "dreamos" {
-			command += " && sleep 1 && systemctl restart enigma2"
-		} else {
-			command += " && sleep 1 && init 4 && sleep 3 && init 3"
-		}
+		command += " && sleep 1 && if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then systemctl restart enigma2; else init 4 && sleep 3 && init 3; fi"
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": remote, "command": command})
 }

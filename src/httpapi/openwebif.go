@@ -68,6 +68,19 @@ const maxWebRequestsPerDevice = 2
 
 var webSlots sync.Map
 
+// Remote-control presses get a slot of their own, so a slow screenshot never makes a key wait.
+type keyPriorityKey struct{}
+
+var prioritySlots sync.Map
+
+func prioritySlotsFor(base string) chan struct{} {
+	if slots, ok := prioritySlots.Load(base); ok {
+		return slots.(chan struct{})
+	}
+	slots, _ := prioritySlots.LoadOrStore(base, make(chan struct{}, 1))
+	return slots.(chan struct{})
+}
+
 func webSlotsFor(base string) chan struct{} {
 	if slots, ok := webSlots.Load(base); ok {
 		return slots.(chan struct{})
@@ -111,6 +124,9 @@ func (d deviceWeb) sendOnce(ctx context.Context, method, pathAndQuery, form stri
 		return nil, err
 	}
 	slots := webSlotsFor(d.base)
+	if ctx.Value(keyPriorityKey{}) != nil {
+		slots = prioritySlotsFor(d.base)
+	}
 	select {
 	case slots <- struct{}{}:
 	case <-ctx.Done():

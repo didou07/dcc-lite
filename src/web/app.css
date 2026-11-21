@@ -2323,6 +2323,9 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .live-btn.on { color: #ff6b6d; }
 .live-btn.on .ic { animation: pulse 1.2s ease-in-out infinite; }
 .live-btn[hidden] { display: none; }
+.live-osd-btn { width: auto; padding: 0 calc(8px * var(--ui)); gap: calc(5px * var(--ui)); font-size: calc(12px * var(--ui)); font-weight: 600; letter-spacing: .02em; }
+.live-osd-btn[aria-pressed="true"] { background: rgb(255 255 255 / .2); }
+.live-osd-btn[aria-pressed="false"] { opacity: .65; }
 .live-audio-btn { padding: 0 calc(10px * var(--ui)); max-width: calc(190px * var(--ui)); }
 .live-audio-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12.5px * var(--ui)); }
 #liveRecTime { font-size: calc(12px * var(--ui)); font-variant-numeric: tabular-nums; }

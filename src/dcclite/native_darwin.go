@@ -534,6 +534,9 @@ func (n *nativeLive) handle(op, raw string) (string, error) {
 		n.withPlayer(func(p *vlc.Player) { p.SetAudioTrack(a.ID) })
 		return "{}", nil
 
+	case "overlay":
+		return n.overlayRequest(raw)
+
 	case "snapshot":
 		var a struct{ Name string }
 		_ = json.Unmarshal([]byte(raw), &a)

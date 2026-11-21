@@ -214,7 +214,10 @@ async function pollCurrent(now = false) {
   if (!id || view.current !== "screen") return;
   if (now || (!document.hidden && !screenView.paused)) {
     try {
-      const info = await api(profileURL(id, "current"));
+      if (ch.polling) throw new Error("busy");
+      ch.polling = true;
+      let info;
+      try { info = await api(profileURL(id, "current")); } finally { ch.polling = false; }
       if (id !== ch.profileID) return;
       if (info.ref && info.ref !== ch.currentRef) {
         if (ch.currentRef) ch.zapPrev = ch.currentRef;
@@ -229,7 +232,7 @@ async function pollCurrent(now = false) {
       showNow(info);
     } catch { }
   }
-  ch.timer = window.setTimeout(() => pollCurrent(false), 10000);
+  ch.timer = window.setTimeout(() => pollCurrent(false), typeof live !== "undefined" && live.on ? 3000 : 10000);
 }
 
 $("#channelKind").addEventListener("click", (event) => {

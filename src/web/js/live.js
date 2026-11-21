@@ -197,6 +197,7 @@ async function liveBegin() {
   if (!id || !live.on) return;
   window.clearTimeout(live.retryTimer);
   const same = live.ref === ch.currentRef;
+  live.beginN = (live.beginN || 0) + 1; // a new picture pipeline: the OSD overlay is lost and must be sent again
   live.ref = ch.currentRef;
   live.name = liveChannelName();
   $("#liveName").textContent = live.name;
@@ -265,7 +266,7 @@ async function liveTick() {
   const now = performance.now();
   if (ch.currentRef && ch.currentRef !== live.ref && live.state !== "connecting") {
     if (!live.followSince) live.followSince = now;
-    if (now - live.followSince > 800) { live.followSince = 0; live.retries = 0; liveBegin(); return; }
+    if (now - live.followSince > 300) { live.followSince = 0; live.retries = 0; liveBegin(); return; }
   } else live.followSince = 0;
   liveSyncNative(++live.ticks % 6 === 0);
   liveAgo();
@@ -486,6 +487,7 @@ function liveCtxRender() {
     livePopAction(live.muted || live.volume === 0 ? "Unmute" : "Mute", then(liveToggleMute)),
     livePopAction(live.fs ? "Exit full screen" : "Full screen", then(liveFullToggle), "F"),
     livePopAction("Save a snapshot", then(liveSnapshot)),
+    ...(typeof liveOsdCtxItems === "function" ? liveOsdCtxItems(then) : []),
     ...liveFitParts(liveCtxRender),
   ];
   if (live.audio.length > 1) {

@@ -119,6 +119,7 @@ function screenRestart() {
   screenView.wake?.();
 }
 function screenRestartNow() {
+  if (typeof liveOsdNow === "function" && liveOsdNow()) return; // live: the OSD overlay asks for its own picture
   screenView.once = true;
   screenView.lastStart = -1e9;
   screenView.controller?.abort();

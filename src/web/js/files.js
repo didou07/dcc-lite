@@ -1277,6 +1277,53 @@ const editorLines = (() => {
   toggle.addEventListener("change", () => { store.set("editorLines", toggle.checked); update(true); text.focus(); });
   text.addEventListener("input", () => update());
   text.addEventListener("scroll", syncScroll);
+  const copyOnSelect = () => store.get("editorCopyOnSelect", true) !== false;
+  const selected = () => text.value.slice(text.selectionStart, text.selectionEnd);
+  const insertText = (clip) => {
+    text.focus();
+    text.setRangeText(clip, text.selectionStart, text.selectionEnd, "end");
+    text.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  const copyEditor = async () => {
+    const chosen = selected();
+    if (!chosen) return;
+    if (await clipboardWrite(chosen)) { toast("Selection copied"); text.setSelectionRange(text.selectionEnd, text.selectionEnd); }
+    else toast("Copy was blocked by the browser.", "error");
+    text.focus();
+  };
+  const pasteEditor = async () => {
+    const clip = await clipboardRead();
+    if (clip === null) {
+      const box = $("#pasteDialog");
+      $("#pasteText").value = "";
+      openDialog(box);
+      $("#pasteText").focus();
+      window.termPasteHook = insertText;
+      const done = () => { box.removeEventListener("close", done); window.termPasteHook = null; text.focus(); };
+      box.addEventListener("close", done);
+      return;
+    }
+    if (clip) insertText(clip);
+  };
+  let selTimer = 0;
+  text.addEventListener("select", () => {
+    if (!copyOnSelect()) return;
+    window.clearTimeout(selTimer);
+    selTimer = window.setTimeout(() => { const chosen = selected(); if (chosen) clipboardWrite(chosen); }, 200);
+  });
+  text.addEventListener("contextmenu", (event) => {
+    event.preventDefault(); event.stopPropagation();
+    if (event.shiftKey) {
+      openMenu([
+        { label: "Copy", icon: "copy", disabled: !selected(), run: copyEditor },
+        { label: "Paste", icon: "paste", sub: "Ctrl+V", run: pasteEditor },
+        { label: "Select all", icon: "check", sub: "Ctrl+A", run: () => { text.focus(); text.select(); } },
+        { label: copyOnSelect() ? "✓ Copy when selecting" : "Copy when selecting", icon: "copy", run: () => { store.set("editorCopyOnSelect", !copyOnSelect()); toast(copyOnSelect() ? "Selected text is copied automatically" : "Automatic copy is off"); } },
+      ], event.clientX, event.clientY);
+      return;
+    }
+    if (selected()) copyEditor(); else pasteEditor();
+  }, true);
   $("#editorWrap").addEventListener("change", () => update());
   gutter.addEventListener("mousedown", (event) => { event.preventDefault(); text.focus(); });
   gutter.addEventListener("wheel", (event) => { event.preventDefault(); text.scrollTop += event.deltaY; text.scrollLeft += event.deltaX; }, { passive: false });
@@ -1745,3 +1792,4 @@ async function cmdUndo() {
   else if (blocked) toast(`Undone ${restored}, ${blocked} skipped: the original name is taken now`);
   else toast(`Undone: ${item.label}`);
 }
+

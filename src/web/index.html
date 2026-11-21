@@ -31,6 +31,7 @@
   <script src="/js/power.js" defer></script>
   <script src="/js/channels.js" defer></script>
   <script src="/js/live.js" defer></script>
+  <script src="/js/live-osd.js" defer></script>
   <script src="/js/guide.js" defer></script>
   <script src="/js/guide-extras.js" defer></script>
   <script src="/js/guide-grid.js" defer></script>
@@ -669,7 +670,7 @@
     <div class="screen-tools">
       <div class="screen-opts" id="screenOpts">
         <label class="field-inline">Show
-          <select id="screenMode"><option value="all">Video + menus</option><option value="video">Video only</option><option value="osd">Menus only</option></select>
+          <select id="screenMode"><option value="all">Video + OSD</option><option value="video">Video only</option><option value="osd">OSD only</option></select>
         </label>
         <label class="field-inline">Width (px)
           <select id="screenWidth" title="Picture width (px)"><option value="480">480</option><option value="720">720</option><option value="1280">1280</option><option value="1920">1920</option><option value="3840">3840</option></select>
@@ -741,6 +742,7 @@
               <input class="live-vol" id="liveVol" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume">
               <button class="live-btn live-audio-btn" id="liveAudioBtn" type="button" title="Audio track" aria-label="Audio track" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><span id="liveAudioLabel"></span></button>
               <button class="live-btn" id="liveSettingsBtn" type="button" title="Player settings" aria-label="Player settings" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg></button>
+              <button class="live-btn live-osd-btn" id="liveOsdBtn" type="button" title="Show the receiver menus (OSD) over the video" aria-label="Receiver menus over the video" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-screen"/></svg><span>OSD</span></button>
               <span class="spacer"></span>
               <button class="live-btn" id="livePanelBtn" type="button" title="Hide the details panel" aria-label="Details panel" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></button>
               <button class="live-btn" id="liveSnap" type="button" title="Save a snapshot" aria-label="Save a snapshot"><svg class="ic" aria-hidden="true"><use href="#i-camera"/></svg></button>

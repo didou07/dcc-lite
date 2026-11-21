@@ -214,7 +214,12 @@ func dreamOSGrabPath(mode string, width int) string {
 
 func grabAddresses(mode string, width int, kind string) []string {
 	if kind != "dreamos" {
-		return []string{fmt.Sprintf("/grab?format=jpg&mode=%s&r=%d", mode, width)}
+		// The OSD alone needs a PNG (transparency).
+		format := "jpg"
+		if mode == "osd" {
+			format = "png"
+		}
+		return []string{fmt.Sprintf("/grab?format=%s&mode=%s&r=%d", format, mode, width)}
 	}
 	var out []string
 	w := freezeFrameWidth(width)

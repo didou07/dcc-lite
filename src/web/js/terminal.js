@@ -16,38 +16,26 @@ const COMMON_COMMANDS = [
   { id: "mount", name: "Mounted drives", command: "mount" },
   { id: "kernel", name: "Kernel", command: "uname -a" },
   { id: "cams", name: "Running softcams", command: "ps | grep -i -E 'oscam|ncam|cccam|gbox|mgcamd' | grep -v grep" },
-  { id: "reload-bouquets", name: "Reload bouquets (OpenWebif)", command: "wget -qO- 'http://127.0.0.1/web/servicelistreload?mode=2'" },
+  { id: "reload-bouquets", name: "Reload bouquets", command: "wget -qO- 'http://127.0.0.1/web/servicelistreload?mode=2'" },
   { id: "drop-caches", name: "Free memory caches", command: "sync; echo 3 > /proc/sys/vm/drop_caches" },
   { id: "hdd-free", name: "Recording disk space", command: "df -h /media/hdd /hdd 2>/dev/null" },
   { id: "reboot", name: "Reboot receiver", command: "reboot" },
 ];
-const isDreamOSDevice = (device) => ["dreamos", "webinterface"].includes(String(device?.web_kind || "").toLowerCase());
-function builtinCommands() {
-  const dream = isDreamOSDevice(currentDevice());
-  const list = COMMON_COMMANDS.map((c) => (dream && c.id === "reload-bouquets" ? { ...c, name: "Reload bouquets" } : c));
-  list.splice(8, 0, dream
-    ? { id: "opkg", name: "Update package list", command: "apt-get update" }
-    : { id: "opkg", name: "Update package list", command: "opkg update" });
-  list.splice(10, 0, dream
-    ? { id: "restart-gui", name: "Restart Enigma2 (GUI)", command: "systemctl restart enigma2" }
-    : { id: "restart-gui", name: "Restart Enigma2 (GUI)", command: "init 4 && sleep 3 && init 3" });
-  if (dream) {
-    // DreamOS only
-    list.splice(list.length - 1, 0,
-      { id: "apt-upgrade", name: "Upgrade packages", command: "apt-get upgrade -y" },
-      { id: "dpkg-plugins", name: "Installed plugins", command: "dpkg -l | grep enigma2-plugin" },
-      { id: "e2-status", name: "Enigma2 service status", command: "systemctl status enigma2 --no-pager" },
-      { id: "e2-logs", name: "Enigma2 log files", command: "ls -lt /home/root/logs/ | head -20" });
-  } else {
-    // OpenWebif only
-    list.splice(list.length - 1, 0,
-      { id: "opkg-upgrade", name: "Upgrade packages", command: "opkg upgrade" },
-      { id: "opkg-plugins", name: "Installed plugins", command: "opkg list-installed | grep enigma2-plugin" },
-      { id: "e2-status", name: "Enigma2 process status", command: "ps | grep -i enigma2 | grep -v grep" },
-      { id: "e2-logs", name: "Enigma2 log files", command: "ls -lt /home/root/logs/ /home/root/*crash*.log 2>/dev/null | head -20" });
-  }
-  return list;
-}
+const E2_SYSTEMD = "[ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1";
+const E2_OPKG = "command -v opkg >/dev/null 2>&1";
+const builtinCommands = () => [
+  ...COMMON_COMMANDS.slice(0, 8),
+  { id: "opkg", name: "Update package list", command: `if ${E2_OPKG}; then opkg update; else apt-get update; fi` },
+  COMMON_COMMANDS[8],
+  { id: "restart-gui", name: "Restart Enigma2 (GUI)", command: `if ${E2_SYSTEMD}; then systemctl restart enigma2; else init 4 && sleep 3 && init 3; fi` },
+  { id: "kill-enigma2", name: "Force kill Enigma2 (restarts)", command: "killall -9 enigma2" },
+  ...COMMON_COMMANDS.slice(9, 12),
+  { id: "pkg-upgrade", name: "Upgrade packages", command: `if ${E2_OPKG}; then opkg upgrade; else apt-get upgrade -y; fi` },
+  { id: "pkg-plugins", name: "Installed plugins", command: `if ${E2_OPKG}; then opkg list-installed | grep enigma2-plugin; else dpkg -l | grep enigma2-plugin; fi` },
+  { id: "e2-status", name: "Enigma2 status", command: `if ${E2_SYSTEMD}; then systemctl status enigma2 --no-pager; else ps | grep -i enigma2 | grep -v grep; fi` },
+  { id: "e2-logs", name: "Enigma2 log files", command: "ls -lt /home/root/logs/ /home/root/*crash*.log 2>/dev/null | head -20" },
+  COMMON_COMMANDS[12],
+];
 
 function terminalTheme(name) {
   const dark = {
@@ -685,6 +673,7 @@ function openPasteBox(tab) {
 }
 $("#pasteForm").addEventListener("submit", () => {
   const tab = activeTab(), text = $("#pasteText").value;
+  if (window.termPasteHook) { if (text) window.termPasteHook(text); return; }
   if (tab && tab.state === "connected" && text) tab.terminal.paste(text);
 });
 $("#pasteCancel").addEventListener("click", () => $("#pasteDialog").close());

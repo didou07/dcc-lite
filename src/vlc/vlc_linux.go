@@ -44,6 +44,8 @@ static void (*p_video_set_key_input)(void *, unsigned);
 static void (*p_video_set_deinterlace)(void *, const char *);
 static void (*p_video_set_aspect_ratio)(void *, const char *);
 static void (*p_video_set_crop_geometry)(void *, const char *);
+static void (*p_video_set_logo_int)(void *, unsigned, int);
+static void (*p_video_set_logo_string)(void *, unsigned, const char *);
 
 static const char *missing;
 
@@ -82,6 +84,8 @@ static int dcc_open(const char *path) {
 	WANT(p_video_set_deinterlace, "libvlc_video_set_deinterlace");
 	WANT(p_video_set_aspect_ratio, "libvlc_video_set_aspect_ratio");
 	WANT(p_video_set_crop_geometry, "libvlc_video_set_crop_geometry");
+	WANT(p_video_set_logo_int, "libvlc_video_set_logo_int");
+	WANT(p_video_set_logo_string, "libvlc_video_set_logo_string");
 	return 0;
 }
 
@@ -118,11 +122,14 @@ static int dcc_has(const char *what) {
 	if (!strcmp(what, "deinterlace")) return p_video_set_deinterlace != NULL;
 	if (!strcmp(what, "aspect")) return p_video_set_aspect_ratio != NULL;
 	if (!strcmp(what, "crop")) return p_video_set_crop_geometry != NULL;
+	if (!strcmp(what, "logo")) return p_video_set_logo_int != NULL && p_video_set_logo_string != NULL;
 	return 0;
 }
 static void dcc_deinterlace(void *mp, const char *mode) { if (p_video_set_deinterlace) p_video_set_deinterlace(mp, mode); }
 static void dcc_aspect(void *mp, const char *v) { if (p_video_set_aspect_ratio) p_video_set_aspect_ratio(mp, v); }
 static void dcc_crop(void *mp, const char *v) { if (p_video_set_crop_geometry) p_video_set_crop_geometry(mp, v); }
+static void dcc_logo_int(void *mp, unsigned opt, int v) { if (p_video_set_logo_int) p_video_set_logo_int(mp, opt, v); }
+static void dcc_logo_string(void *mp, unsigned opt, const char *v) { if (p_video_set_logo_string) p_video_set_logo_string(mp, opt, v); }
 */
 import "C"
 
@@ -229,6 +236,8 @@ type Player struct {
 	vol    int
 	volSet bool
 	muted  bool
+
+	overlayOn bool // the receiver-OSD picture (see SetOverlay) is currently shown
 }
 
 type PlayOptions struct {
@@ -282,6 +291,10 @@ func (p *Player) Play(mrl string, opt PlayOptions) error {
 	defer C.free(unsafe.Pointer(loc))
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.overlayOn && p.mp != nil && p.OverlaySupported() {
+		C.dcc_logo_int(p.mp, 0, 0) // the old picture has the old channel's size
+	}
+	p.overlayOn = false
 	if mode != p.deint && p.mp != nil {
 		C.dcc_mp_stop(p.mp)
 		C.dcc_mp_free(p.mp)
@@ -531,6 +544,49 @@ func (p *Player) Snapshot(path string) error {
 		return errors.New("VLC could not take the snapshot")
 	}
 	return nil
+}
+
+// OverlaySupported reports whether this libvlc has the logo filter.
+func (p *Player) OverlaySupported() bool {
+	return C.dcc_has(cstrConst("logo")) != 0
+}
+
+// SetOverlay draws the PNG at path over the video from its top left corner; it must be as large as the video.
+func (p *Player) SetOverlay(path string) error {
+	if !p.OverlaySupported() {
+		return errors.New("this VLC cannot draw a picture over the video")
+	}
+	if strings.ContainsAny(path, ",;") {
+		return errors.New("the temporary folder's name has a comma or semicolon, which VLC reads as a list")
+	}
+	c := C.CString(path)
+	defer C.free(unsafe.Pointer(c))
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mp == nil {
+		return errors.New("the player is not ready")
+	}
+	C.dcc_logo_string(p.mp, 1, c) // libvlc_logo_file
+	if !p.overlayOn {
+		C.dcc_logo_int(p.mp, 2, 0)   // x
+		C.dcc_logo_int(p.mp, 3, 0)   // y
+		C.dcc_logo_int(p.mp, 7, 5)   // position: left + top
+		C.dcc_logo_int(p.mp, 6, 255) // opacity
+		C.dcc_logo_int(p.mp, 0, 1)   // enable
+		p.overlayOn = true
+	}
+	return nil
+}
+
+// ClearOverlay removes the picture drawn by SetOverlay.
+func (p *Player) ClearOverlay() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mp == nil || !p.overlayOn || !p.OverlaySupported() {
+		return
+	}
+	C.dcc_logo_int(p.mp, 0, 0)
+	p.overlayOn = false
 }
 
 // Close stops and releases the player.

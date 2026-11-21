@@ -39,6 +39,7 @@ func (s *Server) deviceVolume(w http.ResponseWriter, r *http.Request) {
 	web := newDeviceWeb(profile, 8*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
+	ctx = context.WithValue(ctx, keyPriorityKey{}, true)
 	path := "/api/vol"
 	if r.Method == http.MethodPost {
 		var input volumeRequest

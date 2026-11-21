@@ -216,6 +216,19 @@ function remoteRefreshScreen(profileID) {
   };
   remote.shots = window.setTimeout(next, delays[0]);
 }
+// A remote key may have changed the channel: ask the receiver soon, so the live picture follows at once.
+function remoteFollowChannel(profileID) {
+  if (typeof live === "undefined" || !live.on) return;
+  window.clearTimeout(remote.follow);
+  const delays = [350, 1000, 2200, 4000];
+  let step = 0;
+  const next = () => {
+    if (profileID !== screenView.profileID || !live.on) return;
+    pollCurrent(true);
+    if (++step < delays.length) remote.follow = window.setTimeout(next, delays[step] - delays[step - 1]);
+  };
+  remote.follow = window.setTimeout(next, delays[0]);
+}
 const remoteMode = () => (store.get(`remote.mode.${remote.id}`, "web") === "telnet" ? "telnet" : "web");
 function sendRemoteKey(key, long = false, button = null, hardware = false) {
   if (!screenView.profileID || remote.pending >= 6) return Promise.resolve();
@@ -227,6 +240,7 @@ function sendRemoteKey(key, long = false, button = null, hardware = false) {
       await post(profileURL(profileID, "remote-key"), { key, ...(long ? { long: true } : {}), ...(hardware || remoteMode() === "telnet" ? { hardware: true } : {}) });
       remoteError("");
       remoteRefreshScreen(profileID);
+      remoteFollowChannel(profileID);
       if (/^(volup|voldown|mute|KEY_(VOLUMEUP|VOLUMEDOWN|MUTE))$/.test(key)) window.setTimeout(remoteVolumeSync, 400);
     } catch (error) { remoteError(error.message); }
     finally { remote.pending -= 1; button?.classList.remove("sending"); }

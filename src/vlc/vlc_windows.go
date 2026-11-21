@@ -64,7 +64,7 @@ var required = []string{
 	"libvlc_media_player_get_time",
 }
 
-var optional = []string{"libvlc_video_set_deinterlace", "libvlc_video_set_aspect_ratio", "libvlc_video_set_crop_geometry"}
+var optional = []string{"libvlc_video_set_deinterlace", "libvlc_video_set_aspect_ratio", "libvlc_video_set_crop_geometry", "libvlc_video_set_logo_int", "libvlc_video_set_logo_string"}
 
 func Load() (*Lib, error) {
 	dir, err := FindDir()
@@ -147,6 +147,8 @@ type Player struct {
 	vol    int
 	volSet bool
 	muted  bool
+
+	overlayOn bool // the receiver-OSD picture (see SetOverlay) is currently shown
 }
 
 type PlayOptions struct {
@@ -213,6 +215,10 @@ func (p *Player) Play(mrl string, opt PlayOptions) error {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.overlayOn && p.mp != 0 && p.OverlaySupported() {
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoEnable, 0) // the old picture has the old channel's size
+	}
+	p.overlayOn = false
 	if mode != p.deint && p.mp != 0 {
 		p.lib.call("libvlc_media_player_stop", p.mp)
 		p.lib.call("libvlc_media_player_release", p.mp)
@@ -457,6 +463,62 @@ func (p *Player) Snapshot(path string) error {
 		return errors.New("VLC could not take the snapshot")
 	}
 	return nil
+}
+
+// libvlc_video_logo_option_t values.
+const (
+	logoEnable   = 0
+	logoFile     = 1
+	logoX        = 2
+	logoY        = 3
+	logoOpacity  = 6
+	logoPosition = 7
+)
+
+// OverlaySupported reports whether this libvlc has the logo filter.
+func (p *Player) OverlaySupported() bool {
+	return p.lib.procs["libvlc_video_set_logo_int"] != 0 && p.lib.procs["libvlc_video_set_logo_string"] != 0
+}
+
+// SetOverlay draws the PNG at path over the video from its top left corner; it must be as large as the video.
+func (p *Player) SetOverlay(path string) error {
+	if !p.OverlaySupported() {
+		return errors.New("this VLC cannot draw a picture over the video")
+	}
+	if strings.ContainsAny(path, ",;") {
+		return errors.New("the temporary folder's name has a comma or semicolon, which VLC reads as a list")
+	}
+	c, err := cstr(path)
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mp == 0 {
+		return errors.New("the player is not ready")
+	}
+	p.lib.call("libvlc_video_set_logo_string", p.mp, logoFile, uintptr(unsafe.Pointer(c)))
+	runtime.KeepAlive(c)
+	if !p.overlayOn {
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoX, 0)
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoY, 0)
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoPosition, 5) // left + top
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoOpacity, 255)
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoEnable, 1)
+		p.overlayOn = true
+	}
+	return nil
+}
+
+// ClearOverlay removes the picture drawn by SetOverlay.
+func (p *Player) ClearOverlay() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mp == 0 || !p.overlayOn || !p.OverlaySupported() {
+		return
+	}
+	p.lib.call("libvlc_video_set_logo_int", p.mp, logoEnable, 0)
+	p.overlayOn = false
 }
 
 // Close stops and releases the player.

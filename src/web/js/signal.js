@@ -254,7 +254,8 @@ async function sigLoop(gen) {
 }
 
 function sigSetPauseLabel(paused) {
-  $("#sigPause span").textContent = paused ? "Resume" : "Pause";
+  $("#sigPause").title = paused ? "Resume" : "Pause";
+  $("#sigPause").setAttribute("aria-label", paused ? "Resume" : "Pause");
   $("#sigPause use").setAttribute("href", paused ? "#i-play" : "#i-pause");
 }
 function sigResetPeaks() {

@@ -209,7 +209,14 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 	// Keep what is on the receiver now, so a wrong backup can be undone.
-	s.snapshotChannels(ctx, id, profile, dir, "before-restore", true)
+	if err := s.snapshotChannelsChecked(ctx, id, profile, dir, "before-restore", true); err != nil {
+		// Without a restore point a wrong or broken restore could not be undone, so nothing is changed.
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": "Nothing was changed. The receiver's current channel list could not be saved first, so the restore was stopped: " + err.Error(),
+			"code":  "restore_point_failed",
+		})
+		return
+	}
 	s.applyChannelFiles(ctx, w, id, profile, dir, files, skipped)
 }
 

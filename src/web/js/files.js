@@ -723,7 +723,10 @@ function contextItems(pane, onEntry) {
   const items = [];
   if (onEntry) {
     if (single?.is_dir) items.push({ label: "Open", icon: "folder", run: () => loadPane(kind, single.path) });
-    else if (single) { items.push({ label: "Preview", icon: "search", sub: "Space", run: () => cmdPreview() }); items.push({ label: "Edit as text", icon: "file", sub: "F4", run: () => cmdEdit() }); }
+    else if (single) {
+      items.push({ label: "Preview", icon: "eye", sub: "Space", run: () => cmdPreview() });
+      items.push({ label: "Edit as text", icon: "file", sub: "F4", run: () => cmdEdit() });
+    }
     items.push(kind === "remote"
       ? { label: files.browserMode ? (many ? `Download ${sel.length} items to this device` : "Download to this device") : (many ? `Download ${sel.length} items` : "Download"), icon: "download", disabled: files.browserMode && !sel.some((e) => !e.is_dir), run: () => transferSelection("download") }
       : { label: many ? `Upload ${sel.length} items` : "Upload", icon: "upload", run: () => transferSelection("upload") });
@@ -1198,19 +1201,24 @@ async function pasteAcrossPanes(clip, kind) {
   window.setTimeout(poll, 1200);
 }
 
-const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", create: false, original: "", busy: false, kind: "remote", sessionID: "", sessionKey: "" };
+const editor = { path: "", name: "", size: 0, modifiedAt: "", hash: "", lineEnding: "lf", mixed: false, encoding: "utf-8", link: "", create: false, original: "", busy: false, kind: "remote", sessionID: "", sessionKey: "" };
 const editorURL = () => (editor.kind === "local" ? "/api/v1/files/local/content" : sessionURL(editor.sessionID, "content"));
 const editorDirty = () => $("#editorText").value !== editor.original;
 function editorStatus(message, kind = "") { const node = $("#editorStatus"); node.textContent = message; node.dataset.kind = kind; }
 function editorRender() {
   const dirty = editorDirty();
   $("#editorTitle").textContent = editor.name + (dirty ? " •" : "");
-  $("#editorSave").disabled = editor.busy || (!dirty && !editor.create);
+  $("#editorSave").disabled = editor.busy;
   $("#editorReload").disabled = editor.busy || editor.create;
-  $("#editorMeta").textContent = `${formatBytes(editor.size)} · ${editor.lineEnding === "crlf" ? "CRLF" : editor.lineEnding === "mixed" ? "mixed → LF" : "LF"}${editor.create ? " · new file" : ""}`;
+  $("#editorMeta").textContent = `${formatBytes(editor.size)} · ${(editor.lineEnding === "crlf" ? "CRLF" : "LF") + (editor.mixed ? " (mixed)" : "")}${editor.encoding === "latin1" ? " · Latin-1" : ""}${editor.create ? " · new file" : ""}`;
   const notice = $("#editorNotice");
-  notice.hidden = editor.lineEnding !== "mixed";
-  notice.textContent = editor.lineEnding === "mixed" ? "Mixed line endings. Saving converts them to LF." : "";
+  const notes = [];
+  if (editor.mixed) notes.push(`This file mixes CRLF and LF line endings. Saving uses ${editor.lineEnding === "crlf" ? "CRLF" : "LF"}, the more common one, for every line.`);
+  if (editor.size > 2 * 1048576) notes.push(`This is a large file (${formatBytes(editor.size)}). Editing it may be slow.`);
+  if (editor.encoding === "latin1") notes.push("This file is not UTF-8, so it is shown as Latin-1. Other letters may look garbled, but saving keeps the original bytes of everything you do not change. Text outside Latin-1 cannot be saved.");
+  if (editor.link) notes.push(editor.link === "?" ? "This file is a link. The device follows it, so you are editing the file it points to, which may belong to a different image." : `This file is a link to ${editor.link}. The device follows it, so you are editing that target, which may belong to a different image than the folder you opened.`);
+  notice.hidden = !notes.length;
+  notice.textContent = notes.join(" ");
 }
 function editorCursor() {
   const text = $("#editorText"), before = text.value.slice(0, text.selectionStart);
@@ -1277,17 +1285,22 @@ const editorLines = (() => {
   toggle.addEventListener("change", () => { store.set("editorLines", toggle.checked); update(true); text.focus(); });
   text.addEventListener("input", () => update());
   text.addEventListener("scroll", syncScroll);
-  const copyOnSelect = () => store.get("editorCopyOnSelect", true) !== false;
+  const copyOnSelect = () => store.get("editorCopyOnSelect2", false) === true;
   const selected = () => text.value.slice(text.selectionStart, text.selectionEnd);
   const insertText = (clip) => {
     text.focus();
-    text.setRangeText(clip, text.selectionStart, text.selectionEnd, "end");
-    text.dispatchEvent(new Event("input", { bubbles: true }));
+    // execCommand keeps the browser's own undo history (Ctrl+Z works after a paste).
+    let done = false;
+    try { done = document.execCommand("insertText", false, clip); } catch { done = false; }
+    if (!done) {
+      text.setRangeText(clip, text.selectionStart, text.selectionEnd, "end");
+      text.dispatchEvent(new Event("input", { bubbles: true }));
+    }
   };
   const copyEditor = async () => {
     const chosen = selected();
     if (!chosen) return;
-    if (await clipboardWrite(chosen)) { toast("Selection copied"); text.setSelectionRange(text.selectionEnd, text.selectionEnd); }
+    if (await clipboardWrite(chosen)) toast("Selection copied");
     else toast("Copy was blocked by the browser.", "error");
     text.focus();
   };
@@ -1305,35 +1318,56 @@ const editorLines = (() => {
     }
     if (clip) insertText(clip);
   };
-  let selTimer = 0;
-  text.addEventListener("select", () => {
-    if (!copyOnSelect()) return;
-    window.clearTimeout(selTimer);
-    selTimer = window.setTimeout(() => { const chosen = selected(); if (chosen) clipboardWrite(chosen); }, 200);
+  // Optional (off by default): copy a selection made with the mouse. Keyboard selection such as
+  // Ctrl+A never copies, so selecting the old text to replace it cannot overwrite the clipboard.
+  text.addEventListener("mouseup", (event) => {
+    if (event.button !== 0 || !copyOnSelect()) return;
+    window.setTimeout(() => { const chosen = selected(); if (chosen) clipboardWrite(chosen); }, 0);
   });
+  const cutEditor = async () => {
+    const chosen = selected();
+    if (!chosen) return;
+    if (await clipboardWrite(chosen)) {
+      text.focus();
+      let done = false;
+      try { done = document.execCommand("delete"); } catch { done = false; }
+      if (!done) {
+        text.setRangeText("", text.selectionStart, text.selectionEnd, "end");
+        text.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    } else toast("Cut was blocked by the browser.", "error");
+  };
   text.addEventListener("contextmenu", (event) => {
     event.preventDefault(); event.stopPropagation();
-    if (event.shiftKey) {
-      openMenu([
-        { label: "Copy", icon: "copy", disabled: !selected(), run: copyEditor },
-        { label: "Paste", icon: "paste", sub: "Ctrl+V", run: pasteEditor },
-        { label: "Select all", icon: "check", sub: "Ctrl+A", run: () => { text.focus(); text.select(); } },
-        { label: copyOnSelect() ? "✓ Copy when selecting" : "Copy when selecting", icon: "copy", run: () => { store.set("editorCopyOnSelect", !copyOnSelect()); toast(copyOnSelect() ? "Selected text is copied automatically" : "Automatic copy is off"); } },
-      ], event.clientX, event.clientY);
-      return;
-    }
-    if (selected()) copyEditor(); else pasteEditor();
+    const has = Boolean(selected());
+    openMenu([
+      { label: "Cut", icon: "copy", sub: "Ctrl+X", disabled: !has, run: cutEditor },
+      { label: "Copy", icon: "copy", sub: "Ctrl+C", disabled: !has, run: copyEditor },
+      { label: "Paste", icon: "paste", sub: "Ctrl+V", run: pasteEditor },
+      { label: "Select all", icon: "check", sub: "Ctrl+A", run: () => { text.focus(); text.select(); } },
+      { label: copyOnSelect() ? "✓ Copy when selecting with the mouse" : "Copy when selecting with the mouse", icon: "copy", run: () => { store.set("editorCopyOnSelect2", !copyOnSelect()); toast(copyOnSelect() ? "Mouse selection is copied automatically" : "Automatic copy is off"); } },
+    ], event.clientX, event.clientY);
   }, true);
   $("#editorWrap").addEventListener("change", () => update());
   gutter.addEventListener("mousedown", (event) => { event.preventDefault(); text.focus(); });
   gutter.addEventListener("wheel", (event) => { event.preventDefault(); text.scrollTop += event.deltaY; text.scrollLeft += event.deltaX; }, { passive: false });
   if (window.ResizeObserver) new ResizeObserver(() => update()).observe(text);
-  return { update };
+  const undoEditor = () => { text.focus(); try { document.execCommand("undo"); } catch { } text.dispatchEvent(new Event("input", { bubbles: true })); };
+  return { update, copyEditor, cutEditor, pasteEditor, undoEditor };
 })();
+$("#editorCopy").addEventListener("click", () => editorLines.copyEditor());
+$("#editorCut").addEventListener("click", () => editorLines.cutEditor());
+$("#editorPaste").addEventListener("click", () => editorLines.pasteEditor());
+$("#editorUndo").addEventListener("click", () => editorLines.undoEditor());
+$("#editorSelectAll").addEventListener("click", () => { const t = $("#editorText"); t.focus(); t.select(); });
+$("#editorSaveExit").addEventListener("click", async () => {
+  await editorSave();
+  if (!editor.busy && !editorDirty()) editorClose();
+});
 function showEditor(kind, file, create, sessionID = "", sessionKey = "") {
   Object.assign(editor, {
     kind, path: file.path, name: file.path.split("/").filter(Boolean).pop() || file.path, size: Number(file.size) || 0,
-    modifiedAt: file.modified_at || "", hash: file.hash || "", lineEnding: file.line_ending || "lf", create, original: file.content, busy: false, sessionID, sessionKey,
+    modifiedAt: file.modified_at || "", hash: file.hash || "", lineEnding: file.line_ending || "lf", mixed: !!file.mixed_line_endings, encoding: file.encoding || "utf-8", link: file.link || "", create, original: file.content, busy: false, sessionID, sessionKey,
   });
   const text = $("#editorText");
   text.value = file.content;
@@ -1386,6 +1420,7 @@ async function cmdNewFile() {
 }
 async function editorSave(force = false) {
   if (editor.busy) return;
+  if (!force && !editorDirty() && !editor.create) { editorStatus("No changes to save.", ""); return; }
   const sessionID = editor.sessionID, sessionKey = editor.sessionKey, editorPath = editor.path, editorKind = editor.kind;
   if (editorKind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { editorStatus("The original device connection is no longer active. Reconnect to that device before saving.", "error"); return; }
   editor.busy = true; editorRender(); editorStatus("Saving…");
@@ -1394,13 +1429,14 @@ async function editorSave(force = false) {
     const data = await api(editorURL(), {
       method: "PUT",
       body: JSON.stringify({
-        path: editor.path, content, line_ending: editor.lineEnding, expected_size: editor.size,
+        path: editor.path, content, line_ending: editor.lineEnding, encoding: editor.encoding, expected_size: editor.size,
         expected_modified_at: editor.modifiedAt || undefined, expected_hash: editor.hash || undefined, force, create: editor.create,
       }),
     });
     if (editor.path !== editorPath || editor.kind !== editorKind || editor.sessionID !== sessionID) return;
     Object.assign(editor, {
-      size: Number(data.file.size) || 0, modifiedAt: data.file.modified_at || "", hash: data.file.hash || "", lineEnding: data.file.line_ending || "lf",
+      size: Number(data.file.size) || 0, modifiedAt: data.file.modified_at || "", hash: data.file.hash || "", lineEnding: data.file.line_ending || "lf", mixed: false, encoding: data.file.encoding || "utf-8",
+      link: data.file.link || "",
       create: false, original: content,
     });
     editor.busy = false; editorRender();
@@ -1452,6 +1488,26 @@ async function editorReload() {
   for (const type of ["keyup", "click", "focus"]) text.addEventListener(type, editorCursor);
   dialog.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!$("#editorSave").disabled) editorSave(); }
+  });
+  // Tab inserts a tab (and indents or outdents a multi-line selection) instead of leaving the editor.
+  // Shift+Tab with no selection and Esc, Tab still move focus out, so the keyboard is never trapped.
+  text.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey || text.readOnly) return;
+    const { selectionStart: from, selectionEnd: to, value } = text;
+    const multi = value.slice(from, to).includes("\n");
+    if (event.shiftKey && from === to) return;
+    event.preventDefault();
+    if (!multi && !event.shiftKey) { text.setRangeText("\t", from, to, "end"); }
+    else {
+      const start = value.lastIndexOf("\n", from - 1) + 1;
+      const end = to > from && value[to - 1] === "\n" ? to - 1 : to;
+      const lines = value.slice(start, end).split("\n");
+      const changed = event.shiftKey ? lines.map((line) => line.replace(/^(\t| {1,4})/, "")) : lines.map((line) => "\t" + line);
+      const block = changed.join("\n");
+      text.setRangeText(block, start, end, "preserve");
+      text.setSelectionRange(start, start + block.length);
+    }
+    text.dispatchEvent(new Event("input", { bubbles: true }));
   });
   dialog.addEventListener("cancel", (event) => { event.preventDefault(); editorClose(); });
   $("#editorSave").addEventListener("click", () => editorSave());

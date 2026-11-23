@@ -11,7 +11,7 @@ type UpdateController interface {
 	Status() updater.Status
 	Check(ctx context.Context) (updater.Status, error)
 	Install(ctx context.Context) error
-	SetAuto(auto bool) error
+	SetNotify(notify bool) error
 }
 
 type RemoteSettings struct {

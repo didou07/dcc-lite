@@ -123,7 +123,10 @@ function logsStart() {
 function logsStop() { window.clearInterval(logs.timer); logs.timer = 0; }
 function syncPause() {
   const b = $("#logsPause");
-  b.replaceChildren(icon(logs.paused ? "play" : "pause"), h("span", { text: logs.paused ? "Resume" : "Pause" }));
+  const name = logs.paused ? "Resume" : "Pause";
+  b.replaceChildren(icon(logs.paused ? "play" : "pause"));
+  b.title = name;
+  b.setAttribute("aria-label", name);
   if (logs.paused) { $("#logsLive").dataset.state = "paused"; $("#logsLive").textContent = "Paused"; }
 }
 

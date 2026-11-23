@@ -16,6 +16,8 @@ type FileEntry struct {
 	ModifiedAt time.Time `json:"modified_at,omitempty"`
 	IsDir      bool      `json:"is_dir"`
 	Mode       string    `json:"mode,omitempty"`
+	// LinkTarget is where a symbolic link points (as the device reports it); empty for normal entries.
+	LinkTarget string `json:"link_target,omitempty"`
 }
 
 type TransferProgress struct {

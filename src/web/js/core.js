@@ -290,7 +290,10 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
   });
 }
 
-function closeMenu() { const menu = $("#menu"); if (!menu.hidden) { menu.hidden = true; menu.replaceChildren(); } }
+function closeMenu() {
+  const menu = $("#menu");
+  if (!menu.hidden) { try { if (menu.matches(":popover-open")) menu.hidePopover(); } catch { } menu.hidden = true; menu.replaceChildren(); if (menu.parentElement !== document.body) document.body.append(menu); }
+}
 function openMenu(items, x, y, { search = "" } = {}) {
   const menu = $("#menu");
   menu.replaceChildren();
@@ -324,6 +327,13 @@ function openMenu(items, x, y, { search = "" } = {}) {
   // Use all the room the window has.
   menu.style.maxHeight = `${Math.max(120, window.innerHeight - 12)}px`;
   menu.hidden = false;
+  // A modal dialog (the file editor) lives in the browser's top layer and paints over every normal element,
+  // whatever its z-index. A popover joins the top layer too and is added last, so the menu shows above it.
+  // A modal dialog also makes everything outside it unclickable, so the menu moves inside the open dialog.
+  const modal = [...document.querySelectorAll("dialog[open]")].pop();
+  if (modal && menu.parentElement !== modal) modal.append(menu);
+  else if (!modal && menu.parentElement !== document.body) document.body.append(menu);
+  try { if (menu.matches(":popover-open")) menu.hidePopover(); menu.showPopover(); } catch { }
   const width = menu.offsetWidth, height = menu.offsetHeight;
   menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - width - 6))}px`;
   menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - height - 6))}px`;

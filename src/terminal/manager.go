@@ -301,6 +301,19 @@ func (m *Manager) Close(id string) error {
 	return session.backend.Close()
 }
 
+// Attached reports how many sessions currently have a browser tab attached.
+func (m *Manager) Attached() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, session := range m.sessions {
+		if session.attached {
+			n++
+		}
+	}
+	return n
+}
+
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	m.shuttingDown = true

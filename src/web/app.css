@@ -2935,3 +2935,108 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 :root[data-density="compact"] .files tr.row td.name.renaming { height: calc(24px * var(--ui)); }
 :root[data-density="roomy"] .files tr.row td.name.renaming { height: calc(38px * var(--ui)); }
 .files td.name.renaming .rename-input { width: calc(100% - calc(38px * var(--ui))); max-width: 100%; margin: 0; vertical-align: middle; }
+
+/* Editor: the text area fills the window and the button row stays visible (Save was scrolling out of view). */
+#editorDialog .dialog-card.editor-card { display: flex; flex-direction: column; overflow: hidden; height: min(calc(100vh - calc(32px * var(--ui))), calc(820px * var(--ui))); max-height: none; }
+#editorDialog .editor-card > * { flex: none; }
+#editorDialog .editor-card > .editor-body { flex: 1 1 auto; min-height: calc(120px * var(--ui)); }
+#editorDialog .editor-text { height: auto; min-height: 0; resize: none; }
+#editorDialog .editor-card > .dialog-actions { padding-bottom: calc(14px * var(--ui)); }
+
+/* The menu is a popover (top layer): drop the popover defaults that would stretch or centre it. */
+.menu[popover] { inset: auto; margin: 0; color: var(--text); }
+.menu[popover]:not(:popover-open) { display: none; }
+.editor-tools { display: flex; flex-wrap: wrap; gap: calc(6px * var(--ui)); align-items: center; }
+.editor-tools .btn { min-width: 0; }
+
+/* ===== Text editor window: resizable, tidy toolbar, coloured buttons ===== */
+#editorDialog { max-width: none; overflow: visible; }
+#editorDialog.ew-dragging { user-select: none; -webkit-user-select: none; animation: none; }
+#editorDialog.ew-dragging .editor-text { pointer-events: none; }
+#editorDialog .dialog-card.editor-card {
+  height: 100%; max-height: none; width: 100%; gap: 0; display: flex; flex-direction: column; overflow: hidden;
+  container-type: inline-size; border-color: var(--border-strong);
+}
+#editorDialog .editor-card > * { flex: none; margin-left: 0; margin-right: 0; }
+
+/* Title bar (drag to move, double-click to maximise) */
+#editorDialog .editor-head { position: relative; cursor: grab; user-select: none; -webkit-user-select: none; background: color-mix(in srgb, var(--accent) 9%, var(--surface-2)); border-bottom: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); }
+#editorDialog.ew-dragging .editor-head { cursor: grabbing; }
+#editorDialog[data-maximized="1"] .editor-head { cursor: default; }
+#editorDialog .editor-head > .ic { color: var(--accent); }
+#editorDialog .editor-title { gap: calc(10px * var(--ui)); min-width: 0; }
+#editorDialog .editor-title h2 { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#editorDialog .editor-title code { flex: 1 1 auto; min-width: 0; direction: ltr; text-align: left; }
+#editorDialog .editor-head .badge { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
+#editorDialog .editor-head .icon-btn { flex: none; }
+#editorDialog .editor-head .dlg-close:hover:not(:disabled) { color: var(--bad); }
+#editorDialog .editor-head #editorMax { margin-left: auto; }
+#editorDialog .editor-head #editorMax + .dlg-close { margin-left: 0; }
+
+#editorDialog .editor-card > .form-error { margin: 0; padding: calc(7px * var(--ui)) calc(14px * var(--ui)); border-radius: 0; border-width: 0 0 1px 0; }
+
+/* Toolbar: one tidy row, groups separated by thin dividers, options on the right */
+#editorDialog .editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6px * var(--ui)) calc(8px * var(--ui)); padding: calc(8px * var(--ui)) calc(12px * var(--ui)); background: var(--surface); border-bottom: 1px solid var(--border); }
+#editorDialog .et-group { display: flex; align-items: center; gap: calc(5px * var(--ui)); }
+#editorDialog .et-sep { align-self: stretch; width: 1px; margin: calc(2px * var(--ui)) calc(2px * var(--ui)); background: var(--border); }
+#editorDialog .et-opts { margin-left: auto; gap: calc(6px * var(--ui)); }
+#editorDialog .editor-tools .btn { min-width: 0; min-height: calc(30px * var(--ui)); gap: calc(6px * var(--ui)); }
+
+/* Option switches (line numbers / wrap) as pills instead of loose checkboxes */
+#editorDialog .editor-tools .check, #editorDialog .editor-find .check { position: relative; display: inline-flex; align-items: center; gap: calc(6px * var(--ui)); min-height: calc(28px * var(--ui)); padding: 0 calc(11px * var(--ui)); border: 1px solid var(--field-border); border-radius: 999px; color: var(--muted); font-size: calc(12.5px * var(--ui)); cursor: pointer; user-select: none; white-space: nowrap; transition: background .12s, border-color .12s, color .12s; }
+#editorDialog .check input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
+#editorDialog .check::before { content: ""; width: calc(8px * var(--ui)); height: calc(8px * var(--ui)); border-radius: 50%; background: var(--faint); opacity: .55; transition: background .12s, opacity .12s; }
+#editorDialog .check:hover { border-color: var(--accent); color: var(--text); }
+#editorDialog .check:has(input:checked) { color: var(--accent-ink); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--field-border)); font-weight: 600; }
+#editorDialog .check:has(input:checked)::before { background: var(--accent); opacity: 1; }
+#editorDialog .check:has(input:focus-visible) { box-shadow: var(--ring); }
+
+/* Find bar */
+#editorDialog .editor-find { margin: 0; padding: calc(8px * var(--ui)) calc(12px * var(--ui)); background: color-mix(in srgb, #14b8a6 8%, var(--surface-2)); border-bottom: 1px solid color-mix(in srgb, #14b8a6 30%, var(--border)); }
+#editorDialog .editor-find[hidden] { display: none; }
+
+/* Text area fills the window edge to edge */
+#editorDialog .editor-card > .editor-body { flex: 1 1 auto; min-height: 0; margin: 0; border: 0; border-radius: 0; background: var(--surface-2); }
+#editorDialog .editor-body:focus-within { outline: none; box-shadow: inset 0 calc(2px * var(--ui)) 0 var(--accent); }
+#editorDialog .editor-text { height: auto; min-height: 0; resize: none; }
+#editorDialog .editor-gutter { background: color-mix(in srgb, var(--accent) 6%, var(--surface-3)); color: color-mix(in srgb, var(--accent) 45%, var(--faint)); }
+
+/* Footer: status and cursor on the left, the three main buttons on the right */
+#editorDialog .editor-card > .dialog-actions.editor-foot { position: static; margin: 0; padding: calc(9px * var(--ui)) calc(12px * var(--ui)); gap: calc(8px * var(--ui)); flex-wrap: nowrap; align-items: center; background: var(--surface-2); border-top: 1px solid var(--border); }
+#editorDialog .editor-foot .editor-status { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#editorDialog .editor-foot .editor-cursor { flex: none; padding: calc(2px * var(--ui)) calc(9px * var(--ui)); border-radius: 999px; background: var(--surface-3); color: var(--muted); font-size: calc(12px * var(--ui)); white-space: nowrap; }
+#editorDialog .editor-foot .btn { min-width: 0; min-height: calc(32px * var(--ui)); flex: none; }
+/* Narrow window: toolbar buttons show only their icons (hover for the name) */
+@container (max-width: 760px) {
+  #editorDialog .et-btn .lbl { display: none; }
+  #editorDialog .et-btn { padding: 0 calc(9px * var(--ui)); }
+}
+@container (max-width: 560px) {
+  #editorDialog .et-sep { display: none; }
+  #editorDialog .editor-foot .editor-cursor { display: none; }
+  #editorDialog .editor-title h2 { max-width: 70%; }
+  #editorDialog .editor-title code { display: none; }
+}
+
+/* Resize handles: every edge and corner */
+.editor-rs { position: absolute; z-index: 6; touch-action: none; }
+.editor-rs.rs-n  { top: calc(-3px * var(--ui)); left: calc(14px * var(--ui)); right: calc(14px * var(--ui)); height: calc(8px * var(--ui)); cursor: ns-resize; }
+.editor-rs.rs-s  { bottom: calc(-3px * var(--ui)); left: calc(14px * var(--ui)); right: calc(14px * var(--ui)); height: calc(8px * var(--ui)); cursor: ns-resize; }
+.editor-rs.rs-e  { right: calc(-3px * var(--ui)); top: calc(14px * var(--ui)); bottom: calc(14px * var(--ui)); width: calc(8px * var(--ui)); cursor: ew-resize; }
+.editor-rs.rs-w  { left: calc(-3px * var(--ui)); top: calc(14px * var(--ui)); bottom: calc(14px * var(--ui)); width: calc(8px * var(--ui)); cursor: ew-resize; }
+.editor-rs.rs-ne, .editor-rs.rs-nw, .editor-rs.rs-se, .editor-rs.rs-sw { width: calc(16px * var(--ui)); height: calc(16px * var(--ui)); }
+.editor-rs.rs-ne { top: calc(-3px * var(--ui)); right: calc(-3px * var(--ui)); cursor: nesw-resize; }
+.editor-rs.rs-nw { top: calc(-3px * var(--ui)); left: calc(-3px * var(--ui)); cursor: nwse-resize; }
+.editor-rs.rs-se { bottom: calc(-3px * var(--ui)); right: calc(-3px * var(--ui)); cursor: nwse-resize; }
+.editor-rs.rs-sw { bottom: calc(-3px * var(--ui)); left: calc(-3px * var(--ui)); cursor: nesw-resize; }
+.editor-rs.rs-se::after { content: ""; position: absolute; right: calc(6px * var(--ui)); bottom: calc(6px * var(--ui)); width: calc(10px * var(--ui)); height: calc(10px * var(--ui)); background: linear-gradient(135deg, transparent 0 45%, var(--faint) 45% 55%, transparent 55% 72%, var(--faint) 72% 82%, transparent 82%); opacity: .8; pointer-events: none; }
+.editor-rs.rs-se:hover::after { background: linear-gradient(135deg, transparent 0 45%, var(--accent) 45% 55%, transparent 55% 72%, var(--accent) 72% 82%, transparent 82%); opacity: 1; }
+#editorDialog[data-maximized="1"] .editor-rs { display: none; }
+@media (max-width: 640px) {
+  #editorDialog .dialog-card.editor-card { border-radius: 0; }
+  #editorDialog .editor-text { height: auto; }
+}
+
+/* Status line inside the flash and recordings.epl cards. */
+.bk-card .small[role="status"].bad { color: var(--bad); }
+.bk-card .bk-foot { gap: calc(8px * var(--ui)); flex-wrap: wrap; }

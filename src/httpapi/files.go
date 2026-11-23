@@ -207,6 +207,7 @@ func (s *Server) writeLocalText(w http.ResponseWriter, r *http.Request) {
 		Path               string    `json:"path"`
 		Content            string    `json:"content"`
 		LineEnding         string    `json:"line_ending"`
+		Encoding           string    `json:"encoding"`
 		ExpectedSize       int64     `json:"expected_size"`
 		ExpectedModifiedAt time.Time `json:"expected_modified_at"`
 		ExpectedHash       string    `json:"expected_hash"`
@@ -229,7 +230,7 @@ func (s *Server) writeLocalText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	file, err := s.app.LocalFiles.WriteText(input.Path, filetransfer.TextWrite{
-		Content: input.Content, LineEnding: input.LineEnding,
+		Content: input.Content, LineEnding: input.LineEnding, Encoding: input.Encoding,
 		ExpectedSize: input.ExpectedSize, ExpectedModifiedAt: input.ExpectedModifiedAt, ExpectedHash: input.ExpectedHash,
 		Force: input.Force, Create: input.Create,
 	})
@@ -421,6 +422,7 @@ func (s *Server) writeRemoteText(w http.ResponseWriter, r *http.Request) {
 		Path               string    `json:"path"`
 		Content            string    `json:"content"`
 		LineEnding         string    `json:"line_ending"`
+		Encoding           string    `json:"encoding"`
 		ExpectedSize       int64     `json:"expected_size"`
 		ExpectedModifiedAt time.Time `json:"expected_modified_at"`
 		ExpectedHash       string    `json:"expected_hash"`
@@ -440,7 +442,7 @@ func (s *Server) writeRemoteText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	file, err := s.app.Files.WriteText(r.Context(), r.PathValue("id"), input.Path, filetransfer.TextWrite{
-		Content: input.Content, LineEnding: input.LineEnding,
+		Content: input.Content, LineEnding: input.LineEnding, Encoding: input.Encoding,
 		ExpectedSize: input.ExpectedSize, ExpectedModifiedAt: input.ExpectedModifiedAt, ExpectedHash: input.ExpectedHash,
 		Force: input.Force, Create: input.Create,
 	})
@@ -479,6 +481,10 @@ func writeEditError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "exists"})
 	case errors.Is(err, filetransfer.ErrEditTooLarge):
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": err.Error(), "code": "too_large"})
+	case errors.Is(err, filetransfer.ErrPathNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error(), "code": "path_not_found"})
+	case errors.Is(err, filetransfer.ErrEditEncoding):
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error(), "code": "encoding"})
 	case errors.Is(err, filetransfer.ErrEditNotText), errors.Is(err, filetransfer.ErrEditDirectory):
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": err.Error(), "code": "not_text"})
 	default:

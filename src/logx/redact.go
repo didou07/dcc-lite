@@ -16,6 +16,8 @@ var sensitiveKeys = map[string]bool{
 
 var (
 	secretPair = regexp.MustCompile(`(?i)\b(password|pass|passwd|pwd|token|secret|authorization|credential|access_token|refresh_token|client_secret|api[_-]?key|private[_-]?key|key_pem)(\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s&,;]+)`)
+	authScheme = regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}`)
+	sessionCk  = regexp.MustCompile(`(?i)(dcc_session=)[^\s;,]+`)
 	urlUser    = regexp.MustCompile(`(?i)(\w+://[^/\s:@]+):[^/\s@]+@`)
 	urlSecret  = regexp.MustCompile(`(?i)([?&](?:password|passwd|pwd|token|secret|access_token|refresh_token|client_secret|api[_-]?key|authorization)=)[^&#\s]*`)
 )
@@ -36,7 +38,9 @@ func Redact(s string) string {
 	if s == "" {
 		return s
 	}
+	s = authScheme.ReplaceAllString(s, "${1} ***") // before secretPair, which would mask only the word "Bearer"
 	s = secretPair.ReplaceAllString(s, "${1}${2}***")
+	s = sessionCk.ReplaceAllString(s, "${1}***")
 	s = urlUser.ReplaceAllString(s, "${1}:***@")
 	s = urlSecret.ReplaceAllString(s, "${1}***")
 	return s

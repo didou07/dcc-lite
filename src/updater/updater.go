@@ -38,20 +38,21 @@ type Options struct {
 	Variant string
 	DataDir string // stores update.json and downloads
 	Log     *slog.Logger
-	Idle    func() bool // auto-install waits until this returns true (nil = always idle)
+	Idle    func() bool // an install the person asks for is refused while this returns false (nil = always idle)
 
 	// Overridable for tests.
-	APIBase  string
-	ExecPath string
-	Client   *http.Client
-	trustAll bool
+	APIBase                      string
+	ExecPath                     string
+	Client                       *http.Client
+	trustAll                     bool
+	firstCheck, every, retryBusy time.Duration // zero = package defaults
 }
 
 type Status struct {
 	Current    string    `json:"current"`
 	Latest     string    `json:"latest,omitempty"`
 	Available  bool      `json:"available"`
-	Auto       bool      `json:"auto"`
+	Notify     bool      `json:"notify"` // look for new versions in the background and show a notice; nothing is ever installed without a click
 	Supported  bool      `json:"supported"`
 	Reason     string    `json:"reason,omitempty"`
 	Busy       string    `json:"busy,omitempty"` // "checking", "installing" or "restarting"
@@ -72,7 +73,6 @@ type Updater struct {
 	st       Status
 	asset    asset
 	sums     asset
-	failed   string // version whose auto-install failed this run
 	restarts sync.Once
 }
 
@@ -116,7 +116,7 @@ func New(opt Options) *Updater {
 		u.exe = real
 	}
 	u.st.Current = opt.Version
-	u.st.Auto = u.loadAuto()
+	u.st.Notify = u.loadNotify()
 	u.st.Supported, u.st.Reason = u.supported()
 	return u
 }
@@ -151,32 +151,41 @@ func (u *Updater) Status() Status {
 	return u.st
 }
 
-func (u *Updater) DisableAuto() {
+// DisableNotify turns off the background checks for this run, without touching the saved choice.
+func (u *Updater) DisableNotify() {
 	u.mu.Lock()
-	u.st.Auto = false
+	u.st.Notify = false
 	u.mu.Unlock()
 }
 
+// prefs is the saved choice. Auto is only read: older versions saved the choice under that name.
 type prefs struct {
-	Auto *bool `json:"auto,omitempty"`
+	Notify *bool `json:"notify,omitempty"`
+	Auto   *bool `json:"auto,omitempty"`
 }
 
 func (u *Updater) prefsPath() string { return filepath.Join(u.opt.DataDir, "update.json") }
 
-func (u *Updater) loadAuto() bool {
+func (u *Updater) loadNotify() bool {
 	data, err := os.ReadFile(u.prefsPath())
 	if err != nil {
-		return true // automatic updates are on by default
+		return true // notices are on by default
 	}
 	var p prefs
-	if json.Unmarshal(data, &p) != nil || p.Auto == nil {
+	if json.Unmarshal(data, &p) != nil {
 		return true
 	}
-	return *p.Auto
+	switch {
+	case p.Notify != nil:
+		return *p.Notify
+	case p.Auto != nil:
+		return *p.Auto
+	}
+	return true
 }
 
-func (u *Updater) SetAuto(auto bool) error {
-	data, _ := json.Marshal(prefs{Auto: &auto})
+func (u *Updater) SetNotify(notify bool) error {
+	data, _ := json.Marshal(prefs{Notify: &notify})
 	if err := os.MkdirAll(u.opt.DataDir, 0o700); err != nil {
 		return err
 	}
@@ -188,7 +197,7 @@ func (u *Updater) SetAuto(auto bool) error {
 		return err
 	}
 	u.mu.Lock()
-	u.st.Auto = auto
+	u.st.Notify = notify
 	u.mu.Unlock()
 	return nil
 }
@@ -307,7 +316,15 @@ func truncate(s string, n int) string {
 	return s
 }
 
+// ErrActive is returned when an install is asked for while transfers or terminal tabs are open,
+// because the restart would cut them off.
+var ErrActive = errors.New("file transfers or terminal sessions are active; finish or close them, then install the update")
+
+// Install downloads and installs the available version. It only runs when the person asks for it.
 func (u *Updater) Install(ctx context.Context) error {
+	if u.opt.Idle != nil && !u.opt.Idle() {
+		return ErrActive
+	}
 	if err := u.begin("installing"); err != nil {
 		return err
 	}
@@ -510,11 +527,20 @@ func (u *Updater) CleanupOld() {
 	_ = os.RemoveAll(filepath.Join(u.opt.DataDir, "updates"))
 }
 
+// Run looks for new releases in the background while notices are on and records them in the
+// status, which the interface shows. It never installs anything.
 func (u *Updater) Run(ctx context.Context) {
 	if ok, _ := u.supported(); !ok {
 		return
 	}
-	wait := firstCheckIn
+	first, every := firstCheckIn, checkEvery
+	if u.opt.firstCheck > 0 {
+		first = u.opt.firstCheck
+	}
+	if u.opt.every > 0 {
+		every = u.opt.every
+	}
+	wait := first
 	announced := ""
 	for {
 		select {
@@ -522,7 +548,10 @@ func (u *Updater) Run(ctx context.Context) {
 			return
 		case <-time.After(wait):
 		}
-		wait = checkEvery
+		wait = every
+		if !u.Status().Notify {
+			continue // switched off: no request is made to GitHub
+		}
 		if _, err := u.Check(ctx); err != nil {
 			u.log.Debug("update check failed", "error", err)
 			continue
@@ -530,30 +559,7 @@ func (u *Updater) Run(ctx context.Context) {
 		st := u.Status()
 		if st.Available && st.Latest != announced {
 			announced = st.Latest
-			u.log.Info("new version available", "current", st.Current, "latest", st.Latest, "automatic", st.Auto)
+			u.log.Info("new version available; install it from Software update when you are ready", "current", st.Current, "latest", st.Latest)
 		}
-		if !st.Available || !st.Auto || st.Latest == u.failedVersion() {
-			continue
-		}
-		if u.opt.Idle != nil && !u.opt.Idle() {
-			u.log.Info("update postponed: file transfers are running", "version", st.Latest, "retry_in", retryBusyIn)
-			wait = retryBusyIn
-			continue
-		}
-		u.log.Info("installing update", "version", st.Latest)
-		if err := u.Install(ctx); err != nil {
-			u.log.Warn("automatic update failed; the current version keeps running", "version", st.Latest, "error", err)
-			u.mu.Lock()
-			u.failed = st.Latest
-			u.mu.Unlock()
-			continue
-		}
-		return
 	}
-}
-
-func (u *Updater) failedVersion() string {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return u.failed
 }

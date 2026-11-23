@@ -228,3 +228,92 @@ async function rpDelete(point) {
   try { await api(toolsSessionURL(`enigma2/restore-points/${encodeURIComponent(point.name)}`), { method: "DELETE" }); } catch (error) { toast(error.message, "error"); }
   rpRefresh();
 }
+
+// ---- Flash image backup (read-only) --------------------------------------------------------------
+const flashState = { busy: false };
+const flashSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(bytes % 1048576 ? 1 : 0)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+function flashMessage(text, bad = false) {
+  const box = $("#flashResult");
+  box.textContent = text; box.hidden = !text; box.classList.toggle("bad", bad);
+}
+function flashSetBusy(busy) {
+  flashState.busy = busy;
+  $("#flashRead").disabled = busy;
+  for (const b of $$("#flashList button")) b.disabled = busy;
+}
+async function flashRead() {
+  const device = currentDevice();
+  if (!device) { toast("Add or choose a device first (Devices tab)."); return; }
+  flashMessage(""); flashSetBusy(true);
+  try {
+    const { partitions } = await api(profileURL(device.id, "flash/partitions"));
+    $("#flashList").replaceChildren(...partitions.map((p) => h("li", { class: "rp-row" },
+      h("div", { class: "rp-info" },
+        h("strong", { text: `mtd${p.index} · ${p.name || "(no name)"}` }),
+        h("span", { class: "muted small", text: flashSize(p.size) })),
+      h("span", { class: "spacer" }),
+      h("button", { class: "btn", type: "button", title: `Save mtd${p.index} to this computer`, onClick: () => flashBackup(device, p) }, icon("download"), "Back up"))));
+  } catch (error) { $("#flashList").replaceChildren(); flashMessage(error.message, true); }
+  flashSetBusy(false);
+}
+async function flashBackup(device, part) {
+  const confirmed = await ask({
+    title: "Back up flash partition",
+    message: `mtd${part.index} (${part.name || "no name"}, ${flashSize(part.size)}) is copied from ${device.name} into its memory, downloaded, checked, and the copy on the receiver is deleted. Nothing is written to the flash.`,
+    input: false, ok: "Back up",
+  });
+  if (!confirmed) return;
+  flashMessage(""); flashSetBusy(true);
+  toast(`Backing up mtd${part.index}… this can take a few minutes`);
+  try {
+    const response = await fetchChecked(profileURL(device.id, `flash/backup?partition=${part.index}`), { method: "POST" });
+    const blob = await response.blob();
+    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || `flash-mtd${part.index}.bin`;
+    downloadBlob(blob, name);
+    const verified = response.headers.get("X-Flash-Verified") === "true";
+    flashMessage(`Saved ${name} (${flashSize(blob.size)}). MD5 ${response.headers.get("X-Flash-MD5") || ""}${verified ? ", matches the receiver's checksum." : ". The receiver has no md5sum, so only the size was checked."}`);
+  } catch (error) { flashMessage(error.message, true); }
+  flashSetBusy(false);
+}
+$("#flashRead").addEventListener("click", flashRead);
+
+// ---- recordings.epl (Enigma1) --------------------------------------------------------------------
+const eplState = { report: null };
+function eplMessage(text, bad = false) {
+  const box = $("#eplResult");
+  box.textContent = text; box.hidden = !text; box.classList.toggle("bad", bad);
+}
+const eplCount = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+async function eplCheck() {
+  if (!requireSession()) return;
+  eplMessage(""); $("#eplRebuild").disabled = true;
+  try {
+    const r = await api(toolsSessionURL("recordings/epl"));
+    eplState.report = r;
+    const lost = r.lost.length + (r.more || 0);
+    let text = `${eplCount(r.movies, "recording", "recordings")} in ${r.movie_dir}, ${eplCount(r.entries, "entry", "entries")} in the list. `;
+    text += lost ? `${eplCount(lost, "recording is", "recordings are")} missing from the list.` : "Every recording is listed.";
+    if (r.dangling.length) text += ` ${eplCount(r.dangling.length, "entry points", "entries point")} at a file that is gone.`;
+    if (!r.found) text += " There is no recordings.epl yet; it will be created.";
+    eplMessage(text);
+    $("#eplRebuild").disabled = !(lost || r.dangling.length && $("#eplPrune").checked || !r.found && r.movies);
+  } catch (error) { eplMessage(error.message, true); }
+}
+async function eplRebuild() {
+  if (!requireSession()) return;
+  const prune = $("#eplPrune").checked;
+  const confirmed = await ask({ title: "Rebuild recordings list", message: `Recordings missing from recordings.epl are added${prune ? ", and entries whose file is gone are removed" : ""}. The old list is kept as recordings.bak.`, input: false, ok: "Rebuild" });
+  if (!confirmed) return;
+  eplMessage(""); $("#eplRebuild").disabled = true;
+  try {
+    const r = await api(toolsSessionURL(`recordings/epl/rebuild${prune ? "?prune=1" : ""}`), { method: "POST" });
+    if (!r.changed) { eplMessage(r.message || "Nothing to change."); return; }
+    let text = `Added ${r.added}${r.removed ? `, removed ${r.removed}` : ""}.`;
+    text += r.backup ? " The old list was kept as recordings.bak." : "";
+    text += r.reloaded ? " The receiver reloaded its recordings." : ` The receiver could not reload them${r.reload_note ? ` (${r.reload_note})` : ""}.`;
+    eplMessage(text);
+  } catch (error) { eplMessage(error.message, true); }
+}
+$("#eplCheck").addEventListener("click", eplCheck);
+$("#eplRebuild").addEventListener("click", eplRebuild);
+$("#eplPrune").addEventListener("change", () => { if (eplState.report) eplCheck(); });

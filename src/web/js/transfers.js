@@ -606,3 +606,15 @@ document.addEventListener("keydown", (event) => {
   }
   else if (key === "Escape") cmdSelectNone();
 });
+
+// Transfer speed limit (from the original DCC's packet-delay slider). The server keeps it in memory, so the
+// saved choice is sent again when the page loads.
+(function speedLimit() {
+  const select = $("#speedLimit");
+  if (!select) return;
+  const saved = String(store.get("speedLimitKBps", 0));
+  if ([...select.options].some((o) => o.value === saved)) select.value = saved;
+  const send = (kbps) => api("/api/v1/files/rate-limit", { method: "PUT", body: JSON.stringify({ kbps }) }).catch(() => { });
+  send(Number(select.value));
+  select.addEventListener("change", () => { store.set("speedLimitKBps", Number(select.value)); send(Number(select.value)); toast(Number(select.value) ? `Transfers limited to ${select.selectedOptions[0].textContent}` : "Transfer speed is not limited"); });
+})();

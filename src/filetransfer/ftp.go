@@ -586,9 +586,9 @@ func (c *FTPClient) transferAtOffset(ctx context.Context, command, remotePath st
 	var copied int64
 	var copyErr error
 	if source != nil {
-		copied, copyErr = io.Copy(dataConn, &progressReader{reader: source, total: total, done: offset, callback: progress})
+		copied, copyErr = io.Copy(dataConn, &progressReader{reader: source, total: total, done: offset, callback: progress, pace: newPacer(ctx)})
 	} else {
-		copied, copyErr = io.Copy(&progressWriter{writer: destination, total: total, done: offset, callback: progress}, dataConn)
+		copied, copyErr = io.Copy(&progressWriter{writer: destination, total: total, done: offset, callback: progress, pace: newPacer(ctx)}, dataConn)
 	}
 	closeErr := dataConn.Close()
 	stopData()
@@ -632,10 +632,12 @@ type progressReader struct {
 	total    int64
 	done     int64
 	callback func(core.TransferProgress)
+	pace     *pacer
 }
 
 func (r *progressReader) Read(p []byte) (int, error) {
 	n, err := r.reader.Read(p)
+	r.pace.wait(n)
 	r.done += int64(n)
 	if n > 0 && r.callback != nil {
 		r.callback(core.TransferProgress{BytesDone: r.done, BytesTotal: r.total, Fraction: fraction(r.done, r.total)})
@@ -648,10 +650,12 @@ type progressWriter struct {
 	total    int64
 	done     int64
 	callback func(core.TransferProgress)
+	pace     *pacer
 }
 
 func (w *progressWriter) Write(p []byte) (int, error) {
 	n, err := w.writer.Write(p)
+	w.pace.wait(n)
 	w.done += int64(n)
 	if n > 0 && w.callback != nil {
 		w.callback(core.TransferProgress{BytesDone: w.done, BytesTotal: w.total, Fraction: fraction(w.done, w.total)})
@@ -988,6 +992,12 @@ func parseMLSD(data []byte, directory string) []core.FileEntry {
 			continue
 		}
 		entry := core.FileEntry{Name: name, Path: path.Join(directory, name), IsDir: typ == "dir", Mode: facts["unix.mode"]}
+		if strings.HasPrefix(typ, "os.unix=slink") {
+			entry.LinkTarget = strings.TrimPrefix(strings.TrimPrefix(facts["type"], "OS.unix=slink"), ":")
+			if entry.LinkTarget == "" {
+				entry.LinkTarget = "?"
+			}
+		}
 		entry.Size, _ = strconv.ParseInt(facts["size"], 10, 64)
 		if modified := facts["modify"]; len(modified) >= 14 {
 			if parsed, e := time.Parse("20060102150405", modified[:14]); e == nil {
@@ -1009,8 +1019,10 @@ func parseFTPList(data []byte, directory string) []core.FileEntry {
 		}
 		mode := fields[0]
 		name := strings.Join(fields[8:], " ")
+		linkTarget := ""
 		if strings.HasPrefix(mode, "l") {
 			if target := strings.Index(name, " -> "); target >= 0 {
+				linkTarget = name[target+4:]
 				name = name[:target]
 			}
 		}
@@ -1018,7 +1030,7 @@ func parseFTPList(data []byte, directory string) []core.FileEntry {
 			continue
 		}
 		size, _ := strconv.ParseInt(fields[4], 10, 64)
-		entry := core.FileEntry{Name: name, Path: path.Join(directory, name), Size: size, IsDir: strings.HasPrefix(mode, "d"), Mode: mode}
+		entry := core.FileEntry{Name: name, Path: path.Join(directory, name), Size: size, IsDir: strings.HasPrefix(mode, "d"), Mode: mode, LinkTarget: linkTarget}
 		stamp := strings.Join(fields[5:8], " ")
 		for _, layout := range []string{"Jan _2 15:04", "Jan _2 2006"} {
 			if parsed, e := time.Parse(layout, stamp); e == nil {

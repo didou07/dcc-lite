@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"github.com/didou07/dcc-lite/src/updater"
 )
 
 func (s *Server) registerUpdateRoutes(mux *http.ServeMux) {
@@ -59,6 +61,8 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusBadGateway
 		if errors.Is(err, context.DeadlineExceeded) {
 			status = http.StatusGatewayTimeout
+		} else if errors.Is(err, updater.ErrActive) {
+			status = http.StatusConflict
 		}
 		writeError(w, status, err.Error())
 		return
@@ -71,13 +75,13 @@ func (s *Server) putUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Auto bool `json:"auto"`
+		Notify bool `json:"notify"`
 	}
 	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.app.Updates.SetAuto(input.Auto); err != nil {
+	if err := s.app.Updates.SetNotify(input.Notify); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

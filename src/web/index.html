@@ -19,6 +19,7 @@
   <script src="/js/core.js" defer></script>
   <script src="/js/devices.js" defer></script>
   <script src="/js/files.js" defer></script>
+  <script src="/js/editor-window.js" defer></script>
   <script src="/js/bouquets.js" defer></script>
   <script src="/js/tools.js" defer></script>
   <script src="/js/transfers.js" defer></script>
@@ -123,6 +124,7 @@
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h6M14 7h6M4 12h10M18 12h2M4 17h2M10 17h10"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
     <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 5v14M4 15l4 4 4-4M16 19V5M12 9l4-4 4 4"/></symbol>
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></symbol>
     <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M16 8l4 4-4 4M20 12H9"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
@@ -336,7 +338,16 @@
       <header class="queue-head">
         <span class="muted" id="transferSummary">No transfers yet</span>
         <span class="spacer"></span>
-        <button class="btn sm" id="transferClear" type="button" title="Remove the finished transfers"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Clear finished</button>
+        <label class="small muted" for="speedLimit">Speed</label>
+        <select id="speedLimit" class="btn sm" title="Limit the transfer speed so a slow receiver is not overloaded">
+          <option value="0">Unlimited</option>
+          <option value="200">200 KB/s</option>
+          <option value="500">500 KB/s</option>
+          <option value="1024">1 MB/s</option>
+          <option value="2048">2 MB/s</option>
+          <option value="5120">5 MB/s</option>
+        </select>
+        <button class="btn sm sq" id="transferClear" type="button" title="Remove the finished transfers" aria-label="Clear finished"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
         <button class="icon-btn" id="transferToggle" type="button" title="Hide the list" aria-label="Hide the list" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
       </header>
       <div id="transferList" class="transfer-list" tabindex="0" aria-live="polite"></div>
@@ -365,7 +376,7 @@
           <input id="bqListFilter" type="search" aria-label="Find a bouquet" placeholder="Find a bouquet" autocomplete="off">
           <ul class="bq-list" id="bqBouquets" role="listbox" aria-label="Bouquets"></ul>
           <div class="bq-actions">
-            <button class="btn sm" id="bqNew" type="button" title="Create an empty bouquet"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New</button>
+            <button class="btn sm sq" id="bqNew" type="button" title="Create an empty bouquet" aria-label="New"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
             <button class="btn sm sq" id="bqListUp" type="button" title="Move bouquet up in the list" aria-label="Move bouquet up"><svg class="ic" aria-hidden="true"><use href="#i-chev-up"/></svg></button>
             <button class="btn sm sq" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
             <button class="btn sm sq" id="bqListMore" type="button" title="Duplicate, remove or delete this bouquet" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
@@ -380,8 +391,8 @@
           </div>
           <div class="bq-tools" role="toolbar" aria-label="Edit channels">
             <div class="bq-group">
-              <button class="btn sm" id="bqUndo" type="button" title="Undo (Ctrl+Z)"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg>Undo</button>
-              <button class="btn sm" id="bqRedo" type="button" title="Redo (Ctrl+Y)"><svg class="ic" aria-hidden="true"><use href="#i-redo"/></svg>Redo</button>
+              <button class="btn sm sq" id="bqUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg></button>
+              <button class="btn sm sq" id="bqRedo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ic" aria-hidden="true"><use href="#i-redo"/></svg></button>
             </div>
             <div class="bq-group">
               <button class="btn sm" id="bqAdd" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Channels…</button>
@@ -389,15 +400,15 @@
               <button class="btn sm" id="bqMarker" type="button" title="A heading line between channels"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg>Marker</button>
             </div>
             <div class="bq-group">
-              <button class="btn sm" id="bqRename" type="button" title="Rename in this bouquet (F2)"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>Rename</button>
-              <button class="btn sm" id="bqCopy" type="button" title="Copy (Ctrl+C), then paste into any bouquet (Ctrl+V)"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>Copy</button>
-              <button class="btn sm" id="bqPaste" type="button" title="Paste after the selection (Ctrl+V)"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg>Paste</button>
-              <button class="btn sm danger" id="bqDelete" type="button" title="Remove from this bouquet (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button>
+              <button class="btn sm sq" id="bqRename" type="button" title="Rename in this bouquet (F2)" aria-label="Rename"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg></button>
+              <button class="btn sm sq" id="bqCopy" type="button" title="Copy (Ctrl+C), then paste into any bouquet (Ctrl+V)" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+              <button class="btn sm sq" id="bqPaste" type="button" title="Paste after the selection (Ctrl+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg></button>
+              <button class="btn sm danger sq" id="bqDelete" type="button" title="Remove from this bouquet (Delete)" aria-label="Delete"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
             </div>
             <div class="bq-group">
               <button class="btn sm sq" id="bqUp" type="button" title="Move up (Alt+↑)" aria-label="Move up"><svg class="ic" aria-hidden="true"><use href="#i-chev-up"/></svg></button>
               <button class="btn sm sq" id="bqDown" type="button" title="Move down (Alt+↓)" aria-label="Move down"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
-              <button class="btn sm" id="bqMore" type="button" title="Sort, clean up, export…" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg>More</button>
+              <button class="btn sm sq" id="bqMore" type="button" title="Sort, clean up, export…" aria-haspopup="menu" aria-label="More"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
             </div>
           </div>
           <ul class="bq-entries" id="bqEntries" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="Channels"></ul>
@@ -447,6 +458,27 @@
           </header>
           <ul class="rp-list" id="rpList" aria-live="polite"></ul>
           <p class="muted small" id="rpEmpty" hidden>No restore points yet.</p>
+        </section>
+        <section class="tools-sec bk-card" aria-labelledby="flashTitle">
+          <header class="bk-head">
+            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg></span>
+            <div><h3 id="flashTitle">Flash image backup</h3><p class="muted small">Saves a flash partition to this computer. Read-only: nothing is written to the receiver, and restoring a flash image is not offered here.</p></div>
+          </header>
+          <ul class="rp-list" id="flashList" aria-live="polite"></ul>
+          <p class="small" id="flashResult" role="status" hidden></p>
+          <div class="bk-foot"><button class="btn" id="flashRead" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Read partitions</button></div>
+        </section>
+        <section class="tools-sec bk-card" aria-labelledby="eplTitle">
+          <header class="bk-head">
+            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-video"/></svg></span>
+            <div><h3 id="eplTitle">Recordings list (recordings.epl)</h3><p class="muted small">For Enigma1 receivers. Finds recordings that are on the disk but missing from the list, and adds them. The old list is kept as recordings.bak.</p></div>
+          </header>
+          <label class="check"><input type="checkbox" id="eplPrune"> Also remove entries whose file is gone</label>
+          <p class="small" id="eplResult" role="status" hidden></p>
+          <div class="bk-foot">
+            <button class="btn" id="eplCheck" type="button"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Check</button>
+            <button class="btn primary" id="eplRebuild" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Rebuild list</button>
+          </div>
         </section>
         <div class="tools-progress" id="toolsProgress" hidden>
           <div class="tools-bar"><span></span></div>
@@ -532,7 +564,7 @@
             <div class="command-dock-footer">
               <span class="muted small">Most recent first</span>
               <span class="spacer"></span>
-              <button class="btn sm danger" id="histClear" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Clear</button>
+              <button class="btn sm danger sq" id="histClear" type="button" aria-label="Clear" title="Clear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
             </div>
           </section>
 
@@ -543,8 +575,8 @@
             </div>
             <div class="command-dock-tools command-library-toolbar">
               <input id="commandFilter" class="filter-input" type="search" placeholder="Find a script" aria-label="Find a saved script" autocomplete="off" spellcheck="false">
-              <button class="btn sm" id="commandImport" type="button" title="Import dccscript.ini"><svg class="ic"><use href="#i-upload"/></svg><span>Import</span></button>
-              <button class="btn sm" id="commandExport" type="button" title="Export as dccscript.ini"><svg class="ic"><use href="#i-download"/></svg><span>Export</span></button>
+              <button class="btn sm sq" id="commandImport" type="button" title="Import dccscript.ini" aria-label="Import"><svg class="ic"><use href="#i-upload"/></svg></button>
+              <button class="btn sm sq" id="commandExport" type="button" title="Export as dccscript.ini" aria-label="Export"><svg class="ic"><use href="#i-download"/></svg></button>
               <button class="btn sm" id="commandReload" type="button" title="Reload the library file"><svg class="ic"><use href="#i-refresh"/></svg></button>
               <button class="btn sm primary" id="commandAdd" type="button" title="Add a script"><svg class="ic"><use href="#i-plus"/></svg><span>Add</span></button>
             </div>
@@ -582,10 +614,10 @@
         <input class="filter-input logs-search" id="logsSearch" type="search" placeholder="Search log" aria-label="Search log" autocomplete="off">
         <span class="spacer"></span>
         <label class="check"><input type="checkbox" id="logsFollow" checked> Follow</label>
-        <button class="btn sm" id="logsPause" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
-        <button class="btn sm" id="logsCopy" type="button" title="Copy the visible lines"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
-        <button class="btn sm" id="logsDownload" type="button" title="Masked text report"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Report</span></button>
-        <button class="btn sm danger" id="logsClear" type="button" title="Clear this view (the log file is kept)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
+        <button class="btn sm sq" id="logsPause" type="button" aria-label="Pause" title="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
+        <button class="btn sm sq" id="logsCopy" type="button" title="Copy the visible lines" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+        <button class="btn sm sq" id="logsDownload" type="button" title="Masked text report" aria-label="Report"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></button>
+        <button class="btn sm danger sq" id="logsClear" type="button" title="Clear this view (the log file is kept)" aria-label="Clear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
       </div>
       <div class="lg-chips" id="logsChips" aria-label="Entries per level"></div>
       <div class="logs-list" id="logsList" role="log" tabindex="0"></div>
@@ -607,7 +639,7 @@
         <span class="spacer"></span>
         <label class="check"><input type="checkbox" id="faultsShowAcked"> Show acknowledged</label>
         <button class="btn sm" id="faultsAckAll" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Acknowledge all</span></button>
-        <button class="btn sm danger" id="faultsClear" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
+        <button class="btn sm danger sq" id="faultsClear" type="button" aria-label="Clear" title="Clear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
       </div>
       <div class="faults-list" id="faultsList"></div>
       <p class="muted logs-empty" id="faultsEmpty" hidden>No faults recorded.</p>
@@ -627,9 +659,9 @@
       </label>
       <span class="spacer"></span>
       <button class="btn sm" id="sigSound" type="button" aria-pressed="false" title="Beeps faster as the signal improves"><svg class="ic" aria-hidden="true"><use href="#i-signal"/></svg><span>Sound: off</span></button>
-      <button class="btn sm" id="sigPeakReset" type="button" title="Forget the best and worst values"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span>Reset peak</span></button>
-      <button class="btn sm" id="sigPause" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
-      <button class="btn sm" id="sigFull" type="button" title="Full screen, for a phone or tablet next to the dish"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg><span>Full screen</span></button>
+      <button class="btn sm sq" id="sigPeakReset" type="button" title="Forget the best and worst values" aria-label="Reset peak"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      <button class="btn sm sq" id="sigPause" type="button" aria-label="Pause" title="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
+      <button class="btn sm sq" id="sigFull" type="button" title="Full screen, for a phone or tablet next to the dish" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
     </div>
     <div class="sig-body" id="sigBody">
       <div class="sig-card sig-main" id="sigMain" data-level="none">
@@ -683,9 +715,9 @@
       <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Channels</button>
       <button class="btn sm primary" id="liveToggle" type="button" aria-pressed="false" title="Watch the current channel in this window (L)" hidden><svg class="ic" aria-hidden="true"><use href="#i-live"/></svg><span>Watch live</span></button>
       <button class="btn sm" id="guideShow" type="button" title="Programme guide, timers and recordings"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Guide</button>
-      <button class="btn sm" id="screenPause" type="button" title="Pause or resume the picture"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause</span></button>
-      <button class="btn sm" id="screenFull" type="button" title="Full screen (F)"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>Full screen</button>
-      <button class="btn sm" id="screenSave" type="button" title="Save a screenshot from the receiver, not the VLC video"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Save picture</button>
+      <button class="btn sm sq" id="screenPause" type="button" title="Pause or resume the picture" aria-label="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
+      <button class="btn sm sq" id="screenFull" type="button" title="Full screen (F)" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
+      <button class="btn sm sq" id="screenSave" type="button" title="Save a screenshot from the receiver, not the VLC video" aria-label="Save picture"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></button>
     </div>
     <div class="screen-body">
       <aside class="remote" id="remotePad" aria-label="Receiver remote control">
@@ -779,7 +811,7 @@
         </section>
         <p class="form-error" id="screenError" role="alert" hidden></p>
         <div class="screen-foot">
-          <button class="btn sm" id="screenRefresh" type="button" title="Take a new picture now"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
+          <button class="btn sm sq" id="screenRefresh" type="button" title="Take a new picture now" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
           <p class="muted small" id="screenStats" role="status" aria-live="off"></p>
         </div>
       </div>
@@ -1086,8 +1118,8 @@
     </div>
     <p id="updSummary" class="muted"></p>
     <pre id="updNotes" class="small upd-notes" hidden></pre>
-    <label class="check ra-switch"><input id="updAuto" type="checkbox"> Install new versions automatically</label>
-    <p class="muted small" id="updHint">Checked automatically every few hours.</p>
+    <label class="check ra-switch"><input id="updNotify" type="checkbox"> Tell me when a new version is available</label>
+    <p class="muted small" id="updHint">Nothing is installed unless you choose Install and restart. When this is off, DCC Lite does not look for updates by itself.</p>
     <p class="form-error" id="updError" role="alert" hidden></p>
     <div class="dialog-actions">
       <button class="btn" id="updCheck" type="button">Check now</button>
@@ -1221,14 +1253,33 @@
 
 <dialog id="editorDialog" aria-labelledby="editorTitle">
   <div class="dialog-card editor-card">
-    <header class="editor-head">
+    <header class="editor-head" id="editorHead">
       <div class="editor-title">
         <h2 id="editorTitle">File</h2>
         <code id="editorPath" class="ellipsis"></code>
       </div>
       <span class="badge" id="editorMeta"></span>
+      <button class="icon-btn" id="editorMax" type="button" title="Maximize" aria-label="Maximize"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
     </header>
     <p class="form-error" id="editorNotice" role="status" hidden></p>
+    <div class="editor-tools" id="editorTools" role="toolbar" aria-label="Edit">
+      <div class="et-group">
+        <button class="btn sm et-btn sq" id="editorUndo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg></button>
+        <button class="btn sm et-btn sq" id="editorCut" type="button" title="Cut (Ctrl+X)" aria-label="Cut"><svg class="ic" aria-hidden="true"><use href="#i-scissors"/></svg></button>
+        <button class="btn sm et-btn sq" id="editorCopy" type="button" title="Copy (Ctrl+C)" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+        <button class="btn sm et-btn sq" id="editorPaste" type="button" title="Paste (Ctrl+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg></button>
+        <button class="btn sm et-btn sq" id="editorSelectAll" type="button" title="Select all (Ctrl+A)" aria-label="Select all"><svg class="ic" aria-hidden="true"><use href="#i-select"/></svg></button>
+      </div>
+      <span class="et-sep" aria-hidden="true"></span>
+      <div class="et-group">
+        <button class="btn sm et-btn sq" id="editorFindBtn" type="button" title="Find and replace (Ctrl+F)" aria-label="Find"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
+        <button class="btn sm et-btn sq" id="editorReload" type="button" title="Reload" aria-label="Reload"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      </div>
+      <div class="et-group et-opts">
+        <label class="check"><input type="checkbox" id="editorLineNumbers" checked> Line numbers</label>
+        <label class="check"><input type="checkbox" id="editorWrap"> Wrap lines</label>
+      </div>
+    </div>
     <div class="editor-find" id="editorFind" hidden>
       <input id="findText" type="text" placeholder="Find" aria-label="Find" spellcheck="false" autocomplete="off">
       <input id="replaceText" type="text" placeholder="Replace with" aria-label="Replace with" spellcheck="false" autocomplete="off">
@@ -1243,18 +1294,12 @@
       <div class="editor-gutter" id="editorGutter" aria-hidden="true" data-no-i18n><pre class="editor-nums" id="editorNums">1</pre></div>
       <textarea id="editorText" class="editor-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="File content"></textarea>
     </div>
-    <div class="editor-foot">
+    <div class="dialog-actions editor-foot">
       <span id="editorStatus" class="editor-status" role="status" aria-live="polite"></span>
       <span id="editorCursor" class="editor-cursor"></span>
-      <label class="check"><input type="checkbox" id="editorLineNumbers" checked> Line numbers</label>
-      <label class="check"><input type="checkbox" id="editorWrap"> Wrap lines</label>
-    </div>
-    <div class="dialog-actions">
-      <button class="btn" id="editorFindBtn" type="button" title="Find and replace (Ctrl+F)"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Find</button>
-      <button class="btn" id="editorReload" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reload</button>
-      <span class="spacer"></span>
       <button class="btn" id="editorClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
-      <button class="btn primary" id="editorSave" type="button"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save <kbd>Ctrl+S</kbd></button>
+      <button class="btn" id="editorSave" type="button" title="Save (Ctrl+S)"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
+      <button class="btn primary" id="editorSaveExit" type="button" title="Save and close"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Save &amp; close</button>
     </div>
   </div>
 </dialog>
@@ -1342,7 +1387,7 @@
     </div>
     <div class="gd-tools" data-for="timers" hidden>
       <button class="btn sm primary" id="guideTimerNew" type="button" title="Create a timer for any channel and time"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New timer</button>
-      <button class="btn sm" id="guideTimersRefresh" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh</button>
+      <button class="btn sm sq" id="guideTimersRefresh" type="button" aria-label="Refresh" title="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
       <button class="btn sm" id="guideCleanup" type="button" title="Remove the timers that are finished"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Clean up finished</button>
     </div>
     <div class="gd-tools" data-for="auto" hidden>
@@ -1589,7 +1634,7 @@
   </form>
 </dialog>
 
-<div class="menu" id="menu" role="menu" hidden></div>
+<div class="menu" id="menu" role="menu" popover="manual" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 </body>

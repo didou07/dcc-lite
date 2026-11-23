@@ -53,7 +53,7 @@ func main() {
 	configPath := flag.String("config", "", "Settings file (default: dcc-lite.ini beside the program)")
 	noBrowser := flag.Bool("no-browser", false, "Do not open the web interface automatically")
 	showVersion := flag.Bool("version", false, "Print version and exit")
-	noAutoUpdate := flag.Bool("no-auto-update", false, "Do not install new GitHub releases automatically (checking from the interface still works)")
+	noAutoUpdate := flag.Bool("no-auto-update", false, "Do not look for new releases in the background (checking from the interface still works). Updates are never installed without a click")
 	remote := remoteSettings{}
 	flag.StringVar(&remote.Listen, "remote-listen", "", "Also serve the interface over HTTPS with a password on this address, for example 0.0.0.0:443 (off by default)")
 	flag.StringVar(&remote.CertFile, "tls-cert", "", "Trusted PEM certificate for remote HTTPS (automatic Let's Encrypt certificate is used when omitted)")
@@ -174,12 +174,13 @@ func main() {
 					return false
 				}
 			}
-			return true
+			// Never restart under an open terminal tab.
+			return application.Terminals == nil || application.Terminals.Attached() == 0
 		},
 	})
 	selfUpdater.CleanupOld()
 	if *noAutoUpdate {
-		selfUpdater.DisableAuto()
+		selfUpdater.DisableNotify()
 	}
 	application.Updates = selfUpdater
 	server := &http.Server{

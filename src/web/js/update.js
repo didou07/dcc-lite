@@ -6,14 +6,24 @@ function updError(message) {
   node.hidden = !message;
   node.textContent = message || "";
 }
+// One quiet notice per new version, only while notices are on. It does not install anything.
+function updAnnounce(status) {
+  if (!status.available || !status.supported || !status.notify) return;
+  try {
+    if (localStorage.getItem("dcc-update-seen") === status.latest) return;
+    localStorage.setItem("dcc-update-seen", status.latest);
+  } catch { /* storage unavailable: the badge still shows */ }
+  toast("A new DCC Lite version is available. Open Software update to install it when you are ready.");
+}
 function updRender(status) {
   if (!status) return;
   updState = status;
   const badge = $("#updateBadge");
-  badge.hidden = !(status.available && status.supported);
+  badge.hidden = !(status.available && status.supported && status.notify);
   if (status.available) $("#updateBadge span").textContent = `Update to v${status.latest}`;
-  $("#updAuto").checked = Boolean(status.auto);
-  $("#updAuto").disabled = !status.supported || !updManage;
+  $("#updNotify").checked = Boolean(status.notify);
+  $("#updNotify").disabled = !status.supported || !updManage;
+  updAnnounce(status);
   const busy = status.busy;
   $("#updCheck").disabled = Boolean(busy) || !status.supported || !updManage;
   $("#updInstall").hidden = !status.available || !status.supported || !updManage;
@@ -56,9 +66,9 @@ $("#updCheck").addEventListener("click", async () => {
   } catch (error) { updError(error.message); }
   finally { $("#updCheck").disabled = !updState?.supported; }
 });
-$("#updAuto").addEventListener("change", async () => {
+$("#updNotify").addEventListener("change", async () => {
   try {
-    const data = await api("/api/v1/update/settings", { method: "PUT", body: JSON.stringify({ auto: $("#updAuto").checked }) });
+    const data = await api("/api/v1/update/settings", { method: "PUT", body: JSON.stringify({ notify: $("#updNotify").checked }) });
     updRender(data.update);
   } catch (error) { updError(error.message); await updLoad(); }
 });

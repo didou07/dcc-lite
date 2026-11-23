@@ -5,12 +5,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,10 +52,21 @@ func (s *Server) autoSnapshot(ctx context.Context, sessionID, dir, reason string
 	s.snapshotChannels(ctx, sessionID, profile, dir, reason, false)
 }
 
+// snapshotChannels is the best-effort variant used by automatic edits: a failure is logged and
+// the edit goes ahead.
 func (s *Server) snapshotChannels(ctx context.Context, sessionID string, profile config.Profile, dir, reason string, force bool) {
+	_ = s.snapshotChannelsChecked(ctx, sessionID, profile, dir, reason, force)
+}
+
+// snapshotChannelsChecked saves the receiver's current channel files and reports whether the
+// receiver can be considered protected. It returns nil when a restore point was saved, when a
+// recent one already covers it (force is false), or when the receiver holds no channel files at
+// all. Anything that would leave channel data unprotected is an error: no place to store it, an
+// unreadable folder, or a file too large to include. A restore must not go on after an error.
+func (s *Server) snapshotChannelsChecked(ctx context.Context, sessionID string, profile config.Profile, dir, reason string, force bool) error {
 	folder := s.restorePointDir(profile.ID)
 	if folder == "" {
-		return
+		return errors.New("there is nowhere to keep a restore point")
 	}
 	s.snaps.mu.Lock()
 	defer s.snaps.mu.Unlock()
@@ -60,16 +74,21 @@ func (s *Server) snapshotChannels(ctx context.Context, sessionID string, profile
 		s.snaps.last = map[string]time.Time{}
 	}
 	if !force && time.Since(s.snaps.last[profile.ID]) < restorePointMinGap {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restorePointTimeout)
 	defer cancel()
-	files, _, err := s.app.Files.ReadDirFiles(ctx, sessionID, dir, isChannelFile, restorePointFileSize, backupMaxTotal)
-	if err != nil || len(files) == 0 {
-		if err != nil {
-			snapLog.Warn("could not take a restore point", "device", profile.Name, "error", err)
-		}
-		return
+	files, tooBig, err := s.app.Files.ReadDirFiles(ctx, sessionID, dir, isChannelFile, restorePointFileSize, backupMaxTotal)
+	if err != nil {
+		snapLog.Warn("could not take a restore point", "device", profile.Name, "error", err)
+		return fmt.Errorf("could not read the receiver's current channel files: %w", err)
+	}
+	if len(tooBig) > 0 {
+		snapLog.Warn("restore point would be incomplete", "device", profile.Name, "too_large", tooBig)
+		return fmt.Errorf("these files are too large to include in a restore point: %s", strings.Join(tooBig, ", "))
+	}
+	if len(files) == 0 {
+		return nil
 	}
 	now := time.Now()
 	names := make([]string, 0, len(files))
@@ -89,29 +108,30 @@ func (s *Server) snapshotChannels(ctx context.Context, sessionID string, profile
 		}
 		return err
 	}
-	if add(backupManifest, manifest) != nil {
-		return
+	if err := add(backupManifest, manifest); err != nil {
+		return fmt.Errorf("could not build the restore point: %w", err)
 	}
 	for _, f := range files {
-		if add(f.Name, f.Data) != nil {
-			return
+		if err := add(f.Name, f.Data); err != nil {
+			return fmt.Errorf("could not build the restore point: %w", err)
 		}
 	}
-	if zw.Close() != nil {
-		return
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("could not build the restore point: %w", err)
 	}
 	if err := os.MkdirAll(folder, 0o700); err != nil {
 		snapLog.Warn("could not create the restore point folder", "error", err)
-		return
+		return fmt.Errorf("could not create the restore point folder: %w", err)
 	}
 	file := filepath.Join(folder, now.Format("20060102-150405")+"-"+reason+".zip")
 	if err := os.WriteFile(file, buf.Bytes(), 0o600); err != nil {
 		snapLog.Warn("could not save a restore point", "error", err)
-		return
+		return fmt.Errorf("could not save the restore point: %w", err)
 	}
 	s.snaps.last[profile.ID] = now
 	pruneRestorePoints(folder)
 	snapLog.Info("restore point saved", "device", profile.Name, "reason", reason, "files", len(files))
+	return nil
 }
 
 func pruneRestorePoints(folder string) {
@@ -207,7 +227,14 @@ func (s *Server) restoreFromPoint(w http.ResponseWriter, r *http.Request) {
 	longTransfer(w)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
-	s.snapshotChannels(ctx, id, profile, dir, "before-restore", true)
+	if err := s.snapshotChannelsChecked(ctx, id, profile, dir, "before-restore", true); err != nil {
+		// Without a restore point a wrong or broken restore could not be undone, so nothing is changed.
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": "Nothing was changed. The receiver's current channel list could not be saved first, so the restore was stopped: " + err.Error(),
+			"code":  "restore_point_failed",
+		})
+		return
+	}
 	s.applyChannelFiles(ctx, w, id, profile, dir, files, skipped)
 }
 

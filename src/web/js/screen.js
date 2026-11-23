@@ -98,7 +98,8 @@ async function screenLoop(gen) {
 }
 
 function setPauseLabel(paused) {
-  $("#screenPause span").textContent = paused ? "Resume" : "Pause";
+  $("#screenPause").title = paused ? "Resume" : "Pause";
+  $("#screenPause").setAttribute("aria-label", paused ? "Resume" : "Pause");
   $("#screenPause use").setAttribute("href", paused ? "#i-play" : "#i-pause");
 }
 function screenStop() {

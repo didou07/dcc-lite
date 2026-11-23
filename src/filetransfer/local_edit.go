@@ -32,18 +32,19 @@ func (f *LocalFS) ReadText(relative string) (TextFile, error) {
 	if int64(len(data)) > MaxEditBytes {
 		return TextFile{}, ErrEditTooLarge
 	}
-	content, lineEnding, err := decodeText(data)
+	content, lineEnding, encoding, err := decodeText(data)
 	if err != nil {
 		return TextFile{}, err
 	}
+	lineEnding, mixed := settleLineEnding(data, lineEnding)
 	return TextFile{
 		Path: clean, Content: content, Size: info.Size(), ModifiedAt: info.ModTime().UTC(),
-		Mode: info.Mode().String(), LineEnding: lineEnding, Hash: hashBytes(data),
+		Mode: info.Mode().String(), LineEnding: lineEnding, Mixed: mixed, Encoding: encoding, Hash: hashBytes(data),
 	}, nil
 }
 
 func (f *LocalFS) WriteText(relative string, write TextWrite) (TextFile, error) {
-	data, err := encodeText(write.Content, write.LineEnding)
+	data, err := encodeText(write.Content, write.LineEnding, write.Encoding)
 	if err != nil {
 		return TextFile{}, err
 	}
@@ -106,7 +107,7 @@ func (f *LocalFS) WriteText(relative string, write TextWrite) (TextFile, error) 
 	if lineEnding != LineEndingCRLF {
 		lineEnding = LineEndingLF
 	}
-	result := TextFile{Path: clean, Content: write.Content, Size: int64(len(data)), LineEnding: lineEnding, Hash: hashBytes(data)}
+	result := TextFile{Path: clean, Content: write.Content, Size: int64(len(data)), LineEnding: lineEnding, Encoding: normalizeEncoding(write.Encoding), Hash: hashBytes(data)}
 	if updated, err := os.Lstat(absolute); err == nil {
 		result.ModifiedAt = updated.ModTime().UTC()
 		result.Mode = updated.Mode().String()

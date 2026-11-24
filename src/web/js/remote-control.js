@@ -30,6 +30,9 @@ const small = (key, label) => [key, label, "small"];
 const K_QUICK = [[small("pvr", "PVR"), small("tv", "TV"), small("text", "Text"), small("help", "Help")]];
 const MUTE = ["mute", "Mute"], HISTORY = ["history", "History"], INFO = ["info", "Info"];
 
+// Text keys that have a matching icon show the icon; the name stays in the tooltip.
+const RK_ICONS = { menu: "list", exit: "logout", info: "info", back: "undo", history: "history", mute: "volume-off", epg: "calendar", pvr: "video", tv: "tv", text: "text", help: "help", audio: "audio", subtitle: "ft-sub", subs: "ft-sub", video: "video", radio: "radio", setup: "gear", aspect: "expand", fav: "star", favorites: "star", timer: "bell", pip: "pip", rec: "record", record: "record" };
+
 const REMOTE_LAYOUTS = {
   standard: {
     label: "Standard",
@@ -260,7 +263,7 @@ function buildRemote() {
   holder.replaceChildren();
   const rowClass = (group, row) => `remote-row${row[0][2] === "red" ? " colors" : group === "extra" ? " extra" : group === "more" ? " extra extra2" : ""}`;
   const keyTitle = (key, label) => KEY_TITLES[key] || (label && !label.startsWith("@") ? label : key.replace(/^KEY_/, "").replace(/_/g, " ").toLowerCase());
-  const seen = new Set();
+  const seen = new Set(["power"]); // Power is the button in the header
   for (const group of ["main", "extra", "more"]) {
     if (group === "extra") holder.append(remoteVolumeBar());
     let rows = layout[group];
@@ -278,6 +281,9 @@ function buildRemote() {
         const button = h("button", { class: `rk ${extra}`.trim(), type: "button", title: keyTitle(key, label), dataset: { key }, "aria-label": keyTitle(key, label) });
         if (label.startsWith("@")) {
           button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GLYPHS[label.slice(1)]}</svg>`;
+        } else if (RK_ICONS[label.trim().toLowerCase()]) {
+          button.classList.add("rk-ic");
+          button.innerHTML = `<svg class="ic" aria-hidden="true"><use href="#i-${RK_ICONS[label.trim().toLowerCase()]}"/></svg>`;
         } else button.textContent = label;
         return button;
       })));
@@ -300,6 +306,9 @@ function buildRemote() {
     const open = $("#remotePad").classList.toggle("more");
     more.setAttribute("aria-expanded", String(open));
     more.querySelector("span").textContent = open ? "Fewer keys" : "More keys";
+    more.title = more.getAttribute("aria-label") || (open ? "Fewer keys" : "More keys");
+    more.title = open ? "Fewer keys" : "More keys"; more.setAttribute("aria-label", more.title);
+    more.querySelector("use").setAttribute("href", open ? "#i-chev-up" : "#i-chev-down");
   };
 }
 async function remoteLoadProfile(device) {

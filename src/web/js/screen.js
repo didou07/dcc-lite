@@ -115,6 +115,21 @@ function screenStop() {
   img.removeAttribute("src");
   img.hidden = true;
 }
+// Leaving the page: a live picture keeps playing in the background (the native player is only hidden);
+// everything else on the page is stopped.
+function screenLeave() {
+  if (typeof liveIsOn === "function" && liveIsOn()) {
+    livePopClose();
+    // view.current changes right after this call, then the player steps aside
+    queueMicrotask(() => liveSyncNative(true));
+    return;
+  }
+  screenStop();
+}
+function screenResume() {
+  channelsEnter();
+  if (typeof liveResume === "function") liveResume();
+}
 function screenRestart() {
   screenView.once = true;
   screenView.wake?.();
@@ -142,7 +157,7 @@ function screenEnter() {
     $("#screenWait").textContent = "Choose a device in the list at the top.";
     return;
   }
-  if (device.id === screenView.profileID && screenView.running) return;
+  if (device.id === screenView.profileID && screenView.running) { screenResume(); return; }
   screenStop();
   Object.assign(screenView, { profileID: device.id, paused: false, stamps: [], failures: 0, lastStart: -1e9, running: true, once: true });
   $("#screenSub").textContent = `${device.name} · ${device.host}`;

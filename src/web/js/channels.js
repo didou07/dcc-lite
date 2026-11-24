@@ -211,7 +211,7 @@ function renderNow() {
 async function pollCurrent(now = false) {
   window.clearTimeout(ch.timer);
   const id = ch.profileID;
-  if (!id || view.current !== "screen") return;
+  if (!id || (view.current !== "screen" && !(typeof live !== "undefined" && live.on))) return;
   if (now || (!document.hidden && !screenView.paused)) {
     try {
       if (ch.polling) throw new Error("busy");

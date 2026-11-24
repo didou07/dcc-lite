@@ -1,8 +1,9 @@
 "use strict";
-const devices = { list: [], status: new Map(), currentID: store.get("device", "") };
+const devices = { list: [], status: new Map(), currentID: store.get("device", ""), checkingAll: false };
 const currentDevice = () => devices.list.find((p) => p.id === devices.currentID) || null;
 const deviceByID = (id) => devices.list.find((p) => p.id === id) || null;
 const sites = { query: "", mode: store.get("sitesMode", "grid") === "list" ? "list" : "grid" };
+const tr = (text) => window.DCC_I18N?.t?.(text) ?? text;
 const lastUsed = () => store.get("siteLastUsed", {});
 function touchSite(id) { if (!id) return; const m = lastUsed(); m[id] = Date.now(); const keep = Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 200); store.set("siteLastUsed", Object.fromEntries(keep)); }
 function sortedSites(list = devices.list) {
@@ -100,7 +101,10 @@ function deviceBriefRow(profile) {
 }
 function siteCard(profile) {
   const status = devices.status.get(profile.id);
-  return h("article", { class: `device-card${profile.id === devices.currentID ? " current" : ""}`, dataset: { id: profile.id, color: profile.color || "" }, onDblclick: (event) => { if (!event.target.closest("button")) openDevice(profile.id, "files"); } },
+  return h("article", { class: `device-card${profile.id === devices.currentID ? " current" : ""}`, dataset: { id: profile.id, color: profile.color || "" }, tabindex: "0", "aria-label": `${profile.name} (${profile.host})`,
+    onDblclick: (event) => { if (!event.target.closest("button")) openDevice(profile.id, "files"); },
+    onKeydown: (event) => { if (event.target === event.currentTarget && event.key === "Enter") { event.preventDefault(); openDevice(profile.id, "files"); } },
+    onContextmenu: (event) => { event.preventDefault(); openSiteMenu(profile, event.clientX, event.clientY); } },
     h("div", { class: "device-top" },
       deviceAvatar(profile),
       h("div", { class: "ellipsis site-id" },
@@ -126,14 +130,62 @@ function siteCard(profile) {
       h("button", { class: "btn", type: "button", title: "Channel editor, backup, .ipk install, packages and signal meter", onClick: () => openDevice(profile.id, "tools") }, icon("gear"), "Tools")),
     deviceInfoState.has(profile.id) ? deviceInfoPanel(profile) : null);
 }
+function openSiteMenu(profile, x, y) {
+  const status = devices.status.get(profile.id);
+  const offline = status && status.state !== "online" && status.state !== "checking";
+  openMenu([
+    { label: "Files", icon: "files", run: () => openDevice(profile.id, "files") },
+    { label: "Terminal", icon: "terminal", run: () => openDevice(profile.id, "terminal") },
+    { label: "Screen", icon: "screen", run: () => openDevice(profile.id, "screen") },
+    { label: "Tools", icon: "gear", run: () => openDevice(profile.id, "tools") },
+    "-",
+    { label: "Check this device", icon: "refresh", run: () => testDevice(profile.id) },
+    { label: "Connection check", icon: "plug", run: () => openDiagnose(profile) },
+    { label: deviceInfoState.has(profile.id) ? "Hide receiver information" : "Receiver information", icon: "list", run: () => toggleDeviceInfo(profile.id) },
+    ...(offline ? [{ label: "Wake the receiver (Wake-on-LAN)", icon: "power", run: () => wakeOnLan(profile.id, (message) => message && toast(message, "error")) }] : []),
+    "-",
+    { label: profile.favorite ? "Unpin from the top" : "Pin to the top", icon: "star", run: () => saveSiteMeta(profile, { favorite: !profile.favorite }) },
+    { label: "Copy address", icon: "copy", run: async () => { toast(await clipboardWrite(profile.host) ? "Address copied" : "Could not copy", "info"); } },
+    { label: "Edit…", icon: "edit", run: () => openDeviceDialog(profile) },
+    { label: "Duplicate…", icon: "copy", run: () => openDeviceDialog(profile, true) },
+    "-",
+    { label: "Delete…", icon: "trash", danger: true, run: () => deleteDevice(profile) },
+  ], x, y);
+}
+function renderSitesSummary() {
+  const node = $("#sitesSummary");
+  if (!node) return;
+  let on = 0, off = 0, unknown = 0;
+  for (const p of devices.list) {
+    const st = devices.status.get(p.id)?.state;
+    if (st === "online" || st === "partial") on++; else if (st === "offline" || st === "error") off++; else unknown++;
+  }
+  const parts = [];
+  if (on) parts.push(`${on} ${tr("online")}`);
+  if (off) parts.push(`${off} ${tr("offline")}`);
+  if (unknown) parts.push(`${unknown} ${tr("not checked")}`);
+  node.textContent = parts.join(" · ");
+}
 function renderDeviceGrid() {
+  // Keep the keyboard focus on the same control when the grid is drawn again (a status check finishing, say).
+  const had = document.activeElement?.closest?.("#deviceGrid") ? document.activeElement : null;
+  const keep = had ? { id: had.closest(".device-card")?.dataset.id, label: had.getAttribute("aria-label") || had.getAttribute("title") || had.textContent.trim(), card: had.classList.contains("device-card") } : null;
+  drawDeviceGrid();
+  if (keep?.id) {
+    const card = $$("#deviceGrid .device-card").find((c) => c.dataset.id === keep.id);
+    const target = !card ? null : keep.card ? card : [...card.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") || b.getAttribute("title") || b.textContent.trim()) === keep.label) || card;
+    target?.focus({ preventScroll: true });
+  }
+}
+function drawDeviceGrid() {
+  renderSitesSummary();
   if (typeof renderSitesSide === "function") renderSitesSide();
   const wrap = $("#deviceGrid");
   wrap.replaceChildren();
   wrap.dataset.mode = sites.mode;
   $("#deviceEmpty").hidden = devices.list.length > 0;
   if (!devices.list.length && typeof loadEmptyNetworks === "function") loadEmptyNetworks();
-  $("#devicesRefresh").disabled = !devices.list.length;
+  $("#devicesRefresh").disabled = !devices.list.length || devices.checkingAll;
   $(".sites-head").hidden = !devices.list.length;
   const q = sites.query.trim().toLowerCase();
   const shown = sortedSites().filter((site) => siteMatches(site, q));
@@ -276,7 +328,7 @@ function deviceInfoPanel(profile) {
 
 const diag = { profile: null, token: 0 };
 function diagRow(check) {
-  const mark = { ok: "check", warn: "info", fail: "x", skip: "minus" }[check.state] || "info";
+  const mark = { ok: "record", warn: "info", fail: "x", skip: "minus" }[check.state] || "info";
   return h("li", { class: `diag-row ${check.state}` },
     h("span", { class: "diag-mark" }, icon(mark)),
     h("div", { class: "diag-body" },
@@ -313,10 +365,17 @@ function openDiagnose(profile) {
 $("#diagRun").addEventListener("click", runDiagnose);
 $("#diagClose").addEventListener("click", () => $("#diagDialog").close());
 $("#diagDialog").addEventListener("close", () => { diag.token++; });
-async function testAllDevices() { await Promise.all(devices.list.map((profile) => testDevice(profile.id))); }
+async function testAllDevices() {
+  if (devices.checkingAll) return;
+  devices.checkingAll = true;
+  const button = $("#devicesRefresh");
+  button.disabled = true; button.classList.add("busy");
+  try { await Promise.all(devices.list.map((profile) => testDevice(profile.id))); }
+  finally { devices.checkingAll = false; button.classList.remove("busy"); button.disabled = !devices.list.length; }
+}
 
 async function deleteDevice(profile) {
-  const confirmed = await ask({ title: "Delete device", message: `Delete “${profile.name}” (${profile.host})?`, input: false, ok: "Delete", danger: true });
+  const confirmed = await ask({ title: "Delete device", icon: "trash", message: `Delete “${profile.name}” (${profile.host})?`, input: false, ok: "Delete", danger: true });
   if (!confirmed) return;
   try {
     await api(profileURL(profile.id), { method: "DELETE" });
@@ -328,24 +387,53 @@ async function deleteDevice(profile) {
   } catch (error) { toastError(error); }
 }
 
-const deviceDialog = { editing: null };
-function openDeviceDialog(profile = null) {
-  deviceDialog.editing = profile;
-  $("#deviceDialogTitle").textContent = profile ? "Edit device" : "Add device";
-  $("#devName").value = profile?.name || "";
+const deviceDialog = { editing: null, color: "" };
+const SITE_COLORS = ["red", "orange", "amber", "green", "teal", "blue", "violet", "pink"];
+function setDeviceColor(color) {
+  deviceDialog.color = color || "";
+  for (const b of $$("#devColor button")) b.setAttribute("aria-checked", String(b.dataset.color === deviceDialog.color));
+}
+(function buildColorPick() {
+  const box = $("#devColor");
+  const swatch = (color, label) => h("button", { type: "button", role: "radio", class: `swatch${color ? "" : " none"}`, title: label, "aria-label": label, "aria-checked": "false", dataset: color ? { color } : { color: "" }, onClick: () => setDeviceColor(color) });
+  box.append(swatch("", "No colour"), ...SITE_COLORS.map((c) => swatch(c, c[0].toUpperCase() + c.slice(1))));
+})();
+function setPasswordShown(shown) {
+  $("#devPass").type = shown ? "text" : "password";
+  $("#devPassToggle use").setAttribute("href", shown ? "#i-eye-off" : "#i-eye");
+  $("#devPassToggle").setAttribute("aria-pressed", String(shown));
+}
+// Accepts what people paste: http://192.168.1.20:8080/ becomes the address 192.168.1.20 and the web port 8080.
+function cleanHost(raw) {
+  let host = raw.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/[\/?#].*$/, "");
+  let port = 0;
+  const m = host.match(/^([^:]+):(\d{1,5})$/);
+  if (m) { host = m[1]; port = Number(m[2]); }
+  return { host, port };
+}
+function openDeviceDialog(profile = null, duplicate = false) {
+  deviceDialog.editing = duplicate ? null : profile;
+  $("#deviceDialogTitle").textContent = profile && !duplicate ? "Edit device" : "Add device";
+  $("#devGroups").replaceChildren(...[...new Set(devices.list.map((p) => p.group).filter(Boolean))].sort().map((g) => h("option", { value: g })));
+  $("#devGroup").value = profile?.group || "";
+  $("#devNote").value = profile?.note || "";
+  $("#devStartDir").value = profile?.start_dir || "";
+  setDeviceColor(profile?.color || "");
+  setPasswordShown(false);
+  $("#devName").value = profile ? (duplicate ? `${profile.name} ${tr("copy")}` : profile.name) : "";
   $("#devHost").value = profile?.host || "";
   $("#devUser").value = profile?.username || "root";
   $("#devPass").value = "";
-  $("#devPass").type = "password";
-  $("#devPass").placeholder = profile ? (profile.credential_configured ? "Saved" : "No password") : "dreambox";
+  $("#devPass").placeholder = profile && !duplicate ? (profile.credential_configured ? "Saved" : "No password") : "dreambox";
   $("#devFtp").value = profile?.ftp_port || "";
   $("#devWeb").value = profile?.port || "";
   $("#devTelnet").value = profile?.telnet_port || "";
   $("#devWebKind").value = profile?.web_kind === "webinterface" ? "dreamos" : (profile?.web_kind || "openwebif");
-  $(".advanced", $("#deviceDialog")).open = Boolean(profile && (profile.ftp_port || profile.telnet_port || profile.port || profile.scheme === "https"));
+  $(".advanced", $("#deviceDialog")).open = Boolean(profile && (profile.ftp_port || profile.telnet_port || profile.port || profile.scheme === "https" || profile.start_dir));
   $("#deviceError").hidden = true;
   openDialog($("#deviceDialog"));
   $("#devName").focus();
+  if (duplicate) $("#devName").select();
 }
 function portValue(selector) {
   const raw = $(selector).value.trim();
@@ -361,13 +449,17 @@ $("#deviceForm").addEventListener("submit", async (event) => {
   let body;
   const old = deviceDialog.editing || {};
   try {
+    const cleaned = cleanHost($("#devHost").value);
+    if (cleaned.port && !$("#devWeb").value.trim()) $("#devWeb").value = String(cleaned.port);
+    const startDir = $("#devStartDir").value.trim();
+    if (startDir && !startDir.startsWith("/")) { $(".advanced", $("#deviceDialog")).open = true; $("#devStartDir").focus(); throw new Error("The start folder must begin with /"); }
     body = {
-      name: $("#devName").value.trim(), host: $("#devHost").value.trim(), username: $("#devUser").value.trim() || "root",
+      name: $("#devName").value.trim(), host: cleaned.host, username: $("#devUser").value.trim() || "root",
       password: $("#devPass").value, ftp_port: portValue("#devFtp"), telnet_port: portValue("#devTelnet"),
       web_port: portValue("#devWeb"),
       tls_insecure_skip_verify: false, web_kind: $("#devWebKind").value,
-      group: old.group || "", color: old.color || "", favorite: Boolean(old.favorite),
-      start_dir: old.start_dir || "", note: old.note || "",
+      group: $("#devGroup").value.trim(), color: deviceDialog.color, favorite: Boolean(old.favorite),
+      start_dir: startDir, note: $("#devNote").value.trim(),
     };
     body.web_https = body.web_port === 443 || (old.scheme === "https" && body.web_port === (old.port || 0));
   } catch (problem) { error.textContent = problem.message; error.hidden = false; return; }
@@ -397,7 +489,7 @@ $("#deviceForm").addEventListener("submit", async (event) => {
   finally { $("#deviceSave").disabled = false; }
 });
 $("#deviceCancel").addEventListener("click", () => $("#deviceDialog").close());
-$("#devPassToggle").addEventListener("click", () => { const f = $("#devPass"); f.type = f.type === "password" ? "text" : "password"; });
+$("#devPassToggle").addEventListener("click", () => setPasswordShown($("#devPass").type === "password"));
 
 $("#deviceAdd").addEventListener("click", () => openDeviceDialog());
 $("#deviceAddEmpty").addEventListener("click", () => openDeviceDialog());
@@ -428,6 +520,8 @@ function setCurrentDevice(id, deferViewRefresh = false) {
   renderDeviceGrid();
   globalThis.DccCommandPanel?.refreshSystem?.();
   if (changed) {
+    // a picture playing in the background belongs to the previous device
+    if (view.current !== "screen" && typeof liveIsOn === "function" && liveIsOn()) screenStop();
     const own = store.get(`tool.${id}`, "");
     if (toolKnown(own) && ![...toolViews].includes(view.current)) tools.current = own;
     fileDisconnect(true).then(() => { if (!deferViewRefresh) refreshCurrentDeviceView(); });
@@ -443,7 +537,7 @@ const TOOL_PAGES = [
   { id: "editor", label: "Channel editor", icon: "list", view: "lists" },
   { id: "backup", label: "Backup & restore", icon: "archive", view: "lists" },
   { id: "packages", label: "Packages", icon: "box", view: "packages" },
-  { id: "ipk", label: "Install .ipk", icon: "plug", view: "ipk" },
+  { id: "ipk", label: "Install .ipk", icon: "upload", view: "ipk" },
   { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
 ];
 const toolKnown = (id) => TOOL_PAGES.some((t) => t.id === id);
@@ -473,7 +567,8 @@ function showTool(id) {
 function showView(name) {
   if (name === "tools") name = TOOL_PAGES.find((t) => t.id === tools.current)?.view || "lists";
   if (!["devices", "files", "terminal", "screen", "logs", ...toolViews].includes(name)) name = "devices";
-  if (view.current === "screen" && name !== "screen") screenStop();
+  if (view.current === "files" && name !== "files" && typeof filesLeave === "function") filesLeave();
+  if (view.current === "screen" && name !== "screen") screenLeave();
   if (view.current === "signal" && name !== "signal") signalStop();
   if (view.current === "logs" && name !== "logs") logsLeave();
   view.current = name;
@@ -495,3 +590,5 @@ function showView(name) {
   if (name === "logs") logsEnter();
 }
 for (const tab of $$("#mainTabs .tab")) tab.addEventListener("click", () => showView(tab.dataset.view));
+
+window.DCC_I18N?.add?.("ar", { "online": "متصل", "offline": "غير متصل", "not checked": "لم يُفحص", "copy": "نسخة", "Group": "المجموعة", "Colour": "اللون", "No colour": "بلا لون", "Note": "ملاحظة", "Optional. Shown on the card": "اختياري. يظهر على البطاقة", "Advanced": "خيارات متقدمة", "Start folder": "مجلد البدء", "The start folder must begin with /": "يجب أن يبدأ مجلد البدء بـ /", "Duplicate…": "تكرار…", "Copy address": "نسخ العنوان", "Address copied": "تم نسخ العنوان", "Edit…": "تعديل…", "Delete…": "حذف…", "Check this device": "فحص هذا الجهاز", "Hide receiver information": "إخفاء معلومات الجهاز", "Receiver information": "معلومات الجهاز", "Wake the receiver (Wake-on-LAN)": "إيقاظ الجهاز (Wake-on-LAN)" });

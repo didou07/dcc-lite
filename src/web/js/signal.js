@@ -204,18 +204,23 @@ function sigBeep() {
   const gap = locked ? 900 - snr * 8 : 700;
   sig.beepTimer = window.setTimeout(sigBeep, Math.max(100, gap));
 }
+function sigSoundView(on) {
+  const b = $("#sigSound");
+  b.setAttribute("aria-pressed", String(on));
+  b.classList.toggle("primary", on);
+  b.querySelector("use").setAttribute("href", on ? "#i-volume" : "#i-volume-off");
+  b.title = on ? "Sound: on. Beeps faster as the signal improves" : "Sound: off. Beeps faster as the signal improves";
+}
 function sigSetSound(on) {
   sig.sound = on;
-  $("#sigSound").setAttribute("aria-pressed", String(on));
-  $("#sigSound span").textContent = on ? "Sound: on" : "Sound: off";
-  $("#sigSound").classList.toggle("primary", on);
+  sigSoundView(on);
   window.clearTimeout(sig.beepTimer);
   if (on) {
     try {
       sig.audio = sig.audio || new (window.AudioContext || window.webkitAudioContext)();
       sig.audio.resume?.();
       sigBeep();
-    } catch { sig.sound = false; $("#sigSound").setAttribute("aria-pressed", "false"); $("#sigSound span").textContent = "Sound: off"; $("#sigSound").classList.remove("primary"); toast("This browser cannot play sound", "error"); }
+    } catch { sig.sound = false; sigSoundView(false); toast("This browser cannot play sound", "error"); }
   }
 }
 

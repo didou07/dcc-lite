@@ -1,0 +1,15 @@
+const fs = require("fs"), assert = require("assert");
+const root = require("path").join(__dirname, "../src/web");
+const files = fs.readFileSync(root + "/js/files.js", "utf8");
+const devices = fs.readFileSync(root + "/js/devices.js", "utf8");
+const css = fs.readFileSync(root + "/app.css", "utf8");
+const transfers = fs.readFileSync(root + "/js/transfers.js", "utf8");
+assert(files.includes("function clearFileDropState()"), "FTP drop indicators have a single cleanup path");
+assert(files.includes('pane.root.classList.remove("drop", "drop-os")'), "both internal and OS drop indicators are cleared");
+assert(files.includes('document.addEventListener("visibilitychange"'), "drop indicators are cleared when the app is hidden");
+assert(files.includes('function filesLeave() { clearFileDropState(); }'), "the FTP page exposes a cleanup hook");
+assert(devices.includes('typeof filesLeave === "function"'), "leaving the FTP page clears any active drop indicator");
+assert(transfers.includes('const folder = dropFolder(panes.remote, event); clearFileDropState();'), "OS file drops clear the indicator");
+assert(!/\.pane\.drop(?:-os)?\s*\{[^}]*outline\s*:/s.test(css), "FTP drop state does not draw a dashed outer outline");
+assert(css.includes('.pane.drop .pane-head, .pane.drop-os .pane-head'), "FTP drop feedback stays in the panel header");
+console.log("FTP drop-state checks: all passed");

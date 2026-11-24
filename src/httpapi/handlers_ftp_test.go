@@ -12,6 +12,7 @@ import (
 
 	"github.com/didou07/dcc-lite/src/app"
 	"github.com/didou07/dcc-lite/src/config"
+	"github.com/didou07/dcc-lite/src/filetransfer"
 	"github.com/didou07/dcc-lite/src/filetransfer/ftptest"
 )
 
@@ -27,6 +28,7 @@ type harness struct {
 	srv     *httptest.Server
 	session string
 	dir     string // the app's data directory
+	app     *app.App
 }
 
 func newHarness(t *testing.T) *harness {
@@ -51,7 +53,7 @@ func newHarness(t *testing.T) *harness {
 	srv := httptest.NewServer(New(application))
 	t.Cleanup(srv.Close)
 
-	h := &harness{t: t, ftp: fs, srv: srv, dir: dir}
+	h := &harness{t: t, ftp: fs, srv: srv, dir: dir, app: application}
 	var out struct {
 		Session struct {
 			ID string `json:"id"`
@@ -367,3 +369,5 @@ func TestRestoreRejectsNonMultipartAndGarbage(t *testing.T) {
 		t.Fatal("a rejected restore changed the receiver")
 	}
 }
+
+func (h *harness) files() *filetransfer.Manager { return h.app.Files }

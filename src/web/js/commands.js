@@ -19,13 +19,15 @@
 
   // Two ways to browse commands.
   const classic = () => store.get("termCmdStyle", "panel") === "classic";
+  // On a narrow window the side panel floats over the terminal, so it starts closed and closes after use.
+  const overlay = () => window.matchMedia("(max-width: 760px)").matches;
 
   function typeCommand(item, run = false) {
     const tab = activeTab();
     if (!tab || tab.state !== "connected") { toast("Connect a receiver first"); return; }
     if (!replaceTerminalInput(tab, item.command, run)) return;
     if (run) rememberCommand(tab.profileID, item.command);
-    if (classic()) toggleDock(false);
+    if (classic() || overlay()) toggleDock(false);
     focusTab(tab);
     toast(run ? "Command executed" : "Command typed — press Enter to execute");
   }
@@ -68,6 +70,7 @@
     $id("termDockToggle").setAttribute("aria-expanded", String(open));
     $id("termDockToggle").setAttribute("aria-label", open ? "Hide command tools" : "Show command tools");
     $id("termDockToggle").title = open ? "Hide command tools" : "Show command tools";
+    if (!classic() && !overlay()) store.set("termDockOpen", open);
     if (open) selectPanel(state.activePane || "system");
     else requestAnimationFrame(() => activeTab()?.fit?.fit?.());
   }
@@ -415,14 +418,20 @@
   };
 
   document.addEventListener("pointerdown", (event) => {
-    if (!classic() || dock.hidden || event.target.closest("#termCommandDock, #termDockToggle, dialog")) return;
+    if ((!classic() && !overlay()) || dock.hidden || event.target.closest("#termCommandDock, #termDockToggle, dialog, #menu")) return;
     toggleDock(false);
   });
   document.addEventListener("keydown", (event) => {
-    if (classic() && event.key === "Escape" && !dock.hidden && !document.querySelector("dialog[open]")) { toggleDock(false); activeTab() && focusTab(activeTab()); }
+    if ((classic() || overlay()) && event.key === "Escape" && !dock.hidden && !document.querySelector("dialog[open]")) { toggleDock(false); activeTab() && focusTab(activeTab()); }
   });
 
   renderSystemCommands();
-  if (classic()) applyCommandStyle(); else selectPanel(state.activePane, false);
+  if (classic()) applyCommandStyle();
+  else if (overlay() || store.get("termDockOpen", true) === false) {
+    dock.hidden = true;
+    document.body.classList.add("term-dock-hidden");
+    const toggle = $id("termDockToggle");
+    toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-label", "Show command tools"); toggle.title = "Show command tools";
+  } else selectPanel(state.activePane, false);
   ensureLibrary().catch(() => {});
 })();

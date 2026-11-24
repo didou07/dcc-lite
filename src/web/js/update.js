@@ -6,6 +6,12 @@ function updError(message) {
   node.hidden = !message;
   node.textContent = message || "";
 }
+function updCleanNotes(value) {
+  return String(value || "")
+    .replace(/^\s*\*{0,2}Full Changelog\*{0,2}\s*:\s*https?:\/\/\S+.*$/gim, "")
+    .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, "\n\n")
+    .trim();
+}
 // One quiet notice per new version, only while notices are on. It does not install anything.
 function updAnnounce(status) {
   if (!status.available || !status.supported || !status.notify) return;
@@ -31,13 +37,14 @@ function updRender(status) {
   $("#updState").textContent = busy === "restarting" ? "Restarting…" : busy === "installing" ? "Installing…" : busy === "checking" ? "Checking…" : "";
   let text;
   if (!status.supported) text = status.reason || "Updates are not available for this build.";
-  else if (status.available) text = `Version ${status.latest} is available (you have ${status.current}).`;
+  else if (status.available) text = `Version ${status.latest} is available.`;
   else if (status.checked_at && !status.checked_at.startsWith("0001")) text = `You have the latest version (${status.current}).`;
   else text = `Installed version: ${status.current}.`;
   $("#updSummary").textContent = text;
   const notes = $("#updNotes");
-  notes.hidden = !(status.available && status.notes);
-  notes.textContent = status.notes || "";
+  const cleanNotes = updCleanNotes(status.notes);
+  notes.hidden = !(status.available && cleanNotes);
+  notes.textContent = cleanNotes;
   if (status.error) updError(status.error);
 }
 async function updLoad() {

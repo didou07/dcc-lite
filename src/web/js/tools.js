@@ -28,6 +28,7 @@ function ipkEnter() {
   files.ready.then(async () => {
     const device = currentDevice();
     $("#ipkDevice").textContent = device?.name || "";
+    $("#ipkKindNote").hidden = !["dreamos", "webinterface"].includes(String(device?.web_kind || "").toLowerCase());
     if (!device) { toolsState.ui = "ipk"; toolsError("Add or choose a device first (Devices tab)."); ipkRefresh(); return; }
     toolsError("");
     syncFilePort();

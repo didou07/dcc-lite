@@ -28,14 +28,27 @@ function logVisible(entry) {
 function logRow(entry) {
   const fields = (entry.fields || []).map((f) => h("span", { class: "lg-field" },
     h("i", { text: `${f.k}=` }), h("b", { class: f.k === "error" ? "lg-err" : "", text: f.v })));
+  const stack = entry.stack ? stackBlock(entry.stack) : null;
   const row = h("div", { class: "lg-row", dataset: { level: entry.level, id: entry.id } },
     h("span", { class: "lg-time", title: logDateTime(entry.time), text: logTime(entry.time) }),
     h("span", { class: "lg-level", text: entry.level.toUpperCase() }),
     h("span", { class: "lg-comp", text: entry.component }),
-    h("div", { class: "lg-msg" }, h("span", { class: "lg-text", text: entry.message }), fields.length ? h("span", { class: "lg-fields" }, fields) : null));
-  if (!entry.stack) return row;
-  const box = h("details", { class: "lg-stack-box" }, h("summary", { text: "Stack trace" }), h("pre", { class: "lg-stack", text: entry.stack }));
-  return h("div", { class: "lg-group" }, row, box);
+    h("div", { class: "lg-msg" }, h("span", { class: "lg-text", text: entry.message }), fields.length ? h("span", { class: "lg-fields" }, fields) : null, stack?.button));
+  if (!stack) return row;
+  return h("div", { class: "lg-group" }, row, stack.pre);
+}
+
+// The stack trace is one small button at the end of the line; it opens the trace under it.
+function stackBlock(text, buttonClass = "lg-stack-btn") {
+  const pre = h("pre", { class: "lg-stack", text });
+  pre.hidden = true;
+  const button = h("button", { class: buttonClass, type: "button", title: "Show the stack trace", "aria-label": "Show the stack trace", "aria-expanded": "false" }, icon("code"));
+  button.addEventListener("click", () => {
+    pre.hidden = !pre.hidden;
+    button.setAttribute("aria-expanded", String(!pre.hidden));
+    button.classList.toggle("on", !pre.hidden);
+  });
+  return { button, pre };
 }
 
 function logsRender(full = true) {
@@ -82,7 +95,6 @@ function logsCounts(levels) {
 function setMinLevel(level) {
   logs.minLevel = level;
   store.set("logMinLevel", level);
-  $("#logsLevel").value = level;
   logsRender(true);
   logsCounts(logs.lastCounts);
 }
@@ -146,23 +158,25 @@ function faultCount(stats) {
 
 function faultCard(f) {
   const ctx = (f.context || []).map((c) => h("span", { class: "lg-field" }, h("i", { text: `${c.k}=` }), h("b", { text: c.v })));
+  const stack = f.stack ? stackBlock(f.stack, "btn sm sq") : null;
+  const buttons = h("div", { class: "ft-actions" },
+    stack?.button,
+    h("button", { class: "btn sm", type: "button", title: "Filter the log by this component and message", onClick: () => faultShowInLog(f) }, icon("search"), "Show in log"),
+    f.acked ? null : h("button", { class: "btn sm", type: "button", title: "Mark this fault as seen", onClick: () => faultAck(f.id) }, icon("bell"), "Acknowledge"));
   const head = h("div", { class: "ft-head" },
     h("span", { class: "lg-level", dataset: { level: f.level }, text: f.panic ? "PANIC" : f.level.toUpperCase() }),
     h("span", { class: "lg-comp", text: f.component }),
     h("b", { class: "ft-msg", text: f.message }),
-    h("span", { class: "badge", title: "Times this happened", text: `×${f.count}` }));
+    h("span", { class: "badge", title: "Times this happened", text: `×${f.count}` }),
+    buttons);
   const when = h("div", { class: "ft-when muted small" },
     `Last ${logDateTime(f.last_seen)}`, " · ", `first ${logDateTime(f.first_seen)}`, f.route ? ` · ${f.route}` : "");
-  const buttons = h("div", { class: "ft-actions" },
-    h("button", { class: "btn sm", type: "button", title: "Filter the log by this component and message", onClick: () => faultShowInLog(f) }, icon("search"), "Show in log"),
-    f.acked ? null : h("button", { class: "btn sm", type: "button", onClick: () => faultAck(f.id) }, icon("check"), "Acknowledge"));
   return h("div", { class: `ft-card ${f.acked ? "acked" : ""}`, dataset: { level: f.level } },
     head,
     f.error ? h("div", { class: "ft-error", text: f.error }) : null,
     ctx.length ? h("div", { class: "lg-fields" }, ctx) : null,
     when,
-    f.stack ? h("details", { class: "lg-stack-box" }, h("summary", { text: "Stack trace" }), h("pre", { class: "lg-stack", text: f.stack })) : null,
-    buttons);
+    stack?.pre);
 }
 
 async function faultsLoad() {
@@ -192,6 +206,7 @@ function logsTab(name) {
   for (const b of $$("[data-logtab]")) b.setAttribute("aria-selected", String(b.dataset.logtab === name));
   $("#logsPaneLog").hidden = name !== "log";
   $("#logsPaneFaults").hidden = name !== "faults";
+  $("#logsLive").hidden = name !== "log";
   if (name === "faults") faultsLoad(); else logsPoll(logs.entries.length === 0);
   if (name === "log") logsRender(true);
 }
@@ -219,16 +234,22 @@ async function logsCopy() {
   if (await clipboardWrite(text)) toast("Log copied"); else toast("Could not copy", "error");
 }
 
-$("#logsLevel").value = logs.minLevel;
-$("#logsLevel").addEventListener("change", (e) => setMinLevel(e.target.value));
 $("#logsComp").addEventListener("change", (e) => { logs.component = e.target.value; logsRender(true); });
 $("#logsSearch").addEventListener("input", (e) => { logs.text = e.target.value.trim().toLowerCase(); logsRender(true); });
-$("#logsFollow").addEventListener("change", (e) => { logs.follow = e.target.checked; if (logs.follow) logsRender(false); });
+function setFollow(on) {
+  logs.follow = on;
+  const b = $("#logsFollow");
+  b.setAttribute("aria-pressed", String(on));
+  b.classList.toggle("primary", on);
+  if (on) logsRender(false);
+}
+$("#logsFollow").addEventListener("click", () => setFollow(!logs.follow));
+setFollow(true);
 $("#logsList").addEventListener("wheel", () => {
   window.setTimeout(() => {
     const list = $("#logsList");
     const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 24;
-    if (!atEnd && logs.follow) { logs.follow = false; $("#logsFollow").checked = false; }
+    if (!atEnd && logs.follow) setFollow(false);
   }, 50);
 }, { passive: true });
 $("#logsPause").addEventListener("click", () => { logs.paused = !logs.paused; syncPause(); if (!logs.paused) logsPoll(); });
@@ -250,4 +271,11 @@ $("#faultsClear").addEventListener("click", async () => {
   if (!window.confirm("Forget all recorded faults?")) return;
   try { await api("/api/v1/faults", { method: "DELETE" }); } catch (e) { toastError(e); } faultsLoad();
 });
-$("#faultsShowAcked").addEventListener("change", (e) => { logs.showAcked = e.target.checked; faultsLoad(); });
+$("#faultsShowAcked").addEventListener("click", (e) => {
+  logs.showAcked = !logs.showAcked;
+  const b = e.currentTarget;
+  b.setAttribute("aria-pressed", String(logs.showAcked));
+  b.classList.toggle("primary", logs.showAcked);
+  b.querySelector("use").setAttribute("href", logs.showAcked ? "#i-eye" : "#i-eye-off");
+  faultsLoad();
+});

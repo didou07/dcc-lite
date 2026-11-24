@@ -15,7 +15,7 @@
     event.preventDefault();
 
     if (!field) {
-      openMenu([{ label: "Copy", icon: "copy", sub: "Ctrl+C", run: async () => { toast(await clipboardWrite(picked) ? "Copied" : "Could not copy", "info"); } }], event.clientX, event.clientY);
+      openMenu([{ label: "Copy", icon: "copy", sub: "Ctrl+C", run: async () => { toast(await clipboardWrite(picked) ? "Copied" : "Could not copy", "info"); } }], event.clientX, event.clientY, { keepFocus: true });
       return;
     }
 
@@ -45,8 +45,8 @@
       { label: "Copy", icon: "copy", sub: "Ctrl+C", disabled: secret || !text, run: copy },
       { label: "Paste", icon: "paste", sub: "Ctrl+V", disabled: readOnly, run: paste },
       "-",
-      { label: "Select all", icon: "check", sub: "Ctrl+A", disabled: !field.value, run: () => { acted = true; field.focus({ preventScroll: true }); field.select(); } },
-    ], event.clientX, event.clientY);
+      { label: "Select all", icon: "select", sub: "Ctrl+A", disabled: !field.value, run: () => { acted = true; field.focus({ preventScroll: true }); field.select(); } },
+    ], event.clientX, event.clientY, { keepFocus: true });
     const menu = $("#menu");
     const watch = new MutationObserver(() => {
       if (!menu.hidden) return;

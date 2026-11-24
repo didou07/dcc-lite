@@ -132,6 +132,22 @@ function liveShowUI(on) {
   else { $("#screenImg").hidden = !screenView.blob; $("#screenWait").hidden = !!screenView.blob; }
   liveSyncVolume();
   liveSyncPlay();
+  liveTabMark();
+}
+// A red dot on the Screen tab while a picture plays (also when another page is in front).
+function liveTabMark() {
+  const tab = document.querySelector('#mainTabs .tab[data-view="screen"]');
+  if (!tab) return;
+  tab.classList.toggle("is-live", live.on);
+  tab.title = live.on ? "Watching live" : "";
+}
+// Back on the Screen page: put the player back over its place and refresh what ran slowly in the background.
+function liveResume() {
+  if (!live.on) return;
+  liveSyncNative(true);
+  for (const ms of [120, 450]) window.setTimeout(() => { if (live.on && view.current === "screen") liveSyncNative(true); }, ms);
+  liveEcm();
+  liveAgo();
 }
 
 function liveSyncPanelBtn() {
@@ -163,6 +179,7 @@ function liveStop() {
   live.cover = false;
   live.retries = 0;
   live.audio = [];
+  live.tracksKey = ""; // the track list below is cleared, so it must be drawn again next time
   live.boundsKey = "";
   livePopClose();
   if (live.fs) liveFullSet(false);
@@ -170,6 +187,8 @@ function liveStop() {
   $("#liveTech").textContent = "";
   $("#liveTracks").replaceChildren();
   $("#liveStreamInfo").replaceChildren();
+  delete $("#liveStreamInfo").dataset.key;
+  delete $("#liveEcm").dataset.key;
   liveShowUI(false);
   if (wasOn && screenView.running && view.current === "screen") screenRestartNow();
 }
@@ -201,7 +220,16 @@ async function liveBegin() {
   live.ref = ch.currentRef;
   live.name = liveChannelName();
   $("#liveName").textContent = live.name;
-  if (!same) { liveResetCW(); liveRenderCW(); }
+  liveTabMark();
+  if (!same) {
+    liveResetCW(); liveRenderCW();
+    live.ecmGen++;                       // answers still on their way belong to the old channel
+    delete $("#liveEcm").dataset.key;
+    $("#liveEcm").replaceChildren(h("p", { class: "muted small live-empty", text: "…" }));
+    $("#liveEcm").classList.remove("stale");
+    $("#liveEcmStamp").textContent = "";
+    window.setTimeout(() => { if (live.on && live.ref === ch.currentRef) liveEcm(); }, 1500);
+  }
   live.hasPicture = false;
   live.paused = false;
   liveSyncPlay();
@@ -277,6 +305,21 @@ const liveCell = (k, v, { wide = false, dim = false } = {}) =>
 const liveFieldDim = (v) => /^(0x0+|0)$/i.test(String(v).trim());
 const liveQuality = (height) => (height >= 2000 ? "4K" : height >= 1000 ? "FHD" : height >= 700 ? "HD" : height > 0 ? "SD" : "");
 
+// Rebuild a block only when what it shows has changed (the polls run every second or two).
+const liveFill = (node, key, build) => {
+  if (node.dataset.key === key) return false;
+  node.dataset.key = key;
+  node.replaceChildren(...build());
+  return true;
+};
+const liveRatio = (w, h) => {
+  if (!w || !h) return "";
+  const r = w / h;
+  for (const [name, v] of [["16:9", 16 / 9], ["4:3", 4 / 3], ["21:9", 21 / 9], ["3:2", 1.5], ["1:1", 1]]) if (Math.abs(r - v) < 0.03) return name;
+  return r.toFixed(2);
+};
+const LIVE_STATUS = { playing: "Live", paused: "Paused", buffering: "Buffering", connecting: "Connecting", reconnecting: "Reconnecting", error: "Error", idle: "—" };
+
 function liveRenderStats() {
   const active = live.audio.find((t) => t.id === live.audioCur);
   const parts = [];
@@ -284,13 +327,14 @@ function liveRenderStats() {
   if (active) parts.push(active.name);
   $("#liveTech").textContent = parts.join(" · ");
   const quality = live.video ? liveQuality(live.video.h) : "";
-  const choice = live.audio.length > 1;
-  $("#liveStreamInfo").replaceChildren(
-    liveCell("Video", live.video ? [`${live.video.w}×${live.video.h}`, quality && h("span", { class: "live-chip ok", text: quality })] : "Radio / no video"),
-    // One track: a plain line; several: the list below carries it.
-    !choice && liveCell("Audio", active ? active.name : live.audio.length ? "…" : "none", { dim: !active }),
-  );
-  $("#liveTracks").hidden = !choice;
+  const key = [live.video?.w, live.video?.h, active?.name, live.audio.length, live.state].join("|");
+  liveFill($("#liveStreamInfo"), key, () => [
+    liveCell("Video", live.video ? `${live.video.w}×${live.video.h}` : "Radio", { dim: !live.video }),
+    liveCell("Format", live.video ? [quality && h("span", { class: "live-chip ok", text: quality }), liveRatio(live.video.w, live.video.h)] : "—", { dim: !live.video }),
+    liveCell("Audio", active ? active.name : live.audio.length ? "…" : "none", { dim: !active }),
+    liveCell("Status", LIVE_STATUS[live.state] || "—", { dim: live.state !== "playing" }),
+  ]);
+  $("#liveTracks").hidden = live.audio.length < 2;
 }
 
 // ---- Audio tracks ----
@@ -535,11 +579,11 @@ function liveChecksum(hex) {
 const liveZero = (hex) => liveBytes(hex).every((x) => x === 0);
 
 async function liveEcm() {
-  const id = screenView.profileID, gen = ++live.ecmGen;
-  if (!live.on || !id || document.hidden) return;
+  const id = screenView.profileID, gen = ++live.ecmGen, ref = live.ref;
+  if (!live.on || !id || document.hidden || view.current !== "screen") return; // the details are not on show
   try {
     const data = await api(profileURL(id, "live/ecm"));
-    if (gen !== live.ecmGen || !live.on) return;
+    if (gen !== live.ecmGen || !live.on || ref !== live.ref) return; // an answer for the channel we just left
     const words = data.cw || [];
     live.ecmRaw = data.raw || "";
     const key = words.map((w) => w.hex).join("|");
@@ -555,53 +599,69 @@ async function liveEcm() {
     const renderKey = `${key}|${live.ecmRaw}`;
     if (renderKey !== live.cwRenderKey) { live.cwRenderKey = renderKey; liveRenderCW(); }
     const fields = (data.fields || []).slice().sort((a, b) => liveFieldDim(a.v) - liveFieldDim(b.v));
-    const cells = fields.map((p) => liveCell(p.k, p.v, { wide: String(p.v).length > 14, dim: liveFieldDim(p.v) }));
-    $("#liveEcm").replaceChildren(...(cells.length ? cells : [h("p", { class: "muted small live-empty", text: data.available ? "No details" : "No card information" })]));
+    liveFill($("#liveEcm"), JSON.stringify([data.available, fields]), () => {
+      const cells = fields.map((p) => liveCell(p.k, p.v, { wide: String(p.v).length > 14, dim: liveFieldDim(p.v) }));
+      return cells.length ? cells : [h("p", { class: "muted small live-empty", text: data.available ? "No details" : "No card information" })];
+    });
+    $("#liveEcm").classList.remove("stale");
     $("#liveEcmStamp").textContent = new Date().toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB"));
+    $("#liveEcmStamp").title = "Last update";
   } catch (error) {
-    if (gen !== live.ecmGen) return;
+    if (gen !== live.ecmGen || ref !== live.ref) return;
+    $("#liveEcm").classList.add("stale"); // keep the last values, shown dimmed
     $("#liveEcmStamp").textContent = "not answering";
   }
 }
 function liveRenderCW() {
-  const box = $("#liveCw"), more = $("#liveCwMore"), ago = $("#liveCwAgo");
+  const box = $("#liveCw"), more = $("#liveCwMore"), ago = $("#liveCwAgo"), state = $("#liveCwState");
   if (!live.cw.length) {
     box.replaceChildren(h("p", { class: "muted small live-empty", text: "No control words" }), ...(live.ecmRaw ? [h("details", { class: "live-raw" }, h("summary", { text: "ecm.info" }), h("pre", { text: live.ecmRaw }))] : []));
     $("#liveCwHistory").replaceChildren();
     more.hidden = true;
     ago.textContent = "";
+    state.hidden = true;
+    $("#liveCwCopy").disabled = true;
     return;
   }
+  $("#liveCwCopy").disabled = false;
+  // One verdict for the whole card instead of a mark on every row.
+  const zero = live.cw.every((w) => liveZero(w.hex)), bad = live.cw.some((w) => !liveZero(w.hex) && !liveChecksum(w.hex));
+  state.hidden = false;
+  state.className = `live-chip ${zero || bad ? "bad" : "ok"}`;
+  state.textContent = zero ? "Empty" : bad ? "Checksum ≠" : "✓ Checksum";
+  state.title = zero ? "All zero: the channel is not being decoded"
+    : bad ? "A checksum does not match the standard DVB checksum (bytes 4 and 8)"
+    : "Checksum OK: bytes 4 and 8 (highlighted) match the standard DVB checksum";
   box.replaceChildren(...live.cw.map((w) => {
-    const ok = liveChecksum(w.hex), zero = liveZero(w.hex);
     const bytes = w.hex.split(" ");
     const named = /^(.*?)\s*\((.*)\)\s*$/.exec(w.name);
     const title = named ? named[1] : w.name.split(" ")[0], kind = named ? named[2] : "";
     const group = (from) => h("span", { class: "grp" }, bytes.slice(from, from + 4).map((b, i) => h("span", { class: i === 3 ? "sum" : "", text: b })));
-    const tip = zero ? "All zero: the channel is not being decoded" : ok ? "Checksum OK: bytes 4 and 8 match the standard DVB checksum" : "Checksum does not match.";
-    return h("div", { class: "live-cw", dataset: { name: w.name } },
+    const rowBad = !liveZero(w.hex) && !liveChecksum(w.hex);
+    return h("div", { class: `live-cw${rowBad ? " bad" : ""}`, dataset: { name: w.name } },
       h("div", { class: "live-cw-name" }, h("b", { text: title }), kind && h("span", { class: "live-kind", text: kind })),
-      h("div", { class: "live-hex", role: "text", "aria-label": w.hex }, group(0), group(4)),
-      h("span", { class: `live-chip ${zero ? "bad" : ok ? "ok" : ""}`, title: tip }, zero ? "empty" : ok ? "✓" : "≠"));
+      h("div", { class: "live-hex", role: "text", "aria-label": w.hex }, group(0), group(4)));
   }));
-  const rows = live.cwHistory.map((e, i) => h("li", {},
+  // History: only real changes. The newest one is on show above, so it carries no codes of its own.
+  const changes = live.cwHistory.filter((e) => !e.first);
+  const rows = changes.map((e, i) => h("li", {},
     h("time", { text: new Date(e.at).toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB")) }),
-    h("span", { text: `${e.first ? "Seen" : "Changed"} ${e.words.map((w) => w.name.split(" ")[0]).join(" + ")}` }),
+    h("span", { text: e.words.map((w) => w.name.split(" ")[0]).join(" + ") }),
     i > 0 && e.words.map((w) => h("code", { text: w.hex }))));
-  const times = live.cwHistory.filter((e) => !e.first).map((e) => e.at);
+  const times = changes.map((e) => e.at);
   const gaps = times.slice(0, -1).map((t, i) => (t - times[i + 1]) / 1000);
-  if (gaps.length >= 2) rows.push(h("li", { class: "live-note" }, `A new key arrives about every ${Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)} s`));
   $("#liveCwHistory").replaceChildren(...rows);
-  $("#liveCwCount").textContent = rows.length > 1 ? String(live.cwHistory.length) : "";
-  more.hidden = !rows.length;
+  $("#liveCwCount").textContent = gaps.length >= 2 ? `≈ ${Math.max(1, Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length))} s` : rows.length > 1 ? String(rows.length) : "";
+  $("#liveCwCount").title = gaps.length >= 2 ? "A new key arrives about this often" : "";
+  more.hidden = rows.length < 2; // a single change is already visible above
   liveAgo();
 }
 function liveAgo() {
   const node = $("#liveCwAgo");
   if (!node || !live.cwChangedAt || !live.cw.length) return;
   const seconds = Math.max(0, Math.round((Date.now() - live.cwChangedAt) / 1000));
-  node.textContent = seconds < 1 ? "key just changed" : `key ${seconds} s ago`;
-  node.title = "Time since the last control word change";
+  node.textContent = seconds < 1 ? "now" : seconds < 100 ? `${seconds} s` : `${Math.floor(seconds / 60)} min`;
+  node.title = seconds < 1 ? "The key has just changed" : "Time since the last control word change";
 }
 $("#liveCwCopy").addEventListener("click", async () => {
   if (!live.cw.length) { toast("No control words to copy", "error"); return; }
@@ -641,7 +701,7 @@ if (liveNative) {
   $("#liveFull").addEventListener("click", () => $("#screenFull").click());
   const once = (kind) => { const now = Date.now(); if (now - (live.last?.[kind] || 0) < 700) return false; (live.last ||= {})[kind] = now; return true; };
   window.dccLiveMouse = (kind, x, y) => {
-    if (!live.on) return;
+    if (!live.on || view.current !== "screen") return;
     if (kind === "dbl") { if (once("dbl")) liveFullToggle(); }
     else if (kind === "menu") { if (once("menu")) liveContextMenu(x, y); }
     else if (kind === "move") liveFsWake();

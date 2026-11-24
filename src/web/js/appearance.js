@@ -2,7 +2,7 @@
 (() => {
   const KEY = "dcclite.appearance";
   const root = document.documentElement;
-  const DEFAULTS = { accent: "green", accentHex: "", folder: "gold", folderHex: "", tone: "neutral", btn: "outline", edge: "default", radius: "sharp", density: "compact", scale: "0.85", icons: "thin", font: "system", motion: "reduced", rows: "plain", scrollbars: "default", v: 3 };
+  const DEFAULTS = { accent: "green", accentHex: "", folder: "gold", folderHex: "", tone: "neutral", btn: "outline", edge: "default", radius: "sharp", density: "compact", scale: "0.85", icons: "thin", font: "system", motion: "reduced", rows: "plain", scrollbars: "default", v: 4 };
   const ACCENTS = { blue: [217, 88], violet: [262, 72], rose: [336, 78], green: [146, 62], slate: [215, 20], red: [0, 72] };
   const FOLDERS = { teal: [187, 72], violet: [262, 72], green: [146, 62], slate: [215, 20], gold: [48, 78] };
   const ATTRS = ["tone", "btn", "edge", "radius", "density", "icons", "font", "motion", "rows", "scrollbars"];
@@ -11,16 +11,22 @@
   const SCALE_MIN = 50, SCALE_MAX = 170;
   const scalePct = (v) => { const n = Math.round(parseFloat(v) * 100); return Number.isFinite(n) ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, n)) : Math.round(parseFloat(DEFAULTS.scale) * 100); };
   const scaleStr = (v) => String(scalePct(v) / 100);
+  // light / dark / auto lives in its own key (shared with core.js and the sign-in page); light is the default
+  const THEME_KEY = "dcclite.theme", THEMES = ["auto", "light", "dark"], DEFAULT_THEME = "light";
+  const readMode = () => { try { const v = JSON.parse(localStorage.getItem(THEME_KEY)); return THEMES.includes(v) ? v : DEFAULT_THEME; } catch { return DEFAULT_THEME; } };
+  const writeMode = (mode) => { root.dataset.theme = mode; try { localStorage.setItem(THEME_KEY, JSON.stringify(mode)); } catch { } };
+
   let state = { ...DEFAULTS };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
     if (saved.v === DEFAULTS.v) state = { ...DEFAULTS, ...saved };
-    else { // new default look: dark mode too (one time)
-      root.dataset.theme = "dark";
-      localStorage.setItem("dcclite.theme", JSON.stringify("dark"));
+    else { // older settings: keep the choices, but switch to the new default (light) one time
+      state = { ...DEFAULTS, ...saved, v: DEFAULTS.v };
+      writeMode(DEFAULT_THEME);
       localStorage.setItem(KEY, JSON.stringify(state));
     }
   } catch { }
+  root.dataset.theme = readMode();
   if (state.radius === "default") state.radius = "sharp"; // sharp corners are the default look
   state.scale = scaleStr(state.scale);
 
@@ -32,6 +38,13 @@
     if (d) { h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360; }
     const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
     return [Math.round(h), Math.round(Math.min(95, Math.max(12, s * 100)))];
+  }
+  // browser/PWA chrome colour: one tag, driven by the page background that is actually showing
+  function syncChrome() {
+    let meta = document.querySelector('meta[name="theme-color"]:not([media])');
+    if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.appendChild(meta); }
+    const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+    if (bg) meta.content = bg;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { } }
 
@@ -51,13 +64,13 @@
       else { delete root.dataset.folder; root.style.removeProperty("--fld-h"); root.style.removeProperty("--fld-s"); }
     }
     sync();
+    syncChrome();
   }
 
   const dialog = document.getElementById("themeDialog");
   function sync() {
     if (!dialog) return;
-    let mode = "dark"; try { mode = JSON.parse(localStorage.getItem("dcclite.theme") || '"dark"'); } catch { }
-    if (!["auto", "light", "dark"].includes(mode)) mode = "auto";
+    const mode = THEMES.includes(root.dataset.theme) ? root.dataset.theme : readMode();
     const values = { ...state, mode };
     for (const seg of dialog.querySelectorAll(".ap-seg")) {
       const cur = values[seg.dataset.ap];
@@ -76,6 +89,8 @@
 
 
   apply();
+  new MutationObserver(() => { syncChrome(); sync(); }).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (root.dataset.theme === "auto") syncChrome(); });
   if (!dialog) return;
 
   document.getElementById("themeOpen")?.addEventListener("click", () => { sync(); dialog.showModal(); });
@@ -88,9 +103,8 @@
     if (seg) {
       const key = seg.closest(".ap-seg").dataset.ap;
       if (key === "mode") {
-        root.dataset.theme = seg.dataset.v;
-        try { localStorage.setItem("dcclite.theme", JSON.stringify(seg.dataset.v)); } catch { }
-        sync(); return;
+        writeMode(seg.dataset.v);
+        sync(); syncChrome(); return;
       }
       state[key] = seg.dataset.v; save(); apply(); return;
     }
@@ -108,5 +122,5 @@
   apScale?.addEventListener("input", () => { document.getElementById("apScaleVal").textContent = `${apScale.value}%`; });
   apScale?.addEventListener("change", () => { state.scale = scaleStr(Number(apScale.value) / 100); save(); apply(); });
 
-  document.getElementById("apReset")?.addEventListener("click", () => { state = { ...DEFAULTS }; save(); apply(); });
+  document.getElementById("apReset")?.addEventListener("click", () => { state = { ...DEFAULTS }; writeMode(DEFAULT_THEME); save(); apply(); });
 })();

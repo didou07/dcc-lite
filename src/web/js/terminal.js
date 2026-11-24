@@ -288,13 +288,16 @@ function updateTerminalBar() {
   const tab = activeTab();
   const state = tab?.state || "idle";
   const connected = state === "connected", busy = state === "connecting";
-  $("#terminalConnect").hidden = connected;
-  $("#terminalConnect").disabled = !tab || busy || !deviceByID(tab?.profileID);
-  $("#terminalDisconnect").hidden = !(connected || busy);
+  $("#terminalDisconnect").hidden = true;
   $("#terminalPort").value = String(tab?.port || defaultPort(currentDevice(), term.protocol));
   $("#terminalPort").disabled = connected || busy;
-  setStatusDot($("#terminalStatus"), state === "disconnected" ? "idle" : state,
-    !tab ? "No session" : connected ? `${tab.host || "Connected"} · ${protoName(tab.protocol)}` : busy ? (tab.reconnecting ? "Reconnecting…" : "Connecting…") : state === "error" ? (tab.error || "Connection error") : "Disconnected");
+  const statusText = !tab ? "No session" : connected ? `${tab.host || "Connected"} · ${protoName(tab.protocol)}` : busy ? (tab.reconnecting ? "Reconnecting…" : "Connecting…") : state === "error" ? (tab.error || "Connection error") : "Disconnected";
+  $("#terminalStatus").dataset.state = connected ? "online" : busy ? "checking" : state === "error" ? "error" : "unknown";
+  $("#terminalStatusText").textContent = statusText;
+  $("#terminalStatusText").title = statusText;
+  const connectBtn = $("#terminalConnect");
+  connState(connectBtn, connected ? "on" : busy ? "busy" : state === "error" ? "error" : "off", connected ? `${statusText} — click to disconnect` : busy ? `${statusText} — click to cancel` : "Not connected — click to connect");
+  connectBtn.disabled = !tab || (!connected && !busy && !deviceByID(tab.profileID));
   $("#terminalFiles").disabled = !tab || !deviceByID(tab.profileID);
   if (tab) tab.terminal.options.disableStdin = !connected;
 }
@@ -643,7 +646,7 @@ $("#terminalLauncher").addEventListener("click", (event) => {
   items.push("-", { label: "Manage saved devices…", icon: "devices", run: () => showView("devices") });
   openMenu(items, rect.left, rect.bottom + 4);
 });
-$("#terminalConnect").addEventListener("click", () => connectTab(activeTab()));
+$("#terminalConnect").addEventListener("click", () => { const tab = activeTab(); if (tab?.state === "connected" || tab?.state === "connecting") disconnectTab(tab); else connectTab(tab); });
 $("#terminalDisconnect").addEventListener("click", () => disconnectTab(activeTab()));
 $("#terminalPort").addEventListener("change", () => { const tab = activeTab(); if (tab) tab.port = Number($("#terminalPort").value); });
 $("#terminalFiles").addEventListener("click", () => { const tab = activeTab(); if (tab?.profileID) openDevice(tab.profileID, "files"); });
@@ -692,13 +695,13 @@ function openTerminalMenu(tab, x, y) {
   openMenu([
     { label: "Copy", icon: "copy", sub: "Ctrl+Shift+C", disabled: !tab.terminal.hasSelection(), run: copyTerminal },
     { label: "Paste", icon: "paste", sub: "Ctrl+V", disabled: !connected, run: () => pasteIntoTerminal(tab) },
-    { label: "Select all", icon: "check", run: () => { tab.terminal.selectAll(); } },
+    { label: "Select all", icon: "select", run: () => { tab.terminal.selectAll(); } },
     { label: store.get("termCopyOnSelect", false) ? "✓ Copy when selecting" : "Copy when selecting", icon: "copy", run: () => { store.set("termCopyOnSelect", !store.get("termCopyOnSelect", false)); toast(store.get("termCopyOnSelect", false) ? "Selected text is copied automatically" : "Automatic copy is off"); } },
     "-",
     { label: "History…", icon: "history", sub: "Ctrl+Shift+H", run: openHistory },
     { label: "Copy all output", icon: "copy", run: () => { tab.terminal.clearSelection(); copyTerminal(); } },
     { label: "Clear screen", icon: "eraser", run: () => clearTerminal(tab) },
-  ], x, y);
+  ], x, y, { keepFocus: true }); // the terminal keeps focus, so its selection keeps its colour while the menu is open
 }
 
 async function renameTab(tab) {
@@ -714,7 +717,7 @@ function openTabMenu(tab, x, y) {
   const others = term.groups.filter((g) => g !== group);
   openMenu([
     { label: "Rename…", icon: "edit", run: () => renameTab(tab) },
-    { label: "Duplicate tab", icon: "plus", disabled: !tab.profileID, run: () => createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port }) },
+    { label: "Duplicate tab", icon: "copy", disabled: !tab.profileID, run: () => createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port }) },
     "-",
     { label: "Split right", icon: "split-h", sub: "Ctrl+Shift+D", run: () => { activateTab(tab.id); splitActive("row"); } },
     { label: "Split down", icon: "split-v", sub: "Ctrl+Shift+E", run: () => { activateTab(tab.id); splitActive("col"); } },
@@ -733,9 +736,11 @@ $("#terminalTabList").addEventListener("click", (event) => {
   const rect = event.currentTarget.getBoundingClientRect();
   openMenu([{ heading: "Terminal tabs" }, ...term.groups.map((group, index) => {
     const tab = groupLead(group), count = treeLeaves(group.root).length;
+    const status = { connected: "Connected", connecting: "Connecting…", error: "Failed" }[tab.state] || "";
     return {
-      label: `${treeHas(group.root, term.active) ? "● " : ""}${tabTitle(tab)}${count > 1 ? `  (${count} panels)` : ""}`,
-      icon: "terminal", sub: index < 9 ? `Alt+${index + 1}` : tab.state === "connected" ? "connected" : "",
+      label: `${tabTitle(tab)}${count > 1 ? `  (${count} panels)` : ""}`,
+      icon: treeHas(group.root, term.active) ? "record" : "terminal",
+      sub: [status, index < 9 ? `Alt+${index + 1}` : ""].filter(Boolean).join(" · "),
       run: () => activateTab(tab.id),
     };
   })], rect.left, rect.bottom + 4);

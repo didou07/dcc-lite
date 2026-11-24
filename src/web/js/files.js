@@ -32,6 +32,19 @@ function makePane(kind) {
 const panes = { remote: makePane("remote"), local: makePane("local") };
 for (const pane of Object.values(panes)) pane.hiddenBox.checked = pane.showHidden;
 
+function clearFileDropState() {
+  files.drag = null;
+  for (const pane of Object.values(panes)) {
+    pane.root.classList.remove("drop", "drop-os");
+    $$(".dragging", pane.rows).forEach((row) => row.classList.remove("dragging"));
+    markDropRow(pane, null);
+  }
+}
+function filesLeave() { clearFileDropState(); }
+document.addEventListener("dragend", clearFileDropState);
+document.addEventListener("drop", clearFileDropState);
+document.addEventListener("visibilitychange", () => { if (document.hidden) clearFileDropState(); });
+
 function sessionLost(error) { return error?.code === "session_not_found" || /session not found/i.test(error?.message || ""); }
 const requireSession = () => { if (!files.sessionID) { toast("Connect to the device first"); return false; } return true; };
 function fileSessionKey(info = files.sessionInfo) {
@@ -52,9 +65,9 @@ function setFileStatus(state, text) {
 function updateFileUI() {
   const connected = Boolean(files.sessionID);
   const device = currentDevice();
-  $("#fileConnect").hidden = connected;
-  $("#fileConnect").disabled = files.connecting || !device;
-  $("#fileDisconnect").hidden = !connected && !files.connecting;
+  $("#fileDisconnect").hidden = true;
+  connState($("#fileConnect"), connected ? "on" : files.connecting ? "busy" : "off", connected ? "Connected — click to disconnect" : files.connecting ? "Connecting — click to cancel" : "Not connected — click to connect");
+  $("#fileConnect").disabled = !connected && !files.connecting && !device;
   $("#filePort").disabled = connected || files.connecting;
   $("#remoteHost").textContent = connected ? `${device?.name || ""} · ${device?.host || ""}` : "Not connected";
   const active = panes[files.active];
@@ -192,7 +205,7 @@ function renderPane(pane) {
   });
   pane.rows.replaceChildren(fragment);
   $$("th[data-sort]", pane.root).forEach((th) => { th.dataset.dir = th.dataset.sort === pane.sort.key ? pane.sort.dir : ""; });
-  const message = !pane.loaded ? (pane.kind === "remote" ? (files.connecting ? "Connecting…" : "Connect to a device to browse its files") : "Loading…")
+  const message = !pane.loaded ? (pane.kind === "remote" ? (files.connecting ? "Connecting…" : files.lastError ? `Could not connect: ${files.lastError}` : "Connect to a device to browse its files") : "Loading…")
     : !pane.entries.length ? "This folder is empty" : !visible.length ? (!pane.showHidden && !pane.filter.value.trim() ? "Only hidden items here. Tick “Hidden” to show them." : "No items match the filter") : "";
   pane.empty.textContent = message;
   pane.empty.hidden = !message;
@@ -230,7 +243,7 @@ function renderCrumbs(pane) {
     crumbs.push(h("span", { class: "crumb-sep", text: "›" }));
     crumbs.push(h("button", { type: "button", class: `crumb${index === parts.length - 1 ? " last" : ""}`, dataset: { path: current }, text: part }));
   });
-  pane.crumbs.hidden = !pane.loaded || parts.length === 0;
+  pane.crumbs.hidden = false; // always shown, so both panels keep their rows level with each other
   pane.crumbs.replaceChildren(...crumbs);
   pane.crumbs.scrollLeft = pane.crumbs.scrollWidth;
 }
@@ -396,7 +409,7 @@ async function fileConnect() {
   if (!Number.isInteger(port) || port < 1 || port > 65535) { toast("Enter a valid port", "error"); return; }
   const gen = ++files.gen;
   const protocol = files.protocol;
-  files.connecting = true; files.manualOff = false;
+  files.connecting = true; files.manualOff = false; files.lastError = "";
   setFileStatus("connecting", `Connecting to ${device.host}…`);
   renderPane(panes.remote); updateFileUI();
   let opened = "";
@@ -432,6 +445,7 @@ async function fileConnect() {
     if (opened) api(sessionURL(opened), { method: "DELETE" }).catch(() => {});
     if (gen === files.gen) {
       files.sessionID = ""; files.sessionInfo = null; files.sessionKey = "";
+      files.lastError = error.message || "";
       setFileStatus("error", error.message);
       toastError(error);
     }
@@ -441,12 +455,13 @@ async function fileConnect() {
   }
 }
 window.addEventListener("pagehide", () => {
+  clearFileDropState();
   if (files.sessionID) fetch(sessionURL(files.sessionID), { method: "DELETE", keepalive: true }).catch(() => {});
 });
 async function fileDisconnect(silent = false) {
   files.gen++;
   const id = files.sessionID;
-  files.sessionID = ""; files.sessionInfo = null; files.sessionKey = ""; files.connecting = false; files.manualOff = !silent;
+  files.sessionID = ""; files.sessionInfo = null; files.sessionKey = ""; files.connecting = false; files.manualOff = !silent; files.lastError = "";
   if (id) await api(sessionURL(id), { method: "DELETE" }).catch(() => {});
   const remote = panes.remote;
   resetPaneHistory(remote);
@@ -455,7 +470,7 @@ async function fileDisconnect(silent = false) {
   renderPane(remote); updateFileUI();
   if (id && !silent) toast("Disconnected");
 }
-function filesEnter() { files.ready.then(filesEnterNow); }
+function filesEnter() { clearFileDropState(); files.ready.then(filesEnterNow); }
 function filesEnterNow() {
   syncFilePort();
   if (!files.browserMode && !panes.local.loaded) {
@@ -470,7 +485,7 @@ function filesEnterNow() {
   else updateFileUI();
   loadTransfers();
 }
-$("#fileConnect").addEventListener("click", () => { files.manualOff = false; fileConnect(); });
+$("#fileConnect").addEventListener("click", () => { if (files.sessionID || files.connecting) fileDisconnect(false); else { files.manualOff = false; fileConnect(); } });
 $("#fileDisconnect").addEventListener("click", () => fileDisconnect(false));
 
 for (const pane of Object.values(panes)) {
@@ -553,6 +568,7 @@ function openEntry(pane, entry) {
 }
 for (const pane of Object.values(panes)) {
   pane.rows.addEventListener("click", (event) => {
+    if (pane.marqueeDone) return; // the click that ends a drag-select is not a row click
     const row = event.target.closest("tr.row");
     if (!row) return;
     setActivePane(pane.kind);
@@ -590,10 +606,94 @@ for (const pane of Object.values(panes)) {
     updateSelectionUI(pane);
   });
   pane.table.addEventListener("click", (event) => {
+    if (pane.marqueeDone) { pane.marqueeDone = false; return; }
     if (event.button !== 0 || event.target.closest?.("tr.row") || event.target.closest?.("thead") || event.ctrlKey || event.metaKey || event.shiftKey) return;
     setActivePane(pane.kind);
     clearPaneSelection(pane);
     pane.table.focus({ preventScroll: true });
+  });
+  // Right-button drag selects rows; left-button drag stays native for file moves.
+  pane.table.addEventListener("pointerdown", (event) => {
+    if (event.button !== 2 || event.pointerType === "touch") return;
+    pane.suppressCtx = false;
+    if (event.target.closest?.("thead, .rename-input, .pane-empty")) return;
+    const wrap = pane.table, box0 = wrap.getBoundingClientRect();
+    if (event.clientX >= box0.left + wrap.clientWidth || event.clientY >= box0.top + wrap.clientHeight) return;
+    if (pane.kind === "remote" && !files.sessionID) return;
+    event.preventDefault();
+    setActivePane(pane.kind);
+    wrap.focus({ preventScroll: true });
+    const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+    const base = additive ? new Set(pane.selected) : new Set();
+    const startX = event.clientX - box0.left + wrap.scrollLeft, startY = event.clientY - box0.top + wrap.scrollTop;
+    const pointerId = event.pointerId;
+    let pointerX = event.clientX, pointerY = event.clientY, active = false, frame = 0, band = null, finished = false;
+    pane.marqueeBusy = true;
+    pane.rmb = { down: true, x: event.clientX, y: event.clientY, target: event.target, menu: false };
+    pane.suppressCtx = false;
+    const paint = () => {
+      frame = 0;
+      const box = wrap.getBoundingClientRect();
+      const x = Math.max(box.left, Math.min(pointerX, box.left + wrap.clientWidth)), y = Math.max(box.top, Math.min(pointerY, box.top + wrap.clientHeight));
+      const curX = x - box.left + wrap.scrollLeft, curY = y - box.top + wrap.scrollTop;
+      if (!active) {
+        if (Math.abs(curX - startX) < 4 && Math.abs(curY - startY) < 4) return;
+        active = true;
+        band = h("div", { class: "marquee" });
+        wrap.append(band);
+        wrap.classList.add("marqueeing");
+      }
+      const left = Math.min(startX, curX), top = Math.min(startY, curY);
+      band.style.left = `${left}px`; band.style.top = `${top}px`;
+      band.style.width = `${Math.abs(curX - startX)}px`; band.style.height = `${Math.abs(curY - startY)}px`;
+      const lo = top - wrap.scrollTop + box.top, hi = top + Math.abs(curY - startY) - wrap.scrollTop + box.top;
+      const picked = new Set(base);
+      let first = -1, last = -1;
+      for (const row of $$("tr.row[data-index]", pane.rows)) {
+        const r = row.getBoundingClientRect();
+        if (r.bottom < lo || r.top > hi) continue;
+        const index = Number(row.dataset.index), entry = pane.visible[index];
+        if (!entry) continue;
+        picked.add(entry.path);
+        if (first < 0) first = index;
+        last = index;
+      }
+      pane.selected = picked;
+      if (first >= 0) { pane.anchor = first; pane.cursor = last; }
+      updateSelectionUI(pane);
+      const edge = 28;
+      const dy = pointerY < box.top + edge ? -14 : pointerY > box.top + wrap.clientHeight - edge ? 14 : 0;
+      if (dy) { wrap.scrollTop += dy; frame = requestAnimationFrame(paint); }
+    };
+    const move = (e) => {
+      if (e.pointerId !== pointerId) return;
+      pointerX = e.clientX; pointerY = e.clientY;
+      if (!frame) frame = requestAnimationFrame(paint);
+    };
+    const finish = (e) => {
+      if (finished || (e?.pointerId != null && e.pointerId !== pointerId)) return;
+      finished = true;
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerup", finish, true);
+      document.removeEventListener("pointercancel", finish, true);
+      window.removeEventListener("blur", finish);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (frame) cancelAnimationFrame(frame);
+      band?.remove();
+      wrap.classList.remove("marqueeing");
+      pane.marqueeBusy = false;
+      if (active) { pane.marqueeDone = true; window.setTimeout(() => { pane.marqueeDone = false; }, 0); }
+      const held = pane.rmb; pane.rmb = null;
+      if (active) pane.suppressCtx = true;
+      else if (held?.menu) showContext(held.x, held.y, held.target);
+      if (active) window.setTimeout(() => { pane.suppressCtx = false; }, 500);
+    };
+    const onVisibility = () => { if (document.hidden) finish(); };
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointerup", finish, true);
+    document.addEventListener("pointercancel", finish, true);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", finish, { once: true });
   });
   pane.rows.addEventListener("dblclick", (event) => {
     cancelPendingRename(pane);
@@ -602,13 +702,11 @@ for (const pane of Object.values(panes)) {
     if (!row || row.dataset.up) { if (row?.dataset.up) goUp(pane.kind); return; }
     openEntry(pane, rowEntry(pane, row));
   });
-  pane.table.addEventListener("contextmenu", (event) => {
-    if (event.target.closest?.(".rename-input")) return;
-    event.preventDefault();
+  const showContext = (x, y, target) => {
     if (pane.kind === "remote" && !files.sessionID) return;
     cancelPendingRename(pane);
     setActivePane(pane.kind);
-    const row = event.target.closest("tr.row[data-index]");
+    const row = target?.closest?.("tr.row[data-index]");
     const entry = rowEntry(pane, row);
     if (entry) {
       const index = Number(row.dataset.index);
@@ -620,9 +718,17 @@ for (const pane of Object.values(panes)) {
       clearPaneSelection(pane);
     }
     pane.table.focus({ preventScroll: true });
-    openMenu(contextItems(pane, Boolean(entry)), event.clientX, event.clientY);
+    openMenu(contextItems(pane, Boolean(entry)), x, y);
+  };
+  pane.table.addEventListener("contextmenu", (event) => {
+    if (event.target.closest?.(".rename-input")) return;
+    event.preventDefault();
+    if (pane.suppressCtx) { pane.suppressCtx = false; return; } // the right button was just used to drag-select
+    if (pane.rmb?.down) { pane.rmb.menu = true; return; }       // still held: decide on release (drag = select, click = menu)
+    showContext(event.clientX, event.clientY, event.target);
   });
   pane.rows.addEventListener("dragstart", (event) => {
+    if (pane.marqueeBusy) { event.preventDefault(); return; }
     cancelPendingRename(pane);
     const row = event.target.closest("tr.row[data-index]");
     const entry = rowEntry(pane, row);
@@ -636,7 +742,7 @@ for (const pane of Object.values(panes)) {
     event.dataTransfer.setData("text/plain", files.drag.entries.map((e) => e.name).join("\n"));
     row.classList.add("dragging");
   });
-  pane.rows.addEventListener("dragend", () => { files.drag = null; $$(".dragging", pane.rows).forEach((r) => r.classList.remove("dragging")); Object.values(panes).forEach((p) => { p.root.classList.remove("drop"); markDropRow(p, null); }); });
+  pane.rows.addEventListener("dragend", clearFileDropState);
   const dropPlan = (event) => {
     if (!files.drag) return null;
     const target = dropFolder(pane, event), same = files.drag.from === pane.kind;
@@ -725,7 +831,7 @@ function contextItems(pane, onEntry) {
     if (single?.is_dir) items.push({ label: "Open", icon: "folder", run: () => loadPane(kind, single.path) });
     else if (single) {
       items.push({ label: "Preview", icon: "eye", sub: "Space", run: () => cmdPreview() });
-      items.push({ label: "Edit as text", icon: "file", sub: "F4", run: () => cmdEdit() });
+      items.push({ label: "Edit as text", icon: "edit", sub: "F4", run: () => cmdEdit() });
     }
     items.push(kind === "remote"
       ? { label: files.browserMode ? (many ? `Download ${sel.length} items to this device` : "Download to this device") : (many ? `Download ${sel.length} items` : "Download"), icon: "download", disabled: files.browserMode && !sel.some((e) => !e.is_dir), run: () => transferSelection("download") }
@@ -747,15 +853,15 @@ function contextItems(pane, onEntry) {
       if (sel.some((e) => !e.is_dir && /\.(ipk|deb)$/i.test(e.name))) items.push({ label: "Install package…", icon: "box", run: () => cmdIpk() });
     }
   } else {
-    if (files.browserMode && kind === "remote") items.push({ label: "Upload files from this device…", icon: "upload", run: () => chooseDeviceFiles(false) }, { label: "Upload a folder from this device…", icon: "newfolder", run: () => chooseDeviceFiles(true) }, "-");
+    if (files.browserMode && kind === "remote") items.push({ label: "Upload files from this device…", icon: "upload", run: () => chooseDeviceFiles(false) }, { label: "Upload a folder from this device…", icon: "upload", run: () => chooseDeviceFiles(true) }, "-");
     items.push({ label: "New folder", icon: "newfolder", sub: "F7", run: () => cmdMkdir() });
     items.push({ label: "New text file…", icon: "file", sub: "⇧F4", run: () => cmdNewFile() });
     items.push({ label: "Paste", icon: "paste", sub: "Ctrl+V", disabled: !files.clipboard?.entries?.length, run: () => cmdPaste() });
     items.push("-");
     items.push({ label: "Refresh", icon: "refresh", sub: "F5", run: () => refreshPane(kind) });
     const nextUndo = lastUndo(kind);
-    items.push({ label: nextUndo ? `Undo: ${nextUndo.label}` : "Nothing to undo", icon: "left", sub: "Ctrl+Z", disabled: !nextUndo, run: () => cmdUndo() });
-    items.push({ label: pane.visible.length > 0 && pane.visible.every((e) => pane.selected.has(e.path)) ? "Deselect all" : "Select all", icon: "check", sub: "Ctrl+A", run: () => cmdSelectAll() });
+    items.push({ label: nextUndo ? `Undo: ${nextUndo.label}` : "Nothing to undo", icon: "undo", sub: "Ctrl+Z", disabled: !nextUndo, run: () => cmdUndo() });
+    items.push({ label: pane.visible.length > 0 && pane.visible.every((e) => pane.selected.has(e.path)) ? "Deselect all" : "Select all", icon: "select", sub: "Ctrl+A", run: () => cmdSelectAll() });
     if (kind === "remote") {
       items.push("-");
       items.push({ label: "Terminal here", icon: "terminal", run: () => openTerminalHere(pane.path) });
@@ -837,7 +943,7 @@ async function cmdMkdir() {
   const pane = panes[kind], path = pane.path;
   const sessionID = kind === "remote" ? files.sessionID : "";
   const sessionKey = kind === "remote" ? files.sessionKey : "";
-  const name = await ask({ title: "New folder", label: "Folder name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid folder name (no slashes).") });
+  const name = await ask({ title: "New folder", icon: "newfolder", label: "Folder name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid folder name (no slashes).") });
   if (!name) return;
   if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Folder creation was cancelled.", "error"); return; }
   try {
@@ -961,7 +1067,7 @@ async function cmdRename() {
   const entry = sel[0];
   const expected = kind === "remote" ? { sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID } : null;
   if (inlineRename(panes[kind], entry)) return;
-  const name = await ask({ title: "Rename", label: "New name", value: entry.name, ok: "Rename", validate: (v) => (validName(v) ? "" : "Enter a valid name (no slashes).") });
+  const name = await ask({ title: "Rename", icon: "edit", label: "New name", value: entry.name, ok: "Rename", validate: (v) => (validName(v) ? "" : "Enter a valid name (no slashes).") });
   await applyRename(kind, entry, name, expected);
 }
 async function cmdDelete() {
@@ -972,7 +1078,7 @@ async function cmdDelete() {
   const sessionKey = kind === "remote" ? files.sessionKey : "";
   const names = sel.slice(0, 6).map((e) => `${e.is_dir ? "📁" : "•"} ${e.name}`).join("\n") + (sel.length > 6 ? `\n… and ${sel.length - 6} more` : "");
   const where = kind === "remote" ? "on the device" : "on this computer";
-  const confirmed = await ask({ title: `Delete ${sel.length === 1 ? "item" : `${sel.length} items`}?`, message: `${names}\n\nThis permanently deletes the selection ${where}${sel.some((e) => e.is_dir) ? ", including everything inside folders" : ""}. It cannot be undone.`, input: false, ok: "Delete", danger: true });
+  const confirmed = await ask({ icon: "trash", title: `Delete ${sel.length === 1 ? "item" : `${sel.length} items`}?`, message: `${names}\n\nThis permanently deletes the selection ${where}${sel.some((e) => e.is_dir) ? ", including everything inside folders" : ""}. It cannot be undone.`, input: false, ok: "Delete", danger: true });
   if (!confirmed) return;
   if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Delete cancelled.", "error"); return; }
   let failed = 0, last = null;
@@ -996,7 +1102,16 @@ function askPermissions(title, info, initial, hasFolder = false) {
   $("#chmodRecursiveRow").hidden = !hasFolder; $("#chmodRecursive").checked = false;
   const fromBoxes = () => boxes.reduce((sum, box) => sum + (box.checked ? Number(box.dataset.bit) : 0), 0);
   const setBoxes = (value) => boxes.forEach((box) => { box.checked = Boolean(value & Number(box.dataset.bit)); });
-  const setOctal = (value) => { input.value = (value & 0o777).toString(8).padStart(3, "0"); };
+  const symbolic = (value) => "rwxrwxrwx".split("").map((c, i) => (value & (256 >> i) ? c : "-")).join("");
+  // The symbolic form (rw-r--r--) and the highlighted preset follow whatever the boxes or the field say.
+  const showMode = (value) => {
+    const sym = symbolic(value);
+    $("#chmodSym").textContent = sym;
+    $("#chmodSym").classList.toggle("warn", Boolean(value & 2));
+    $("#chmodSym").title = value & 2 ? "Anyone can change this" : "";
+    for (const chip of $$("[data-mode]", dialog)) chip.setAttribute("aria-pressed", String(parseInt(chip.dataset.mode, 8) === (value & 0o777)));
+  };
+  const setOctal = (value) => { input.value = (value & 0o777).toString(8).padStart(3, "0"); showMode(value); };
   const start = /^[0-7]{3,4}$/.test(initial) ? parseInt(initial, 8) & 0o777 : 0o755;
   setBoxes(start); setOctal(start);
   return new Promise((resolve) => {
@@ -1011,7 +1126,7 @@ function askPermissions(title, info, initial, hasFolder = false) {
       resolve(result);
     };
     const onChange = (event) => { if (event.target.matches("input[data-bit]")) setOctal(fromBoxes()); };
-    const onInput = () => { if (/^[0-7]{3,4}$/.test(input.value.trim())) setBoxes(parseInt(input.value.trim(), 8) & 0o777); };
+    const onInput = () => { if (/^[0-7]{3,4}$/.test(input.value.trim())) { const v = parseInt(input.value.trim(), 8) & 0o777; setBoxes(v); showMode(v); } };
     const onClick = (event) => {
       const preset = event.target.closest("[data-mode]");
       if (preset) { const v = parseInt(preset.dataset.mode, 8); setBoxes(v); setOctal(v); return; }
@@ -1039,7 +1154,7 @@ async function cmdChmod() {
   const sessionID = kind === "remote" ? files.sessionID : "";
   const sessionKey = kind === "remote" ? files.sessionKey : "";
   const current = sel.length === 1 ? permissionOctal(sel[0].mode) : "";
-  const choice = await askPermissions("Permissions", sel.length === 1 ? `${sel[0].name} — now ${current}` : `${sel.length} items`, current, sel.some((e) => e.is_dir));
+  const choice = await askPermissions("Permissions", sel.length === 1 ? `${sel[0].name} · now ${current}` : `${sel.length} items`, current, sel.some((e) => e.is_dir));
   if (!choice) return;
   const { mode, recursive } = choice;
   if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. Permission changes were cancelled.", "error"); return; }
@@ -1215,6 +1330,7 @@ function editorRender() {
   const notes = [];
   if (editor.mixed) notes.push(`This file mixes CRLF and LF line endings. Saving uses ${editor.lineEnding === "crlf" ? "CRLF" : "LF"}, the more common one, for every line.`);
   if (editor.size > 2 * 1048576) notes.push(`This is a large file (${formatBytes(editor.size)}). Editing it may be slow.`);
+  if (editor.encoding === "utf-16le" || editor.encoding === "utf-16be") notes.push("This file is UTF-16 text. It is saved back as UTF-16 with the same byte order.");
   if (editor.encoding === "latin1") notes.push("This file is not UTF-8, so it is shown as Latin-1. Other letters may look garbled, but saving keeps the original bytes of everything you do not change. Text outside Latin-1 cannot be saved.");
   if (editor.link) notes.push(editor.link === "?" ? "This file is a link. The device follows it, so you are editing the file it points to, which may belong to a different image." : `This file is a link to ${editor.link}. The device follows it, so you are editing that target, which may belong to a different image than the folder you opened.`);
   notice.hidden = !notes.length;
@@ -1223,7 +1339,13 @@ function editorRender() {
 function editorCursor() {
   const text = $("#editorText"), before = text.value.slice(0, text.selectionStart);
   const line = before.split("\n").length;
-  $("#editorCursor").textContent = `Ln ${line}, Col ${before.length - before.lastIndexOf("\n")}`;
+  let label = `Ln ${line}, Col ${before.length - before.lastIndexOf("\n")}`;
+  const picked = text.selectionEnd - text.selectionStart;
+  if (picked > 0) {
+    const lines = text.value.slice(text.selectionStart, text.selectionEnd).split("\n").length;
+    label += lines > 1 ? ` · ${picked.toLocaleString()} selected, ${lines.toLocaleString()} lines` : ` · ${picked.toLocaleString()} selected`;
+  }
+  $("#editorCursor").textContent = label;
 }
 const editorLines = (() => {
   const text = $("#editorText"), body = $("#editorBody"), gutter = $("#editorGutter"), nums = $("#editorNums"), toggle = $("#editorLineNumbers");
@@ -1300,9 +1422,11 @@ const editorLines = (() => {
   const copyEditor = async () => {
     const chosen = selected();
     if (!chosen) return;
+    const end = text.selectionEnd;
     if (await clipboardWrite(chosen)) toast("Selection copied");
     else toast("Copy was blocked by the browser.", "error");
     text.focus();
+    text.setSelectionRange(end, end); // the choice is made, so the selection colour goes
   };
   const pasteEditor = async () => {
     const clip = await clipboardRead();
@@ -1341,12 +1465,12 @@ const editorLines = (() => {
     event.preventDefault(); event.stopPropagation();
     const has = Boolean(selected());
     openMenu([
-      { label: "Cut", icon: "copy", sub: "Ctrl+X", disabled: !has, run: cutEditor },
+      { label: "Cut", icon: "scissors", sub: "Ctrl+X", disabled: !has, run: cutEditor },
       { label: "Copy", icon: "copy", sub: "Ctrl+C", disabled: !has, run: copyEditor },
       { label: "Paste", icon: "paste", sub: "Ctrl+V", run: pasteEditor },
-      { label: "Select all", icon: "check", sub: "Ctrl+A", run: () => { text.focus(); text.select(); } },
+      { label: "Select all", icon: "select", sub: "Ctrl+A", run: () => { text.focus(); text.select(); } },
       { label: copyOnSelect() ? "✓ Copy when selecting with the mouse" : "Copy when selecting with the mouse", icon: "copy", run: () => { store.set("editorCopyOnSelect2", !copyOnSelect()); toast(copyOnSelect() ? "Mouse selection is copied automatically" : "Automatic copy is off"); } },
-    ], event.clientX, event.clientY);
+    ], event.clientX, event.clientY, { keepFocus: true });
   }, true);
   $("#editorWrap").addEventListener("change", () => update());
   gutter.addEventListener("mousedown", (event) => { event.preventDefault(); text.focus(); });
@@ -1398,7 +1522,12 @@ async function openEditor(kind, path) {
     const data = await api(`${url}?path=${encodeURIComponent(path)}`);
     if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) return;
     showEditor(kind, data.file, false, sessionID, sessionKey);
-  } catch (error) { editorError(kind, error, sessionID); }
+  } catch (error) {
+    // A file that is not text cannot be edited, but it can still be looked at as bytes.
+    const pane = panes[kind], index = pane.visible.findIndex((e) => e.path === path);
+    if (error?.code === "not_text" && index >= 0) { toast("This file is not text, so it opened in the hex editor."); showPreview(pane, index); return; }
+    editorError(kind, error, sessionID);
+  }
 }
 async function cmdEdit() {
   const kind = files.active, sel = selectedEntries(panes[kind]);
@@ -1412,7 +1541,7 @@ async function cmdNewFile() {
   const sessionID = kind === "remote" ? files.sessionID : "";
   const sessionKey = kind === "remote" ? files.sessionKey : "";
   const basePath = panes[kind].path;
-  const name = await ask({ title: "New text file", label: "File name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid file name (no slashes).") });
+  const name = await ask({ title: "New text file", icon: "file", label: "File name", ok: "Create", validate: (v) => (validName(v) ? "" : "Enter a valid file name (no slashes).") });
   if (!name) return;
   if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) { toast("The receiver connection changed. New file creation was cancelled.", "error"); return; }
   const path = kind === "local" ? joinLocal(basePath, name) : joinRemote(basePath, name);
@@ -1485,7 +1614,8 @@ async function editorReload() {
 {
   const dialog = $("#editorDialog"), text = $("#editorText");
   text.addEventListener("input", () => { editorRender(); if ($("#editorStatus").dataset.kind) editorStatus(""); });
-  for (const type of ["keyup", "click", "focus"]) text.addEventListener(type, editorCursor);
+  for (const type of ["keyup", "click", "focus", "select"]) text.addEventListener(type, editorCursor);
+  document.addEventListener("selectionchange", () => { if (dialog.open && document.activeElement === text) editorCursor(); });
   dialog.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!$("#editorSave").disabled) editorSave(); }
   });
@@ -1561,36 +1691,142 @@ $("#sitesSide").hidden = !store.get("filesSitesOpen", false);
 applyFilesLayout();
 
 (function editorFindReplace() {
-  const bar = $("#editorFind"), text = $("#editorText"), needleInput = $("#findText"), replaceInput = $("#replaceText"), info = $("#findInfo");
+  const bar = $("#editorFind"), text = $("#editorText"), body = $("#editorBody"), needleInput = $("#findText"), replaceInput = $("#replaceText"), info = $("#findInfo");
+  const MARK_LIMIT = 20000, TEXT_LIMIT = 1500000, COUNT_LIMIT = 100000;
+  const layer = h("div", { class: "editor-marks", "aria-hidden": "true", hidden: true });
+  const inner = h("pre", { class: "editor-marks-inner" });
+  layer.append(inner);
+  body.insertBefore(layer, text);
+
+  let matches = [], capped = false, current = -1, markEls = [], lastShown = -1;
+  let dirty = true, drawnFor = "", timer = 0, holdInfo = false;
+
   const matchCase = () => $("#findCase").checked;
-  const fold = (value) => (matchCase() ? value : value.toLowerCase());
-  const setInfo = (message) => { info.textContent = message; };
+  const escapeHTML = (value) => value.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+  const pattern = (needle) => new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), matchCase() ? "g" : "gi");
+  const wrapOn = () => text.getAttribute("wrap") === "soft";
+
+  function setInfo(message, state = "") {
+    info.textContent = message;
+    if (!message || state === "none") info.title = "";
+    info.classList.toggle("none", state === "none");
+  }
+  function compute() {
+    matches = []; capped = false;
+    const needle = needleInput.value;
+    if (!needle) return;
+    const re = pattern(needle), value = text.value;
+    let m;
+    while ((m = re.exec(value))) {
+      matches.push({ s: m.index, e: m.index + m[0].length });
+      if (matches.length >= COUNT_LIMIT) { capped = true; break; }
+    }
+  }
+  const indexAtSelection = () => matches.findIndex((m) => m.s === text.selectionStart && m.e === text.selectionEnd);
+
+  // ---- the coloured layer that sits behind the text ----
+  function geometry() {
+    if (layer.hidden) return;
+    const cs = getComputedStyle(text);
+    layer.style.left = `${text.offsetLeft}px`; layer.style.top = `${text.offsetTop}px`;
+    layer.style.width = `${text.clientWidth}px`; layer.style.height = `${text.clientHeight}px`;
+    inner.style.padding = cs.padding; inner.style.boxSizing = "border-box"; inner.style.tabSize = cs.tabSize;
+    inner.style.whiteSpace = wrapOn() ? "pre-wrap" : "pre";
+    inner.style.overflowWrap = wrapOn() ? "anywhere" : "normal";
+    inner.style.width = wrapOn() ? `${text.clientWidth}px` : "max-content";
+    syncScroll();
+  }
+  function syncScroll() { inner.style.transform = `translate(${-text.scrollLeft}px, ${-text.scrollTop}px)`; }
+  function clearLayer() { inner.textContent = ""; layer.hidden = true; markEls = []; lastShown = -1; drawnFor = ""; }
+  function render() {
+    const needle = needleInput.value, value = text.value;
+    if (bar.hidden || !needle || !matches.length || value.length > TEXT_LIMIT || matches.length > MARK_LIMIT) { clearLayer(); return; }
+    const key = `${needle}\u0000${matchCase()}`;
+    if (!dirty && drawnFor === key && !layer.hidden) { paintCurrent(); return; }
+    let html = "", last = 0;
+    for (const m of matches) { html += `${escapeHTML(value.slice(last, m.s))}<mark>${escapeHTML(value.slice(m.s, m.e))}</mark>`; last = m.e; }
+    inner.innerHTML = html + escapeHTML(value.slice(last));
+    layer.hidden = false; layer.style.visibility = "visible";
+    markEls = Array.from(inner.querySelectorAll("mark"));
+    lastShown = -1; drawnFor = key; dirty = false;
+    geometry();
+    paintCurrent();
+  }
+  function paintCurrent() {
+    if (lastShown >= 0) markEls[lastShown]?.classList.remove("current");
+    if (current >= 0) markEls[current]?.classList.add("current");
+    lastShown = current;
+  }
+  function updateInfo(wrapped = false) {
+    const needle = needleInput.value;
+    if (needle && !matches.length) needleInput.setAttribute("aria-invalid", "true"); else needleInput.removeAttribute("aria-invalid");
+    if (holdInfo) return;
+    if (!needle) { setInfo(""); return; }
+    if (!matches.length) { setInfo("No matches", "none"); return; }
+    const total = `${matches.length}${capped ? "+" : ""}`;
+    // Numbers only, so the counter reads the same in every language.
+    let message = `${current >= 0 ? current + 1 : "–"}/${total}`;
+    if (wrapped) message += " ↻";
+    const notes = [];
+    if (wrapped) notes.push("Wrapped around");
+    if (text.value.length > TEXT_LIMIT || matches.length > MARK_LIMIT) notes.push("Colouring is off for files this large");
+    info.title = notes.join(" · ");
+    setInfo(message);
+  }
+  function refresh() {
+    clearTimeout(timer);
+    compute();
+    current = indexAtSelection();
+    render();
+    updateInfo();
+  }
+
+  // ---- moving to a match ----
+  function scrollTo(index) {
+    const el = markEls[index], m = matches[index];
+    if (el) {
+      const top = el.offsetTop, left = el.offsetLeft, view = text.clientHeight;
+      if (top < text.scrollTop + 8 || top + el.offsetHeight > text.scrollTop + view - 8) text.scrollTop = Math.max(0, top - view / 2);
+      if (!wrapOn() && (left < text.scrollLeft || left > text.scrollLeft + text.clientWidth - 60)) text.scrollLeft = Math.max(0, left - text.clientWidth / 2);
+      return;
+    }
+    const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 18;
+    const line = text.value.slice(0, m.s).split("\n").length - 1;
+    if (line * lineHeight < text.scrollTop || (line + 2) * lineHeight > text.scrollTop + text.clientHeight) text.scrollTop = Math.max(0, line * lineHeight - text.clientHeight / 2);
+  }
+  function select(index, { focusText = false } = {}) {
+    const m = matches[index];
+    if (!m) return;
+    if (focusText) text.focus();
+    text.setSelectionRange(m.s, m.e);
+    current = index;
+    paintCurrent();
+    scrollTo(index);
+    syncScroll();
+    editorCursor();
+  }
   function openBar() {
     bar.hidden = false;
     const picked = text.value.slice(text.selectionStart, text.selectionEnd);
     if (picked && !/\n/.test(picked)) needleInput.value = picked;
     needleInput.focus(); needleInput.select();
+    dirty = true; holdInfo = false;
+    refresh();
   }
-  function closeBar() { bar.hidden = true; setInfo(""); text.focus(); }
-  function reveal(start, end) {
-    text.focus();
-    text.setSelectionRange(start, end);
-    const lineHeight = parseFloat(getComputedStyle(text).lineHeight) || 18;
-    const line = text.value.slice(0, start).split("\n").length - 1;
-    if (line * lineHeight < text.scrollTop || (line + 2) * lineHeight > text.scrollTop + text.clientHeight) text.scrollTop = Math.max(0, line * lineHeight - text.clientHeight / 2);
-    editorCursor();
-    needleInput.focus();
-  }
+  function closeBar() { bar.hidden = true; holdInfo = false; setInfo(""); clearLayer(); matches = []; current = -1; text.focus(); }
   function step(backwards) {
-    const needle = needleInput.value;
-    if (!needle) { setInfo(""); return false; }
-    const hay = fold(text.value), key = fold(needle);
-    let at = backwards ? (text.selectionStart > 0 ? hay.lastIndexOf(key, text.selectionStart - 1) : -1) : hay.indexOf(key, text.selectionEnd);
-    let wrapped = false;
-    if (at < 0) { at = backwards ? hay.lastIndexOf(key) : hay.indexOf(key); wrapped = at >= 0; }
-    if (at < 0) { setInfo("Not found"); return false; }
-    reveal(at, at + needle.length);
-    setInfo(wrapped ? "Wrapped around" : "");
+    holdInfo = false;
+    if (!needleInput.value) { setInfo(""); return false; }
+    compute();
+    render();
+    if (!matches.length) { current = -1; updateInfo(); return false; }
+    let at = -1;
+    if (backwards) { for (let i = matches.length - 1; i >= 0; i--) if (matches[i].s < text.selectionStart) { at = i; break; } }
+    else at = matches.findIndex((m) => m.s >= text.selectionEnd);
+    const wrapped = at < 0;
+    if (wrapped) at = backwards ? matches.length - 1 : 0;
+    select(at);
+    updateInfo(wrapped);
     return true;
   }
   function writeValue(value, from, to) {
@@ -1605,26 +1841,31 @@ applyFilesLayout();
     const needle = needleInput.value;
     if (!needle) return;
     const selected = text.value.slice(text.selectionStart, text.selectionEnd);
-    if (fold(selected) === fold(needle)) {
+    const same = matchCase() ? selected === needle : selected.toLowerCase() === needle.toLowerCase();
+    if (same) {
       writeValue(replaceInput.value, text.selectionStart, text.selectionEnd);
-      needleInput.focus();
+      dirty = true;
     }
     step(false);
+    needleInput.focus();
   }
   function replaceAll() {
     const needle = needleInput.value;
     if (!needle) return;
-    const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), matchCase() ? "g" : "gi");
     let count = 0;
-    const next = text.value.replace(pattern, () => { count++; return replaceInput.value; });
-    if (!count) { setInfo("Not found"); return; }
+    const next = text.value.replace(pattern(needle), () => { count++; return replaceInput.value; });
+    if (!count) { setInfo("No matches", "none"); return; }
     writeValue(next, 0, text.value.length);
     text.setSelectionRange(0, 0);
     text.scrollTop = 0;
     editorCursor();
     needleInput.focus();
+    dirty = true;
+    refresh();
+    holdInfo = true;
     setInfo(`${count} replaced`);
   }
+
   $("#findNext").addEventListener("click", () => step(false));
   $("#findPrev").addEventListener("click", () => step(true));
   $("#replaceOne").addEventListener("click", replaceOne);
@@ -1636,14 +1877,80 @@ applyFilesLayout();
       else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeBar(); }
     });
   }
-  $("#findCase").addEventListener("change", () => setInfo(""));
+  // Typing in the search box colours the matches and selects the first one at or after the cursor.
+  needleInput.addEventListener("input", () => {
+    holdInfo = false; dirty = true;
+    refresh();
+    if (matches.length) {
+      const first = matches.findIndex((m) => m.s >= text.selectionStart);
+      select(first < 0 ? 0 : first);
+      updateInfo(first < 0);
+    }
+  });
+  $("#findCase").addEventListener("change", () => { holdInfo = false; dirty = true; refresh(); });
+  // Edits move the text under the colours: hide them at once and redo them a moment later.
+  text.addEventListener("input", () => {
+    if (bar.hidden) return;
+    dirty = true;
+    layer.style.visibility = "hidden";
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 150);
+  });
+  text.addEventListener("scroll", syncScroll);
+  if (window.ResizeObserver) new ResizeObserver(() => geometry()).observe(text);
+  $("#editorWrap").addEventListener("change", () => geometry());
   $("#editorDialog").addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f") { event.preventDefault(); openBar(); }
-    else if (event.key === "F3") { event.preventDefault(); step(event.shiftKey); }
+    else if (event.key === "F3") { event.preventDefault(); if (bar.hidden) openBar(); else step(event.shiftKey); }
   });
-  $("#editorDialog").addEventListener("close", () => { bar.hidden = true; setInfo(""); });
+  $("#editorDialog").addEventListener("close", () => { bar.hidden = true; holdInfo = false; setInfo(""); clearLayer(); matches = []; current = -1; });
 })();
 
+
+(function editorGoToLine() {
+  const bar = $("#editorGoto"), text = $("#editorText"), input = $("#gotoLine"), info = $("#gotoInfo");
+  const total = () => { let n = 1; const v = text.value; for (let at = v.indexOf("\n"); at >= 0; at = v.indexOf("\n", at + 1)) n++; return n; };
+  function open() {
+    const count = total();
+    bar.hidden = false;
+    info.textContent = `1 – ${count.toLocaleString()}`;
+    input.removeAttribute("aria-invalid");
+    input.value = "";
+    input.placeholder = String(text.value.slice(0, text.selectionStart).split("\n").length);
+    input.focus();
+  }
+  function close(refocus = true) { if (bar.hidden) return; bar.hidden = true; if (refocus) text.focus(); }
+  function go() {
+    const count = total(), wanted = Number.parseInt(input.value.trim() || input.placeholder, 10);
+    if (!Number.isFinite(wanted) || wanted < 1) { input.setAttribute("aria-invalid", "true"); info.textContent = `1 – ${count.toLocaleString()}`; return; }
+    const target = Math.min(wanted, count), value = text.value;
+    let start = 0;
+    for (let n = 1; n < target; n++) start = value.indexOf("\n", start) + 1;
+    let end = value.indexOf("\n", start); if (end < 0) end = value.length;
+    close(false);
+    text.focus();
+    text.setSelectionRange(start, end);
+    // Bring the line into the middle of the view (textarea scrolls only as far as needed otherwise).
+    const style = getComputedStyle(text), lineHeight = parseFloat(style.lineHeight) || 20;
+    const before = text.value.slice(0, start).split("\n");
+    const rows = text.getAttribute("wrap") === "soft" ? Math.round(text.scrollHeight / lineHeight) * (start / Math.max(1, value.length)) : before.length - 1;
+    text.scrollTop = Math.max(0, rows * lineHeight - text.clientHeight / 2);
+    if (wanted > count) toast(`The file has only ${count.toLocaleString()} lines`);
+    editorCursor();
+  }
+  input.addEventListener("input", () => { input.value = input.value.replace(/\D/g, ""); input.removeAttribute("aria-invalid"); });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); go(); }
+    else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+  });
+  $("#gotoGo").addEventListener("click", go);
+  $("#gotoClose").addEventListener("click", () => close());
+  $("#editorCursor").addEventListener("click", () => { if (bar.hidden) open(); else close(); });
+  $("#editorDialog").addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "g") { event.preventDefault(); open(); }
+  });
+  $("#editorDialog").addEventListener("close", () => { bar.hidden = true; });
+})();
 
 function updateHistoryButtons(pane) {
   if (!pane.backBtn) return;
@@ -1729,7 +2036,133 @@ document.addEventListener("keydown", (event) => {
   $(`tr[data-index="${index}"]`, pane.rows)?.scrollIntoView({ block: "nearest" });
 });
 
-const preview = { pane: null, index: -1, seq: 0, sessionID: "", sessionKey: "" };
+const preview = { pane: null, index: -1, seq: 0, sessionID: "", sessionKey: "", mode: "text", binary: false, meta: null, saving: false };
+let previewHexView = null;
+function previewButtons() {
+  const hex = preview.mode === "hex";
+  $("#previewText").hidden = hex;
+  $("#previewHexWrap").hidden = !hex;
+  const toggle = $("#previewHex");
+  $("#previewDialog").classList.toggle("hex-mode", hex);
+  toggle.lastChild.textContent = hex ? "Text view" : "Hex editor";
+  toggle.title = hex ? (preview.binary ? "This file is not text" : "Show the file as text") : "Edit the raw bytes of this file";
+  toggle.disabled = hex && preview.binary;
+  $("#previewEdit").disabled = preview.binary;
+}
+const hexDirty = () => Boolean(previewHexView?.dirty());
+function hexStatus() {
+  const view = previewHexView, meta = preview.meta;
+  if (!view) return;
+  const parts = [];
+  if (meta?.truncated) parts.push("Partial file · read only");
+  const at = view.cursor;
+  if (at < view.bytes.length) parts.push(`offset 0x${at.toString(16)} = 0x${view.bytes[at].toString(16).padStart(2, "0")} (${view.bytes[at]})`);
+  else parts.push(`offset 0x${at.toString(16)} (end)`);
+  if (view.editable) {
+    if (view.structural > 0 || view.sizeChange) parts.push(`size ${view.sizeChange > 0 ? "+" : ""}${view.sizeChange} bytes`);
+    if (view.changedCount) parts.push(`${view.changedCount} byte${view.changedCount === 1 ? "" : "s"} changed`);
+  }
+  $("#previewHexInfo").textContent = parts.join(" · ");
+  const range = view.getSelectionRange();
+  $("#previewHexSelection").textContent = range
+    ? `${range.length} bytes · 0x${range.start.toString(16)}–0x${range.end.toString(16)}`
+    : "";
+  $("#previewHexSave").disabled = !view.editable || !view.dirty() || preview.saving;
+  $("#previewHexRevert").disabled = !view.editable || !view.dirty() || preview.saving;
+}
+function setHexSearchStatus(message, error = false) {
+  const status = $("#previewHexSearchStatus");
+  status.textContent = message;
+  if (error) status.setAttribute("data-error", "true"); else status.removeAttribute("data-error");
+}
+function searchHex(direction = 1) {
+  const view = previewHexView;
+  if (!view) return;
+  const parsed = HexView.parseSearchPattern($("#previewHexSearch").value, $("#previewHexSearchMode").value);
+  if (!parsed.bytes) { setHexSearchStatus(parsed.error, true); return; }
+  const found = view.find(parsed.bytes, direction);
+  if (!found) { setHexSearchStatus("No match found"); return; }
+  const location = `0x${found.index.toString(16)}`;
+  setHexSearchStatus(`Found at ${location}${found.wrapped ? " · wrapped" : ""}`);
+  $("#previewHexBox").focus({ preventScroll: true });
+}
+// Opens the raw bytes of the file in the hex editor. Nothing is changed on the receiver until Save.
+async function showHexPreview(pane, entry, sessionID, sessionKey, seq, binary) {
+  const info = $("#previewHexInfo");
+  preview.mode = "hex"; preview.binary = binary; preview.meta = null;
+  $("#previewNote").hidden = true;
+  previewButtons();
+  info.textContent = "Loading…";
+  if (!previewHexView) { previewHexView = new HexView($("#previewHexBox")); previewHexView.onChange = hexStatus; }
+  previewHexView.searchInput = $("#previewHexSearch");
+  $("#previewHexSearch").value = "";
+  $("#previewHexSearchStatus").textContent = "";
+  $("#previewHexSearchStatus").removeAttribute("data-error");
+  previewHexView.set(new Uint8Array(0), { editable: false });
+  try {
+    const url = pane.kind === "local" ? "/api/v1/files/local/bytes" : sessionURL(sessionID, "bytes");
+    const response = await fetchChecked(`${url}?path=${encodeURIComponent(entry.path)}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (seq !== preview.seq) return;
+    if (pane.kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) return;
+    const header = (name) => response.headers.get(name) || "";
+    preview.meta = {
+      size: Number(header("X-File-Size")) || bytes.length, truncated: header("X-File-Truncated") === "true",
+      hash: header("X-File-Hash"), modified: header("X-File-Modified"), path: entry.path, kind: pane.kind, sessionID, sessionKey,
+    };
+    // A file that was only read in part can be looked at but never saved: the rest would be lost.
+    previewHexView.set(bytes, { editable: !preview.meta.truncated });
+    hexStatus();
+    previewHexView.host.focus({ preventScroll: true });
+  } catch (error) {
+    if (seq !== preview.seq) return;
+    if (pane.kind === "remote" && sessionLost(error)) { $("#previewDialog").close(); handleSessionLost(sessionID); return; }
+    info.textContent = error.message;
+  }
+}
+async function saveHexEdits(force = false) {
+  const view = previewHexView, meta = preview.meta;
+  if (!view || !meta || !view.editable || !view.dirty() || preview.saving) return;
+  if (meta.kind === "remote" && !isFileSessionCurrent(meta.sessionID, meta.sessionKey)) { toast("The receiver connection changed. Reopen the file.", "error"); return; }
+  if (!force) {
+    const summary = [view.changedCount ? `${view.changedCount} byte${view.changedCount === 1 ? "" : "s"} changed` : "", view.sizeChange ? `size ${view.sizeChange > 0 ? "+" : ""}${view.sizeChange} bytes` : ""].filter(Boolean).join(", ");
+    const confirmed = await ask({
+      title: "Save byte changes", input: false, ok: "Save", danger: true,
+      message: `${meta.path}\n${summary || "bytes changed"}\n\nThe file is replaced with these bytes. A copy of the file as it is now is saved on this computer first, so it can be put back.`,
+    });
+    if (!confirmed) return;
+  }
+  preview.saving = true; hexStatus();
+  try {
+    const query = `path=${encodeURIComponent(meta.path)}&size=${meta.size}&modified=${encodeURIComponent(meta.modified)}&hash=${encodeURIComponent(meta.hash)}${force ? "&force=1" : ""}`;
+    const url = meta.kind === "local" ? "/api/v1/files/local/bytes" : sessionURL(meta.sessionID, "bytes");
+    const bytes = view.bytes;
+    const response = await fetchChecked(`${url}?${query}`, { method: "PUT", body: bytes, headers: { "Content-Type": "application/octet-stream" } });
+    const result = await response.json();
+    preview.meta = { ...meta, size: result.file.size, modified: result.file.modified_at || "", hash: result.file.hash };
+    view.rebase();
+    refreshPane(meta.kind);
+    toast(result.original_kept ? `Saved. The original was kept at ${result.original_kept}` : "Saved.");
+  } catch (error) {
+    if (error?.code === "conflict") {
+      preview.saving = false;
+      const overwrite = await ask({ title: "The file changed", input: false, ok: "Overwrite", danger: true, message: "This file was changed on the receiver after you opened it. Overwrite it with your changes anyway? The newer version is saved on this computer first." });
+      if (overwrite) { await saveHexEdits(true); return; }
+    } else if (meta.kind === "remote" && sessionLost(error)) handleSessionLost(meta.sessionID);
+    else toast(error.message, "error");
+  }
+  preview.saving = false;
+  hexStatus();
+}
+// Closing or leaving the window with unsaved byte changes asks first.
+async function closePreview() {
+  if (hexDirty()) {
+    const discard = await ask({ title: "Discard byte changes?", input: false, ok: "Discard", danger: true, message: "The changes you made to this file's bytes have not been saved." });
+    if (!discard) return false;
+  }
+  $("#previewDialog").close();
+  return true;
+}
 async function showPreview(pane, index) {
   const entry = pane.visible[index];
   if (!entry || entry.is_dir) return false;
@@ -1738,6 +2171,7 @@ async function showPreview(pane, index) {
   if (pane.kind === "remote" && !requireSession()) return false;
   cancelPendingRename(pane);
   const seq = ++preview.seq;
+  preview.mode = "text"; preview.binary = false; previewButtons();
   const dialog = $("#previewDialog");
   $("#previewTitle").textContent = entry.name;
   $("#previewPath").textContent = entry.path;
@@ -1763,9 +2197,9 @@ async function showPreview(pane, index) {
   } catch (error) {
     if (seq !== preview.seq) return true;
     if (pane.kind === "remote" && sessionLost(error)) { dialog.close(); handleSessionLost(sessionID); return true; }
-    body.textContent = error.code === "not_text" ? "This file is not text, so it cannot be previewed here."
-      : error.code === "too_large" ? "This file is too large to preview here. Download it instead."
-      : error.message;
+    // A file that is not text, or is too big for the text view, is shown as bytes instead.
+    if (error.code === "not_text" || error.code === "too_large") { await showHexPreview(pane, entry, sessionID, sessionKey, seq, error.code === "not_text"); return true; }
+    body.textContent = error.message;
   }
   return true;
 }
@@ -1787,18 +2221,50 @@ function cmdPreview() {
   };
   dialog.addEventListener("keydown", (event) => {
     const onButton = event.target.tagName === "BUTTON";
+    const typing = event.target.tagName === "INPUT";
+    const hex = preview.mode === "hex";
+    if (hex && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveHexEdits(); return; }
+    if (typing || hex) return; // in the hex editor every key belongs to the editor
     if (event.key === " " && !onButton) { event.preventDefault(); dialog.close(); }
-    else if ((event.key === "ArrowDown" || event.key === "ArrowRight") && !onButton) { event.preventDefault(); step(1); }
-    else if ((event.key === "ArrowUp" || event.key === "ArrowLeft") && !onButton) { event.preventDefault(); step(-1); }
+    else if ((event.key === "ArrowDown" || event.key === "ArrowRight") && !onButton && !hex) { event.preventDefault(); step(1); }
+    else if ((event.key === "ArrowUp" || event.key === "ArrowLeft") && !onButton && !hex) { event.preventDefault(); step(-1); }
   });
-  $("#previewClose").addEventListener("click", () => dialog.close());
-  $("#previewEdit").addEventListener("click", () => {
+  $("#previewClose").addEventListener("click", () => closePreview());
+  $("#previewHexSave").addEventListener("click", () => saveHexEdits());
+  $("#previewHexRevert").addEventListener("click", async () => {
+    if (!hexDirty()) return;
+    const ok = await ask({ title: "Revert all changes?", input: false, ok: "Revert", danger: true, message: "Every byte change you made since opening the file is discarded." });
+    if (ok) previewHexView.revert();
+  });
+  dialog.addEventListener("cancel", (event) => { if (hexDirty()) { event.preventDefault(); closePreview(); } });
+  $("#previewHex").addEventListener("click", () => {
     const pane = preview.pane, entry = pane?.visible[preview.index];
-    dialog.close();
+    if (!entry) return;
+    if (preview.mode === "hex") { if (hexDirty()) { closePreview(); return; } showPreview(pane, preview.index); return; }
+    showHexPreview(pane, entry, preview.sessionID, preview.sessionKey, ++preview.seq, false);
+  });
+  $("#previewHexFindNext").addEventListener("click", () => searchHex(1));
+  $("#previewHexFindPrev").addEventListener("click", () => searchHex(-1));
+  $("#previewHexSearchMode").addEventListener("change", (event) => {
+    $("#previewHexSearch").placeholder = event.target.value === "ascii" ? "Search ASCII text" : "DE AD BE EF";
+    setHexSearchStatus("");
+    previewHexView?.clearSearch();
+  });
+  $("#previewHexSearch").addEventListener("input", () => {
+    setHexSearchStatus("");
+    previewHexView?.clearSearch();
+  });
+  $("#previewHexSearch").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); searchHex(event.shiftKey ? -1 : 1); }
+    else if (event.key === "Escape") { event.target.value = ""; setHexSearchStatus(""); previewHexView?.clearSearch(); }
+  });
+  $("#previewEdit").addEventListener("click", async () => {
+    const pane = preview.pane, entry = pane?.visible[preview.index];
+    if (!(await closePreview())) return;
     if (entry) { setActivePane(pane.kind); openEditor(pane.kind, entry.path); }
   });
-  dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
-  dialog.addEventListener("close", () => { preview.seq++; $("#previewText").textContent = ""; preview.pane?.table.focus?.(); });
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) closePreview(); });
+  dialog.addEventListener("close", () => { preview.seq++; $("#previewText").textContent = ""; previewHexView?.set(new Uint8Array(0)); preview.pane?.table.focus?.(); });
 }
 
 const dirOf = (kind, path) => (kind === "local" ? LocalParentPath(path) : RemoteParentPath(path));

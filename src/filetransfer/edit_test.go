@@ -1,7 +1,9 @@
 package filetransfer
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -89,5 +91,45 @@ func TestSettleLineEndingUsesMostCommon(t *testing.T) {
 	back, _ := encodeText(text, le, enc)
 	if string(back) != "a\r\nb\r\nc\r\nd\r\ne\r\n" {
 		t.Errorf("saved %q", back)
+	}
+}
+
+func TestUTF16FilesOpenAndSaveBackTheSameWay(t *testing.T) {
+	// "<a>é</a>\r\n" saved by Windows Notepad as "Unicode" (UTF-16 LE with a byte order mark).
+	le := []byte{0xff, 0xfe, '<', 0, 'a', 0, '>', 0, 0xe9, 0, '<', 0, '/', 0, 'a', 0, '>', 0, '\r', 0, '\n', 0}
+	be := []byte{0xfe, 0xff, 0, '<', 0, 'a', 0, '>', 0, 0xe9, 0, '<', 0, '/', 0, 'a', 0, '>', 0, '\r', 0, '\n'}
+	for name, raw := range map[string][]byte{"le": le, "be": be} {
+		text, lineEnding, enc, err := decodeText(raw)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if text != "<a>é</a>\n" || lineEnding != LineEndingCRLF || (enc != EncodingUTF16LE && enc != EncodingUTF16BE) {
+			t.Fatalf("%s: %q %s %s", name, text, lineEnding, enc)
+		}
+		back, err := encodeText(text, lineEnding, enc)
+		if err != nil || !bytes.Equal(back, raw) {
+			t.Fatalf("%s: saving changed the file: %v % x", name, err, back)
+		}
+	}
+}
+
+func TestBinaryFilesSayWhyTheyCannotBeEdited(t *testing.T) {
+	cases := map[string][]byte{
+		"gzip":       {0x1f, 0x8b, 0x08, 0x00, 0x00},
+		"xz":         {0xfd, '7', 'z', 'X', 'Z', 0x00, 0x01},
+		"binary":     {'e', 'p', 'g', 0x00, 0x01, 0x02},
+		"odd utf-16": {0xff, 0xfe, '<', 0, 'a'},
+	}
+	for name, raw := range cases {
+		_, _, _, err := decodeText(raw)
+		if !errors.Is(err, ErrEditNotText) {
+			t.Fatalf("%s: err = %v", name, err)
+		}
+		if name == "gzip" && !strings.Contains(err.Error(), "gzip") {
+			t.Fatalf("the message should name the format: %v", err)
+		}
+		if name == "binary" && !strings.Contains(err.Error(), "binary") {
+			t.Fatalf("the message should say it is binary: %v", err)
+		}
 	}
 }

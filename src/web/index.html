@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-radius="sharp">
+<html lang="en" data-theme="light" data-radius="sharp">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#e8ecf1" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0c0f13" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ebebeb">
+  <script src="/js/theme-boot.js"></script>
   <title>DCC Lite</title>
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/app.css">
@@ -18,6 +18,7 @@
   <script src="/js/dccimport.js" defer></script>
   <script src="/js/core.js" defer></script>
   <script src="/js/devices.js" defer></script>
+  <script src="/js/hexview.js" defer></script>
   <script src="/js/files.js" defer></script>
   <script src="/js/editor-window.js" defer></script>
   <script src="/js/bouquets.js" defer></script>
@@ -51,6 +52,7 @@
 <body data-view="devices">
 <svg class="sprite" aria-hidden="true" focusable="false">
   <defs>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.7 5.1a10.7 10.7 0 0 1 11.2 6.6 1 1 0 0 1 0 .7 10.7 10.7 0 0 1-1.4 2.5"/><path d="M14.1 14.2a3 3 0 0 1-4.2-4.2"/><path d="M17.5 17.5a10.8 10.8 0 0 1-15.4-5.1 1 1 0 0 1 0-.7 10.8 10.8 0 0 1 4.4-5.1"/><path d="m2 2 20 20"/></symbol>
     <symbol id="i-devices" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
     <symbol id="i-files" viewBox="0 0 24 24"><path d="M6 14l1.5-2.9A2 2 0 0 1 9.2 10H20a2 2 0 0 1 1.9 2.5l-1.5 6a2 2 0 0 1-1.9 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H18a2 2 0 0 1 2 2v2"/></symbol>
     <symbol id="i-dish" viewBox="0 0 24 24"><path d="M4 10a7.31 7.31 0 0 0 10 10Z"/><path d="m9 15 3-3"/><path d="M17 13a6 6 0 0 0-6-6"/><path d="M21 13A10 10 0 0 0 11 3"/></symbol>
@@ -80,17 +82,23 @@
     <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.1 8.1 20 20M8.1 15.9 20 4"/></symbol>
     <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
-    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+    <symbol id="i-fail" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><path d="M4 9h16v11H4zM8 9l9-5M8 14.5h.01M8 17.5h.01M13 14h4M13 17h4"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></symbol>
+    <symbol id="i-plug-off" viewBox="0 0 24 24"><path d="M9 3v3M15 3v5M6 8h12v3a6 6 0 0 1-.6 2.6M8 14.5A6 6 0 0 1 6 11V8M12 17v4M3 3l18 18"/></symbol>
     <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></symbol>
     <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M4 16l9-9 6 6-6 6H8zM9 21h11"/></symbol>
     <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7 14h10"/></symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
-    <symbol id="i-more" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></symbol>
     <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-panel-left-close" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M16 9l-3 3 3 3"/></symbol>
+    <symbol id="i-panel-right-close" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M8 9l3 3-3 3"/></symbol>
     <symbol id="i-collapse" viewBox="0 0 24 24"><path d="m10 14-6 6M4 15v5h5M14 10l6-6M20 9V4h-5"/></symbol>
     <symbol id="i-remote" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="7" r="1.2"/><path d="M10 12h4M10 15.5h4M10 19h4"/></symbol>
     <symbol id="i-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
@@ -205,6 +213,7 @@
         <button type="button" role="radio" data-mode="grid" aria-checked="true" title="Cards" aria-label="Cards"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg></button>
         <button type="button" role="radio" data-mode="list" aria-checked="false" title="Compact list" aria-label="Compact list"><svg class="ic" aria-hidden="true"><use href="#i-rows"/></svg></button>
       </div>
+      <span class="sites-summary muted small" id="sitesSummary" aria-live="polite"></span>
       <div class="view-actions">
         <button class="btn" id="devicesRefresh" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Check all</button>
         <button class="btn" id="remoteAccessBtn" type="button" title="Open DCC Lite from another computer or phone" hidden><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Remote access</button>
@@ -216,13 +225,13 @@
     <div id="deviceEmpty" class="empty" hidden>
       <svg class="ic xl"><use href="#i-devices"/></svg>
       <h2>Add your first device</h2>
-      <p>Default login: <code>root</code> / <code>dreambox</code>.</p>
+
       <div class="empty-actions">
         <button class="btn primary" id="deviceAddEmpty" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Add device</button>
         <button class="btn" id="deviceScanEmpty" type="button" title="Search the local network for receivers"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Find devices</button>
       </div>
       <div class="empty-nets" id="deviceEmptyNets" hidden>
-        <p class="small">Your networks. Click one to scan it.</p>
+
         <div class="empty-ranges" id="deviceEmptyRanges" data-no-i18n></div>
       </div>
     </div>
@@ -329,7 +338,7 @@
       <button class="btn sm" data-cmd="mkdir" data-fkey="F7" type="button"><svg class="ic" aria-hidden="true"><use href="#i-newfolder"/></svg><kbd>F7</kbd><span>New folder</span></button>
       <button class="btn sm danger" data-cmd="delete" data-fkey="F8" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><kbd>F8</kbd><span>Delete</span></button>
       <button class="btn sm" data-cmd="chmod" data-fkey="F9" type="button"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><kbd>F9</kbd><span>Permissions</span></button>
-      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span class="sel-label">Select all</span></button>
+      <button class="btn sm" data-cmd="selectall" type="button"><svg class="ic" aria-hidden="true"><use href="#i-select"/></svg><span class="sel-label">Select all</span></button>
       <button class="btn sm primary only-mobile" id="btnTransferActive" data-cmd="transfer" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span id="transferActiveLabel">Download</span></button>
     </div>
 
@@ -364,14 +373,14 @@
     <div class="lists-pane" id="listsEdit">
       <div class="bq-source" role="group" aria-label="Settings folder on the receiver">
         <label class="field-inline">Settings folder <input id="bqDir" value="/etc/enigma2" spellcheck="false" autocomplete="off"></label>
-        <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Load</button>
+        <button class="btn sm" id="bqLoad" type="button" title="Read the channel lists from this folder again"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Load</button>
         <button class="btn sm primary" id="listsConnect" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Connect</button>
       </div>
       <div class="bq-body">
         <aside class="bq-side">
           <div class="seg" id="bqKind" role="radiogroup" aria-label="List type">
-            <button type="button" role="radio" data-kind="tv" aria-checked="true">TV</button>
-            <button type="button" role="radio" data-kind="radio" aria-checked="false">Radio</button>
+            <button type="button" role="radio" data-kind="tv" aria-checked="true" title="TV" aria-label="TV"><svg class="ic" aria-hidden="true"><use href="#i-tv"/></svg></button>
+            <button type="button" role="radio" data-kind="radio" aria-checked="false" title="Radio" aria-label="Radio"><svg class="ic" aria-hidden="true"><use href="#i-radio"/></svg></button>
           </div>
           <input id="bqListFilter" type="search" aria-label="Find a bouquet" placeholder="Find a bouquet" autocomplete="off">
           <ul class="bq-list" id="bqBouquets" role="listbox" aria-label="Bouquets"></ul>
@@ -381,7 +390,7 @@
             <button class="btn sm sq" id="bqListDown" type="button" title="Move bouquet down in the list" aria-label="Move bouquet down"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
             <button class="btn sm sq" id="bqListMore" type="button" title="Duplicate, remove or delete this bouquet" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
           </div>
-          <p class="bq-hint">Drag to copy. <kbd>Shift</kbd> to move.</p>
+          <p class="bq-hint" data-help data-help-after="#bqListMore">Drag to copy. <kbd>Shift</kbd> to move.</p>
         </aside>
         <section class="bq-main">
           <div class="bq-head">
@@ -454,7 +463,7 @@
         <section class="tools-sec bk-card" aria-labelledby="rpTitle">
           <header class="bk-head">
             <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg></span>
-            <div><h3 id="rpTitle">Restore points</h3><p class="muted small">Saved automatically before each change.</p></div>
+            <div><h3 id="rpTitle">Restore points</h3><p class="muted small" data-help>Saved automatically before each change.</p></div>
           </header>
           <ul class="rp-list" id="rpList" aria-live="polite"></ul>
           <p class="muted small" id="rpEmpty" hidden>No restore points yet.</p>
@@ -462,7 +471,7 @@
         <section class="tools-sec bk-card" aria-labelledby="flashTitle">
           <header class="bk-head">
             <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg></span>
-            <div><h3 id="flashTitle">Flash image backup</h3><p class="muted small">Saves a flash partition to this computer. Read-only: nothing is written to the receiver, and restoring a flash image is not offered here.</p></div>
+            <div><h3 id="flashTitle">Flash image backup</h3><p class="muted small" data-help>Saves a flash partition to this computer. Read-only: nothing is written to the receiver, and restoring a flash image is not offered here.</p></div>
           </header>
           <ul class="rp-list" id="flashList" aria-live="polite"></ul>
           <p class="small" id="flashResult" role="status" hidden></p>
@@ -471,13 +480,13 @@
         <section class="tools-sec bk-card" aria-labelledby="eplTitle">
           <header class="bk-head">
             <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-video"/></svg></span>
-            <div><h3 id="eplTitle">Recordings list (recordings.epl)</h3><p class="muted small">For Enigma1 receivers. Finds recordings that are on the disk but missing from the list, and adds them. The old list is kept as recordings.bak.</p></div>
+            <div><h3 id="eplTitle">Recordings list (recordings.epl)</h3><p class="muted small" data-help>For Enigma1 receivers. Finds recordings that are on the disk but missing from the list, and adds them. The old list is kept as recordings.bak.</p></div>
           </header>
           <label class="check"><input type="checkbox" id="eplPrune"> Also remove entries whose file is gone</label>
           <p class="small" id="eplResult" role="status" hidden></p>
           <div class="bk-foot">
             <button class="btn" id="eplCheck" type="button"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Check</button>
-            <button class="btn primary" id="eplRebuild" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Rebuild list</button>
+            <button class="btn primary" id="eplRebuild" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Rebuild list</button>
           </div>
         </section>
         <div class="tools-progress" id="toolsProgress" hidden>
@@ -501,6 +510,7 @@
       <label class="field-inline" hidden>Port <input id="terminalPort" type="number" min="1" max="65535" value="23" inputmode="numeric"></label>
       <button class="btn primary" id="terminalConnect" type="button" title="Connect" aria-label="Connect"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg><span class="lbl">Connect</span></button>
       <button class="btn" id="terminalDisconnect" type="button" title="Disconnect" aria-label="Disconnect" hidden><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="lbl">Disconnect</span></button>
+      <span class="term-status" role="status" aria-live="polite"><span class="dot" id="terminalStatus" data-state="unknown" aria-hidden="true"></span><span class="term-status-text ellipsis" id="terminalStatusText"></span></span>
       <span class="spacer"></span>
       <button class="btn" id="terminalFiles" type="button" title="Open this device in Files"><svg class="ic" aria-hidden="true"><use href="#i-files"/></svg><span>Files</span></button>
     </div>
@@ -552,7 +562,7 @@
               <input id="systemCommandFilter" class="filter-input" type="search" placeholder="Find a system command" aria-label="Find a system command" autocomplete="off" spellcheck="false">
             </div>
             <div class="command-dock-list" id="systemCommandList" role="list"></div>
-            <p class="command-dock-hint">Select a command to type it into the terminal. Press Enter to execute.</p>
+            <p class="command-dock-hint" data-help data-help-after="#systemCommandFilter">Select a command to type it into the terminal. Press Enter to execute.</p>
           </section>
 
           <section class="command-dock-pane" id="commandPaneHistory" role="tabpanel" aria-label="Command history" hidden>
@@ -581,7 +591,7 @@
               <button class="btn sm primary" id="commandAdd" type="button" title="Add a script"><svg class="ic"><use href="#i-plus"/></svg><span>Add</span></button>
             </div>
             <div class="command-library-list command-dock-list" id="commandList" role="list"></div>
-            <p class="command-dock-hint">Select a script to type it into the terminal. It will not run until you press Enter.</p>
+            <p class="command-dock-hint" data-help data-help-after="#commandReload">Select a script to type it into the terminal. It will not run until you press Enter.</p>
           </section>
         </aside>
       </div>
@@ -596,35 +606,28 @@
     </div>
   </section>
   <section class="view" id="view-logs" aria-label="Logs and faults" hidden>
-    <div class="tools-top">
-      <div class="tools-actions"><span class="logs-live" id="logsLive" data-state="on">Live</span></div>
-    </div>
     <div class="logs-tabs" role="tablist" aria-label="Logs and faults">
       <button type="button" class="logs-tab" role="tab" data-logtab="log" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Log</button>
       <button type="button" class="logs-tab" role="tab" data-logtab="faults" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bug"/></svg>Faults <span class="badge warn" id="faultCount"></span></button>
+      <span class="logs-live" id="logsLive" data-state="on">Live</span>
     </div>
     <div class="logs-pane" id="logsPaneLog">
       <div class="screen-tools logs-tools">
-        <label class="field-inline">Show
-          <select id="logsLevel" title="Hide entries below this level">
-            <option value="trace">Trace +</option><option value="debug">Debug +</option><option value="info">Info +</option><option value="warn">Warnings +</option><option value="error">Errors only</option>
-          </select>
-        </label>
-        <label class="field-inline">Component <select id="logsComp"><option value="">All components</option></select></label>
+        <select id="logsComp" title="Component" aria-label="Component"><option value="">All components</option></select>
         <input class="filter-input logs-search" id="logsSearch" type="search" placeholder="Search log" aria-label="Search log" autocomplete="off">
+        <div class="lg-chips" id="logsChips" role="group" aria-label="Show entries from this level up"></div>
         <span class="spacer"></span>
-        <label class="check"><input type="checkbox" id="logsFollow" checked> Follow</label>
+        <button class="btn sm sq" id="logsFollow" type="button" aria-pressed="true" title="Follow the newest lines" aria-label="Follow the newest lines"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
         <button class="btn sm sq" id="logsPause" type="button" aria-label="Pause" title="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
         <button class="btn sm sq" id="logsCopy" type="button" title="Copy the visible lines" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
         <button class="btn sm sq" id="logsDownload" type="button" title="Masked text report" aria-label="Report"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></button>
         <button class="btn sm danger sq" id="logsClear" type="button" title="Clear this view (the log file is kept)" aria-label="Clear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
       </div>
-      <div class="lg-chips" id="logsChips" aria-label="Entries per level"></div>
       <div class="logs-list" id="logsList" role="log" tabindex="0"></div>
       <p class="muted logs-empty" id="logsEmpty" hidden>Nothing to show.</p>
       <div class="logs-foot">
-        <label class="field-inline">Detail level
-          <select id="logsCapture" title="Capture level">
+        <label class="field-ic" title="How much detail the program records"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>
+          <select id="logsCapture" aria-label="Detail level">
             <option value="trace">Trace</option><option value="debug">Debug</option><option value="info">Info (default)</option><option value="warn">Warnings</option><option value="error">Errors</option>
           </select>
         </label>
@@ -637,8 +640,8 @@
       <div class="screen-tools logs-tools">
         <span class="muted small" id="faultsSummary"></span>
         <span class="spacer"></span>
-        <label class="check"><input type="checkbox" id="faultsShowAcked"> Show acknowledged</label>
-        <button class="btn sm" id="faultsAckAll" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Acknowledge all</span></button>
+        <button class="btn sm sq" id="faultsShowAcked" type="button" aria-pressed="false" title="Show acknowledged" aria-label="Show acknowledged"><svg class="ic" aria-hidden="true"><use href="#i-eye-off"/></svg></button>
+        <button class="btn sm" id="faultsAckAll" type="button" title="Mark every open fault as seen"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span>Acknowledge all</span></button>
         <button class="btn sm danger sq" id="faultsClear" type="button" aria-label="Clear" title="Clear"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button>
       </div>
       <div class="faults-list" id="faultsList"></div>
@@ -658,7 +661,7 @@
         <select id="sigGood"><option value="50">50 %</option><option value="60">60 %</option><option value="70">70 %</option><option value="80">80 %</option></select>
       </label>
       <span class="spacer"></span>
-      <button class="btn sm" id="sigSound" type="button" aria-pressed="false" title="Beeps faster as the signal improves"><svg class="ic" aria-hidden="true"><use href="#i-signal"/></svg><span>Sound: off</span></button>
+      <button class="btn sm sq" id="sigSound" type="button" aria-pressed="false" title="Sound: off. Beeps faster as the signal improves" aria-label="Sound"><svg class="ic" aria-hidden="true"><use href="#i-volume-off"/></svg></button>
       <button class="btn sm sq" id="sigPeakReset" type="button" title="Forget the best and worst values" aria-label="Reset peak"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
       <button class="btn sm sq" id="sigPause" type="button" aria-label="Pause" title="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
       <button class="btn sm sq" id="sigFull" type="button" title="Full screen, for a phone or tablet next to the dish" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
@@ -701,21 +704,25 @@
     </div>
     <div class="screen-tools">
       <div class="screen-opts" id="screenOpts">
-        <label class="field-inline">Show
-          <select id="screenMode"><option value="all">Video + OSD</option><option value="video">Video only</option><option value="osd">OSD only</option></select>
+        <label class="field-ic" title="What to show"><svg class="ic" aria-hidden="true"><use href="#i-screen"/></svg>
+          <select id="screenMode" aria-label="What to show"><option value="all">Video + OSD</option><option value="video">Video only</option><option value="osd">OSD only</option></select>
         </label>
-        <label class="field-inline">Width (px)
-          <select id="screenWidth" title="Picture width (px)"><option value="480">480</option><option value="720">720</option><option value="1280">1280</option><option value="1920">1920</option><option value="3840">3840</option></select>
+        <label class="field-ic" title="Picture width (px)"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg>
+          <select id="screenWidth" aria-label="Picture width (px)"><option value="480">480 px</option><option value="720">720 px</option><option value="1280">1280 px</option><option value="1920">1920 px</option><option value="3840">3840 px</option></select>
         </label>
-        <span class="field-inline auto-refresh"><label class="check"><input type="checkbox" id="screenAuto"> Auto-refresh every</label>
-          <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"> <span>seconds</span></span>
+        <span class="field-ic auto-refresh" title="Take a new picture automatically every N seconds"><label class="check"><input type="checkbox" id="screenAuto" aria-label="Auto-refresh"> <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></label>
+          <input id="screenSpeed" type="number" min="1" max="3600" step="1" value="30" inputmode="numeric" disabled aria-label="Seconds between pictures"><span>s</span></span>
       </div>
       <span class="spacer"></span>
       <button class="btn sm" id="remoteShow" type="button" title="Show the remote" hidden><svg class="ic" aria-hidden="true"><use href="#i-remote"/></svg>Remote</button>
       <button class="btn sm" id="channelShow" type="button" title="Show the channel list" hidden><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg>Channels</button>
       <button class="btn sm primary" id="liveToggle" type="button" aria-pressed="false" title="Watch the current channel in this window (L)" hidden><svg class="ic" aria-hidden="true"><use href="#i-live"/></svg><span>Watch live</span></button>
+      <span class="vr"></span>
       <button class="btn sm" id="guideShow" type="button" title="Programme guide, timers and recordings"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Guide</button>
+      <span class="vr"></span>
+      <button class="btn sm sq" id="screenRefresh" type="button" title="Take a new picture now" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
       <button class="btn sm sq" id="screenPause" type="button" title="Pause or resume the picture" aria-label="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
+      <span class="vr"></span>
       <button class="btn sm sq" id="screenFull" type="button" title="Full screen (F)" aria-label="Full screen"><svg class="ic" aria-hidden="true"><use href="#i-expand"/></svg></button>
       <button class="btn sm sq" id="screenSave" type="button" title="Save a screenshot from the receiver, not the VLC video" aria-label="Save picture"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></button>
     </div>
@@ -727,11 +734,13 @@
           <button class="remote-top" id="remotePower" type="button" title="Power (standby)" aria-label="Power"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg></button>
           <button class="remote-top" id="remoteText" type="button" title="Type text on the receiver (search box, keyboard)" aria-label="Type text on the receiver"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg></button>
           <button class="remote-top" id="remoteMessage" type="button" title="Show a message on the TV" aria-label="Send a message to the TV"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></button>
-          <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic" aria-hidden="true"><use href="#i-collapse"/></svg></button>
+          <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic" aria-hidden="true"><use href="#i-panel-left-close"/></svg></button>
         </header>
         <div class="remote-keys" id="remoteKeys"></div>
-        <label class="remote-layout"><span class="sr-only">Remote layout</span><select id="remoteLayout" aria-label="Remote layout" title="Remote layout: Auto follows the receiver model"></select></label>
-        <label class="remote-layout"><span class="sr-only">Send keys through</span><select id="remoteMode" aria-label="Send keys through" title="How keys reach the receiver. Telnet acts like the real remote (works inside apps such as YouTube) but needs Telnet and takes about a second per key."><option value="web">Send via: Web (fast)</option><option value="telnet">Send via: Telnet (like real remote)</option></select></label>
+        <div class="remote-sel">
+          <label class="remote-layout"><span class="sr-only">Remote layout</span><select id="remoteLayout" aria-label="Remote layout" title="Remote layout: Auto follows the receiver model"></select></label>
+          <label class="remote-layout"><span class="sr-only">Send keys through</span><select id="remoteMode" aria-label="Send keys through" title="How keys reach the receiver. Telnet acts like the real remote (works inside apps such as YouTube) but needs Telnet and takes about a second per key."><option value="web">Web</option><option value="telnet">Telnet</option></select></label>
+        </div>
         <button class="btn sm remote-more" id="remoteMore" type="button" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg><span>More keys</span></button>
         <p class="form-error" id="remoteError" role="alert" hidden></p>
       </aside>
@@ -796,11 +805,11 @@
             <div class="live-tracks" id="liveTracks" role="radiogroup" aria-label="Audio track"></div>
           </article>
           <article class="live-card" data-card="cw">
-            <header><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><h3>Control words</h3><span class="spacer"></span><span class="muted small" id="liveCwAgo"></span>
+            <header><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg><h3>Control words</h3><span class="spacer"></span><span class="muted small" id="liveCwAgo"></span><span class="live-chip" id="liveCwState" hidden></span>
               <button class="icon-btn" id="liveCwCopy" type="button" title="Copy the control words" aria-label="Copy the control words"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button></header>
             <div id="liveCw"></div>
             <details class="live-more" id="liveCwMore" hidden>
-              <summary>Recent changes <span class="live-count" id="liveCwCount"></span></summary>
+              <summary>Earlier keys <span class="live-count" id="liveCwCount"></span></summary>
               <ol class="live-history" id="liveCwHistory"></ol>
             </details>
           </article>
@@ -811,7 +820,6 @@
         </section>
         <p class="form-error" id="screenError" role="alert" hidden></p>
         <div class="screen-foot">
-          <button class="btn sm sq" id="screenRefresh" type="button" title="Take a new picture now" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
           <p class="muted small" id="screenStats" role="status" aria-live="off"></p>
         </div>
       </div>
@@ -821,12 +829,12 @@
           <span class="spacer"></span>
           <button class="remote-top" id="channelWatch" type="button" title="Watch on this computer" aria-label="Watch on this computer"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
           <button class="remote-top" id="channelReload" type="button" title="Reload the channel list" aria-label="Reload the channel list"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
-          <button class="remote-top" id="channelHide" type="button" title="Hide the channel list" aria-label="Hide the channel list"><svg class="ic" aria-hidden="true"><use href="#i-collapse"/></svg></button>
+          <button class="remote-top" id="channelHide" type="button" title="Hide the channel list" aria-label="Hide the channel list"><svg class="ic" aria-hidden="true"><use href="#i-panel-right-close"/></svg></button>
         </header>
         <div class="ch-tools">
           <div class="seg" id="channelKind" role="radiogroup" aria-label="List type">
-            <button type="button" role="radio" data-kind="tv" aria-checked="true">TV</button>
-            <button type="button" role="radio" data-kind="radio" aria-checked="false">Radio</button>
+            <button type="button" role="radio" data-kind="tv" aria-checked="true" title="TV" aria-label="TV"><svg class="ic" aria-hidden="true"><use href="#i-tv"/></svg></button>
+            <button type="button" role="radio" data-kind="radio" aria-checked="false" title="Radio" aria-label="Radio"><svg class="ic" aria-hidden="true"><use href="#i-radio"/></svg></button>
           </div>
           <label class="sr-only" for="channelBouquet">Bouquet</label>
           <select id="channelBouquet"></select>
@@ -861,7 +869,7 @@
     <div class="pk-list" id="pkList"></div>
     <pre class="pk-log" id="pkLog" hidden></pre>
     <p class="form-error" id="pkError" role="alert" hidden></p>
-    <p class="muted small ipk-warn">Install only packages you trust.</p>
+    <p class="muted small ipk-warn" data-help>Install only packages you trust.</p>
   </section>
 
   <section class="view" id="view-ipk" aria-label="Install a plugin" hidden>
@@ -873,6 +881,7 @@
     </div>
     <span id="ipkDevice" class="sr-only"></span>
     <section class="ipk-card" aria-label="Install a plugin">
+      <p class="muted small" id="ipkKindNote" hidden>This receiver uses .deb packages (apt), so installing an .ipk will probably fail. Use the Packages page instead.</p>
       <div class="ipk-drop" id="ipkDrop" tabindex="0" role="button" aria-label="Choose an .ipk file or drop it here">
         <svg class="ic xl"><use href="#i-box"/></svg>
         <strong>Drop an .ipk file or click</strong>
@@ -898,7 +907,7 @@
         <span class="small" id="ipkProgressText"></span>
       </div>
       <p class="form-error" id="ipkError" role="alert" hidden></p>
-      <p class="muted small ipk-warn">Install only packages you trust.</p>
+      <p class="muted small ipk-warn" data-help>Install only packages you trust.</p>
     </section>
   </section>
 </main>
@@ -920,13 +929,19 @@
         <option value="dreamos">DreamOS</option>
       </select>
     </label>
+    <div class="grid2">
+      <label class="field"><span>Group</span><input id="devGroup" maxlength="40" list="devGroups" placeholder="Home" autocomplete="off"><datalist id="devGroups"></datalist></label>
+      <label class="field"><span>Note</span><input id="devNote" maxlength="200" placeholder="Optional. Shown on the card" autocomplete="off"></label>
+    </div>
+    <div class="field"><span id="devColorLabel">Colour</span><div class="color-pick" id="devColor" role="radiogroup" aria-labelledby="devColorLabel"></div></div>
     <details class="advanced" id="devPorts">
-      <summary>Custom ports</summary>
+      <summary>Advanced</summary>
       <div class="grid3">
         <label class="field"><span>FTP</span><input id="devFtp" type="number" min="1" max="65535" placeholder="21"></label>
         <label class="field"><span>Telnet</span><input id="devTelnet" type="number" min="1" max="65535" placeholder="23"></label>
         <label class="field"><span>Web (live screen)</span><input id="devWeb" type="number" min="1" max="65535" placeholder="80"></label>
       </div>
+      <label class="field adv-start"><span>Start folder</span><input id="devStartDir" maxlength="512" placeholder="/media/hdd" spellcheck="false" autocomplete="off"></label>
     </details>
     <p class="form-error" id="deviceError" role="alert" hidden></p>
     <div class="dialog-actions">
@@ -945,7 +960,7 @@
     <div class="dialog-actions">
       <span class="spacer"></span>
       <button class="btn" id="diagRun" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Check again</button>
-      <button class="btn primary" id="diagClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Close</button>
+      <button class="btn primary" id="diagClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
   </div>
 </dialog>
@@ -986,6 +1001,8 @@
           <dt><kbd>F8</kbd></dt><dd>Delete</dd>
           <dt><kbd>F9</kbd></dt><dd>Permissions</dd>
           <dt><kbd>Ctrl</kbd> + click</dt><dd>Add to the selection</dd>
+          <dt><kbd>Right button</kbd> + drag</dt><dd>Draw a rectangle to select multiple files or folders</dd>
+          <dt><kbd>Left button</kbd> + drag</dt><dd>Move selected items to the other panel or into a folder</dd>
         </dl>
       </section>
       <section>
@@ -1013,10 +1030,10 @@
         </dl>
       </section>
     </div>
-    <p class="muted small keys-note">Keys go to the shell.</p>
+    <p class="muted small keys-note" data-help>Keys go to the shell.</p>
     <div class="dialog-actions">
       <span class="spacer"></span>
-      <button class="btn primary" id="keysClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Close</button>
+      <button class="btn primary" id="keysClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
   </div>
 </dialog>
@@ -1028,12 +1045,12 @@
     <h2 id="commandEditTitle">Add command</h2>
     <label class="field"><span>Name</span><input id="commandEditName" maxlength="80" autocomplete="off" spellcheck="false" placeholder="e.g. Restart Enigma2"></label>
     <label class="field"><span>Terminal command</span><textarea id="commandEditText" rows="4" maxlength="1000" spellcheck="false" placeholder="Enter a single-line shell command"></textarea></label>
-    <p class="muted small">The command is typed into the active terminal. DCC Lite does not press Enter automatically.</p>
+    <p class="muted small" data-help>The command is typed into the active terminal. DCC Lite does not press Enter automatically.</p>
     <p class="form-error" id="commandEditError" role="alert" hidden></p>
     <div class="dialog-actions">
       <span class="spacer"></span>
       <button class="btn" id="commandEditCancel" type="button">Cancel</button>
-      <button class="btn primary" id="commandEditSave" type="button"><svg class="ic"><use href="#i-check"/></svg>Save command</button>
+      <button class="btn primary" id="commandEditSave" type="button">Save command</button>
     </div>
   </div>
 </dialog>
@@ -1042,34 +1059,33 @@
   <form class="dialog-card" id="termCfgForm" method="dialog">
     <h2 id="termCfgTitle">Terminal appearance</h2>
     <div id="termCfgPreview" class="term-preview" aria-hidden="true"><div>root@receiver:~# uptime</div><div>23:10:05 up 3 days, load average: 0.12</div><div>root@receiver:~# <span id="termCfgCaret">&nbsp;</span></div></div>
-    <div class="grid2">
+    <div class="grid4 tc-colors">
       <label class="field"><span>Background</span><input type="color" id="termCfgBg"></label>
-      <label class="field"><span>Text color</span><input type="color" id="termCfgFg"></label>
-      <label class="field"><span>Cursor color</span><input type="color" id="termCfgCursor"></label>
-      <label class="field"><span>Selection color</span><input type="color" id="termCfgSel"></label>
+      <label class="field"><span>Text</span><input type="color" id="termCfgFg"></label>
+      <label class="field"><span>Cursor</span><input type="color" id="termCfgCursor"></label>
+      <label class="field"><span>Selection</span><input type="color" id="termCfgSel"></label>
     </div>
-    <label class="field"><span>Font</span>
+    <label class="field" title="The font must be installed on this computer."><span>Font</span>
       <select id="termCfgFont">
         <option value="default">Default (Cascadia / Consolas)</option><option value="consolas">Consolas</option><option value="courier">Courier New</option><option value="lucida">Lucida Console</option><option value="dejavu">DejaVu Sans Mono</option><option value="fira">Fira Code</option><option value="jetbrains">JetBrains Mono</option><option value="system">System monospace</option>
       </select>
     </label>
-    <div class="grid3">
+    <div class="grid4">
       <label class="field"><span>Size</span><input type="number" id="termCfgSize" min="9" max="28" step="1" inputmode="numeric"></label>
       <label class="field"><span>Line height</span><input type="number" id="termCfgLine" min="1" max="2" step="0.05" inputmode="decimal"></label>
       <label class="field"><span>Weight</span><select id="termCfgWeight"><option value="400">Normal</option><option value="500">Medium</option><option value="700">Bold</option></select></label>
+      <label class="field"><span>Cursor</span><select id="termCfgShape"><option value="bar">Bar</option><option value="block">Block</option><option value="underline">Underline</option></select></label>
     </div>
-    <div class="grid2">
-      <label class="field"><span>Cursor shape</span><select id="termCfgShape"><option value="bar">Bar</option><option value="block">Block</option><option value="underline">Underline</option></select></label>
+    <div class="tc-last">
+      <label class="field"><span>Command list</span>
+        <select id="termCfgCmdStyle"><option value="panel">Side panel (System, History, Scripts)</option><option value="classic">Classic: three icons</option></select>
+      </label>
       <label class="check"><input type="checkbox" id="termCfgBlink"> Blinking cursor</label>
     </div>
-    <label class="field"><span>Command list style</span>
-      <select id="termCfgCmdStyle"><option value="panel">Side panel (System, History, Scripts)</option><option value="classic">Classic: three icons (System, Scripts, History)</option></select>
-    </label>
-    <p class="muted small">The font must be installed on this computer.</p>
     <div class="dialog-actions">
       <button class="btn" id="termCfgReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reset</button>
       <span class="spacer"></span>
-      <button class="btn primary" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Done</button>
+      <button class="btn primary" type="submit">Done</button>
     </div>
   </form>
 </dialog>
@@ -1077,7 +1093,7 @@
 <dialog id="pasteDialog" aria-labelledby="pasteTitle">
   <form class="dialog-card" id="pasteForm" method="dialog">
     <h2 id="pasteTitle">Paste</h2>
-    <p class="muted small">Press <b>Ctrl+V</b> below, then Send.</p>
+    <p class="muted small" data-help>Press <b>Ctrl+V</b> below, then Send.</p>
     <textarea id="pasteText" rows="6" spellcheck="false" autocomplete="off" aria-label="Text to paste"></textarea>
     <div class="dialog-actions"><span class="spacer"></span>
       <button class="btn" id="pasteCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
@@ -1106,7 +1122,7 @@
       <div class="ap-row"><span class="ap-l">Scrollbars</span><div class="seg ap-seg" data-ap="scrollbars" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="thin" aria-checked="false">Thin</button></div></div>
       <div class="ap-row"><span class="ap-l">Animations</span><div class="seg ap-seg" data-ap="motion" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">On</button><button type="button" role="radio" data-v="reduced" aria-checked="false">Off</button></div></div>
     </div>
-    <div class="dialog-actions"><button class="btn" id="apReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>Reset</button><span class="spacer"></span><button class="btn primary" id="apDone" type="button" autofocus><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Done</button></div>
+    <div class="dialog-actions"><button class="btn" id="apReset" type="button"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>Reset</button><span class="spacer"></span><button class="btn primary" id="apDone" type="button" autofocus>Done</button></div>
   </div>
 </dialog>
 
@@ -1119,7 +1135,7 @@
     <p id="updSummary" class="muted"></p>
     <pre id="updNotes" class="small upd-notes" hidden></pre>
     <label class="check ra-switch"><input id="updNotify" type="checkbox"> Tell me when a new version is available</label>
-    <p class="muted small" id="updHint">Nothing is installed unless you choose Install and restart. When this is off, DCC Lite does not look for updates by itself.</p>
+    <p class="muted small" id="updHint" data-help>Nothing is installed unless you choose Install and restart. When this is off, DCC Lite does not look for updates by itself.</p>
     <p class="form-error" id="updError" role="alert" hidden></p>
     <div class="dialog-actions">
       <button class="btn" id="updCheck" type="button">Check now</button>
@@ -1136,10 +1152,12 @@
       <p id="raState" class="ra-state" role="status"></p>
     </div>
     <label class="check ra-switch"><input id="raEnabled" type="checkbox"> Allow remote access</label>
-    <label class="field"><span>HTTPS listen address</span><input id="raListen" maxlength="100" placeholder="0.0.0.0:443" spellcheck="false"></label>
-    <label class="field"><span>Public hostname</span><input id="raHosts" maxlength="600" placeholder="myname.example.net" spellcheck="false"></label>
+    <div class="grid2">
+      <label class="field"><span>HTTPS listen address</span><input id="raListen" maxlength="100" placeholder="0.0.0.0:443" spellcheck="false"></label>
+      <label class="field"><span>Public hostname</span><input id="raHosts" maxlength="600" placeholder="myname.example.net" spellcheck="false"></label>
+    </div>
     <label class="field"><span>Email <small class="muted">(optional)</small></span><input id="raEmail" type="email" maxlength="320" placeholder="admin@example.net" autocomplete="email"></label>
-    <p class="muted small">Needs a public DNS name and ports 80 and 443 forwarded.</p>
+    <p class="muted small" data-help>Needs a public DNS name and ports 80 and 443 forwarded.</p>
     <div id="raInfo" class="ra-info" hidden>
       <b>Link</b>
       <ul id="raUrls"></ul>
@@ -1147,17 +1165,17 @@
       <details id="raCert" class="ra-cert">
         <summary>Fingerprint (SHA-256)</summary>
         <span id="raFingerprint" class="ra-fp"></span>
-        
+
       </details>
     </div>
     <section class="ra-pass" aria-label="Password">
-      <div class="input-row"><input id="raPass" type="text" maxlength="256" spellcheck="false" autocomplete="off" placeholder="Password (at least 10 characters)" aria-label="Remote access password"><button class="btn" id="raPassSet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Set</button><button class="btn" id="raPassGen" type="button" title="Generate a random password"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Generate</button><button class="btn icon-btn" id="raSecretCopy" type="button" title="Copy password" aria-label="Copy password"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button></div>
+      <div class="input-row"><input id="raPass" type="text" maxlength="256" spellcheck="false" autocomplete="off" placeholder="Password (at least 10 characters)" aria-label="Remote access password"><button class="btn icon-btn" id="raPassSet" type="button" title="Save this password" aria-label="Save this password"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg></button><button class="btn icon-btn" id="raPassGen" type="button" title="Generate a random password" aria-label="Generate a random password"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button><button class="btn icon-btn" id="raSecretCopy" type="button" title="Copy password" aria-label="Copy password"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button></div>
     </section>
     <p class="form-error" id="raError" role="alert" hidden></p>
     <div class="dialog-actions">
       <span class="spacer"></span>
       <button class="btn" id="raClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
-      <button class="btn primary" id="raSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apply</button>
+      <button class="btn primary" id="raSave" type="submit">Apply</button>
     </div>
   </form>
 </dialog>
@@ -1242,9 +1260,30 @@
     </header>
     <p class="form-error" id="previewNote" role="status" hidden></p>
     <pre id="previewText" class="preview-text" tabindex="0" aria-label="File content"></pre>
+    <div id="previewHexWrap" class="hex-wrap" hidden>
+      <div class="hex-bar">
+        <div class="hex-find" role="search" aria-label="Find bytes">
+          <select id="previewHexSearchMode" aria-label="Search format"><option value="hex">HEX</option><option value="ascii">ASCII</option></select>
+          <input id="previewHexSearch" type="text" spellcheck="false" autocomplete="off" placeholder="DE AD BE EF" aria-label="Search value">
+          <button class="btn sm sq" id="previewHexFindPrev" type="button" title="Previous match (Shift+Enter)" aria-label="Previous match"><svg class="ic" aria-hidden="true"><use href="#i-chev-up"/></svg></button>
+          <button class="btn sm sq" id="previewHexFindNext" type="button" title="Next match (Enter)" aria-label="Next match"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
+          <span id="previewHexSearchStatus" class="hex-search-status" role="status"></span>
+        </div>
+        <div class="hex-save-actions">
+          <button class="btn sm" id="previewHexRevert" type="button" title="Discard all changes" disabled>Revert</button>
+          <button class="btn sm primary" id="previewHexSave" type="button" title="Save byte changes" disabled><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
+        </div>
+      </div>
+      <div class="hex-meta">
+        <span class="muted small" id="previewHexInfo" role="status"></span>
+        <span class="hex-selection" id="previewHexSelection" role="status"></span>
+      </div>
+      <div id="previewHexBox" class="hex-box" tabindex="0" aria-label="File bytes in hexadecimal. Drag to select bytes; use the keyboard to edit when enabled."></div>
+    </div>
     <div class="dialog-actions">
       <span class="muted small preview-hint"><kbd>↑</kbd> <kbd>↓</kbd> <span>Next file</span> · <kbd>Space</kbd> <span>Close</span></span>
       <span class="spacer"></span>
+      <button class="btn" id="previewHex" type="button" title="Edit the raw bytes of this file"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg>Hex editor</button>
       <button class="btn" id="previewEdit" type="button"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>Edit as text</button>
       <button class="btn primary" id="previewClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
@@ -1282,13 +1321,20 @@
     </div>
     <div class="editor-find" id="editorFind" hidden>
       <input id="findText" type="text" placeholder="Find" aria-label="Find" spellcheck="false" autocomplete="off">
+      <button class="btn sm sq" id="findPrev" type="button" title="Previous match (Shift+Enter)" aria-label="Previous match"><svg class="ic" aria-hidden="true"><use href="#i-chev-up"/></svg></button>
+      <button class="btn sm sq" id="findNext" type="button" title="Next match (Enter)" aria-label="Next match"><svg class="ic" aria-hidden="true"><use href="#i-chev-down"/></svg></button>
+      <span id="findInfo" class="find-count small" role="status" aria-live="polite"></span>
       <input id="replaceText" type="text" placeholder="Replace with" aria-label="Replace with" spellcheck="false" autocomplete="off">
-      <button class="btn sm" id="findPrev" type="button" title="Previous match (Shift+Enter)">Prev</button>
-      <button class="btn sm" id="findNext" type="button" title="Next match (Enter)">Next</button>
       <button class="btn sm" id="replaceOne" type="button">Replace</button>
       <button class="btn sm" id="replaceAll" type="button">Replace all</button>
       <label class="check"><input type="checkbox" id="findCase"> Match case</label>
-      <span id="findInfo" class="muted small" role="status" aria-live="polite"></span>
+    </div>
+    <div class="editor-goto" id="editorGoto" hidden>
+      <label for="gotoLine">Go to line</label>
+      <input id="gotoLine" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="1" aria-describedby="gotoInfo">
+      <span id="gotoInfo" class="small muted" role="status" aria-live="polite"></span>
+      <button class="btn sm primary" id="gotoGo" type="button"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg>Go</button>
+      <button class="btn sm sq" id="gotoClose" type="button" title="Close (Esc)" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="editor-body" id="editorBody">
       <div class="editor-gutter" id="editorGutter" aria-hidden="true" data-no-i18n><pre class="editor-nums" id="editorNums">1</pre></div>
@@ -1296,10 +1342,10 @@
     </div>
     <div class="dialog-actions editor-foot">
       <span id="editorStatus" class="editor-status" role="status" aria-live="polite"></span>
-      <span id="editorCursor" class="editor-cursor"></span>
+      <button class="editor-cursor" id="editorCursor" type="button" title="Go to line (Ctrl+G)" aria-label="Go to line"></button>
       <button class="btn" id="editorClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
       <button class="btn" id="editorSave" type="button" title="Save (Ctrl+S)"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
-      <button class="btn primary" id="editorSaveExit" type="button" title="Save and close"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Save &amp; close</button>
+      <button class="btn primary" id="editorSaveExit" type="button" title="Save and close">Save &amp; close</button>
     </div>
   </div>
 </dialog>
@@ -1311,42 +1357,39 @@
       <span class="spacer"></span>
       <span class="badge" id="powerState"></span>
     </header>
-    <div class="power-body">
-      <div class="power-col" role="group" aria-labelledby="powerActionsTitle">
-        <h3 id="powerActionsTitle">Power</h3>
-        <div class="power-slots" id="powerActions"></div>
-      </div>
-      <div class="power-col" role="group" aria-labelledby="powerBootTitle">
-        <h3 id="powerBootTitle">MultiBoot slots</h3>
-        <div class="power-slots" id="powerSlots"></div>
-        <p class="power-note" id="powerSlotsNote"></p>
-      </div>
+    <div class="power-actions" id="powerActions"></div>
+    <div class="power-col" id="powerBootCol" role="group" aria-labelledby="powerBootTitle" hidden>
+      <h3 id="powerBootTitle">MultiBoot slots</h3>
+      <div class="power-slots" id="powerSlots"></div>
+      <p class="power-note" id="powerSlotsNote"></p>
     </div>
-    <div class="power-extra" role="group" aria-labelledby="powerExtraTitle">
-      <h3 id="powerExtraTitle">Sleep &amp; recording</h3>
+    <div class="power-extra" role="group" aria-label="Sleep timer and recording">
       <div class="pe-row">
-        <label class="field-inline" for="sleepMinutes"><span>Switch off in</span>
-          <select id="sleepMinutes">
+        <span class="pe-group" id="sleepGroup" title="Sleep timer: switch the receiver off after a while">
+          <span class="pe-ic" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg></span>
+          <select id="sleepMinutes" aria-label="Switch off in">
             <option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option>
             <option value="60" selected>1 h</option><option value="90">1 h 30</option><option value="120">2 h</option><option value="180">3 h</option>
-          </select></label>
-          <label class="field-inline" for="sleepAction"><span>then</span>
-          <select id="sleepAction"><option value="standby">Standby</option><option value="shutdown">Deep standby</option></select></label>
-        <button class="btn sm" id="sleepSet" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>Start</button>
-        <button class="btn sm" id="sleepOff" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+          </select>
+          <span class="pe-ic" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg></span>
+          <select id="sleepAction" aria-label="Then"><option value="standby">Standby</option><option value="shutdown">Deep standby</option></select>
+          <button class="btn sq" id="sleepSet" type="button" title="Start the sleep timer" aria-label="Start the sleep timer"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
+          <button class="btn sq" id="sleepOff" type="button" title="Cancel the sleep timer" aria-label="Cancel the sleep timer"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+        </span>
+        <span class="vr"></span>
+        <span class="pe-group">
+          <button class="btn sq" id="recNow" type="button" title="Record the programme that is on now, until it ends" aria-label="Record this programme"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg></button>
+          <button class="btn sq" id="recInfinite" type="button" title="Record until I stop it" aria-label="Record until I stop it"><svg class="ic" aria-hidden="true"><use href="#i-record"/></svg></button>
+        </span>
       </div>
       <p class="power-note" id="sleepState"></p>
-      <div class="pe-row">
-        <button class="btn sm" id="recNow" type="button" title="Record the programme that is on now, until it ends"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Record this programme</button>
-        <button class="btn sm" id="recInfinite" type="button"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Record until I stop it</button>
-      </div>
     </div>
     <p class="form-error" id="powerError" hidden></p>
     <div class="dialog-actions">
-      <button class="btn" id="powerReload" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Reload channel lists</button>
-      <button class="btn" id="powerKey" type="button"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg>Power key</button>
+      <button class="btn sq" id="powerReload" type="button" title="Reload channel lists on the receiver" aria-label="Reload channel lists"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      <button class="btn sq" id="powerKey" type="button" title="Send the Power key (like the remote)" aria-label="Power key"><svg class="ic" aria-hidden="true"><use href="#i-power"/></svg></button>
       <span class="spacer"></span>
-      <button class="btn primary" id="powerClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+      <button class="btn primary" id="powerClose" type="button" hidden><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
     </div>
   </div>
 </dialog>
@@ -1357,11 +1400,11 @@
       <div class="editor-title"><h2 id="guideTitle">Guide</h2><code id="guideSub" class="ellipsis"></code></div>
       <span class="spacer"></span>
       <div class="seg" id="guideTabs" role="tablist" aria-label="Guide sections">
-        <button type="button" role="tab" data-tab="epg" aria-selected="true"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>Programmes</button>
-        <button type="button" role="tab" data-tab="grid" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>Grid</button>
-        <button type="button" role="tab" data-tab="timers" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg>Timers</button>
-        <button type="button" role="tab" data-tab="auto" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Auto</button>
-        <button type="button" role="tab" data-tab="movies" aria-selected="false"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg>Recordings</button>
+        <button type="button" role="tab" data-tab="epg" aria-selected="true" title="Programmes" aria-label="Programmes"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg></button>
+        <button type="button" role="tab" data-tab="grid" aria-selected="false" title="Grid" aria-label="Grid"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg></button>
+        <button type="button" role="tab" data-tab="timers" aria-selected="false" title="Timers" aria-label="Timers"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg></button>
+        <button type="button" role="tab" data-tab="auto" aria-selected="false" title="Auto-record rules" aria-label="Auto-record rules"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></button>
+        <button type="button" role="tab" data-tab="movies" aria-selected="false" title="Recordings" aria-label="Recordings"><svg class="ic" aria-hidden="true"><use href="#i-rec"/></svg></button>
       </div>
       <button class="icon-btn" id="guideClose" type="button" title="Close" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
     </header>
@@ -1386,19 +1429,19 @@
       <span class="muted small" id="gridWhen"></span>
     </div>
     <div class="gd-tools" data-for="timers" hidden>
-      <button class="btn sm primary" id="guideTimerNew" type="button" title="Create a timer for any channel and time"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New timer</button>
-      <button class="btn sm sq" id="guideTimersRefresh" type="button" aria-label="Refresh" title="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
-      <button class="btn sm" id="guideCleanup" type="button" title="Remove the timers that are finished"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Clean up finished</button>
+      <button class="btn sq primary" id="guideTimerNew" type="button" title="New timer: for any channel and time" aria-label="New timer: for any channel and time"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button class="btn sq" id="guideTimersRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      <button class="btn sq" id="guideCleanup" type="button" title="Remove the timers that are finished" aria-label="Remove the timers that are finished"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
     </div>
     <div class="gd-tools" data-for="auto" hidden>
-      <button class="btn sm primary" id="autoNew" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>New rule</button>
-      <button class="btn sm" id="autoPreview" type="button"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
-      <button class="btn sm" id="autoRun" type="button" title="Search the guide now and create the timers"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Run now</button>
-      <button class="btn sm" id="erOpen" type="button"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>EPG refresh</button>
-      <button class="icon-btn" id="autoRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      <button class="btn sq primary" id="autoNew" type="button" title="New rule" aria-label="New rule"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button class="btn sq" id="autoPreview" type="button" title="Preview what the rules would record" aria-label="Preview what the rules would record"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button>
+      <button class="btn sq" id="autoRun" type="button" title="Search the guide now and create the timers" aria-label="Search the guide now and create the timers"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
+      <button class="btn sq" id="erOpen" type="button" title="EPG refresh: keep the guide up to date" aria-label="EPG refresh: keep the guide up to date"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg></button>
+      <button class="btn sq" id="autoRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="gd-tools" data-for="movies" hidden>
-      <button class="icon-btn" id="guideUp" type="button" title="Parent folder" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
+      <button class="btn sq" id="guideUp" type="button" title="Parent folder" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
       <code id="guideDir" class="gd-dir ellipsis"></code>
       <div class="filterbar">
         <svg class="ic sm"><use href="#i-search"/></svg>
@@ -1408,7 +1451,7 @@
       <select id="guideMovieTag" class="gd-narrow" hidden></select>
       <label class="sr-only" for="guideMovieSort">Sort by</label>
       <select id="guideMovieSort" class="gd-narrow"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="name">Name</option><option value="size">Largest first</option><option value="length">Longest first</option><option value="unseen">Not watched first</option></select>
-      <button class="icon-btn" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      <button class="btn sq" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="gd-body" id="guideList" data-tab="epg" tabindex="-1" autofocus aria-live="polite"></div>
     <p class="form-error" id="guideError" role="alert" hidden></p>
@@ -1421,8 +1464,10 @@
     <h2 id="timerDialogTitle">Edit timer</h2>
     <p class="muted small ellipsis" id="timerChannel"></p>
     <label class="field" id="tmChannelRow" hidden><span>Channel</span><select id="tmChannel"></select></label>
-    <label class="field"><span>Name</span><input id="tmName" required maxlength="200"></label>
-    <label class="field"><span>Description</span><input id="tmDesc" maxlength="300"></label>
+    <div class="grid2">
+      <label class="field"><span>Name</span><input id="tmName" required maxlength="200"></label>
+      <label class="field"><span>Description</span><input id="tmDesc" maxlength="300"></label>
+    </div>
     <div class="grid2">
       <label class="field"><span>Starts</span><input id="tmBegin" type="datetime-local" required></label>
       <label class="field"><span>Ends</span><input id="tmEnd" type="datetime-local" required></label>
@@ -1434,7 +1479,6 @@
         <select id="tmAfter"><option value="3">Automatic</option><option value="0">Do nothing</option><option value="1">Standby</option><option value="2">Deep standby</option></select></label>
     </div>
     <fieldset class="tm-days" id="tmDays"><legend>Repeat on</legend></fieldset>
-    <label class="check"><input id="tmOn" type="checkbox"> Timer is on</label>
     <details class="tm-adv" id="tmAdv">
       <summary>More options</summary>
       <label class="field"><span>Save recording in</span><input id="tmDir" list="tmDirList" placeholder="Receiver default" spellcheck="false" maxlength="400"><datalist id="tmDirList"></datalist></label>
@@ -1453,6 +1497,7 @@
     </details>
     <p class="form-error" id="timerError" role="alert" hidden></p>
     <div class="dialog-actions">
+      <label class="check"><input id="tmOn" type="checkbox"> Timer is on</label>
       <span class="spacer"></span>
       <button class="btn" id="timerCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
       <button class="btn primary" id="timerSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
@@ -1463,8 +1508,7 @@
 <dialog id="erDialog" aria-labelledby="erDialogTitle">
   <form method="dialog" id="erForm" class="dialog-card at-card" autocomplete="off">
     <h2 id="erDialogTitle">EPG refresh</h2>
-    <p class="muted small" id="erIntro">Keeps the programme guide fresh.</p>
-    <label class="check"><input id="erOn" type="checkbox"> EPG refresh is on</label>
+    <p class="muted small" id="erIntro" data-help>Keeps the programme guide fresh.</p>
     <div class="grid2">
       <label class="field"><span>Start after</span><input id="erBegin" type="time" required></label>
       <label class="field"><span>Stop at</span><input id="erEnd" type="time" required></label>
@@ -1493,12 +1537,13 @@
       <label class="check"><input id="erWake" type="checkbox"> Wake the receiver from deep standby for a refresh</label>
       <label class="check"><input id="erShutdown" type="checkbox"> Switch off again after the refresh</label>
       <label class="check"><input id="erInherit" type="checkbox"> Also refresh the channels used by AutoTimer rules</label>
-      <p class="muted small">Some receivers support only some methods.</p>
+
     </details>
     <p class="muted small" id="erLast"></p>
     <p class="form-error" id="erError" role="alert" hidden></p>
     <div class="dialog-actions">
-      <button class="btn" id="erNow" type="button" title="Start a refresh right now"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Refresh now</button>
+      <button class="btn sq" id="erNow" type="button" title="Start a refresh right now" aria-label="Refresh now"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+      <label class="check"><input id="erOn" type="checkbox"> EPG refresh is on</label>
       <span class="spacer"></span>
       <button class="btn" id="erCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
       <button class="btn primary" id="erSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
@@ -1561,12 +1606,12 @@
       <label class="field"><span>Also require in the description (one per line)</span><textarea id="atIncDesc" rows="2" spellcheck="false"></textarea></label>
       <label class="field"><span>Skip when the title contains (one per line)</span><textarea id="atExcTitle" rows="2" spellcheck="false"></textarea></label>
       <label class="field"><span>Skip when the description contains (one per line)</span><textarea id="atExcDesc" rows="2" spellcheck="false"></textarea></label>
-      <p class="muted small">A plain word works.</p>
+
     </details>
 
-    <label class="check"><input id="atOn" type="checkbox" checked> Rule is on</label>
     <p class="form-error" id="atError" role="alert" hidden></p>
     <div class="dialog-actions">
+      <label class="check"><input id="atOn" type="checkbox" checked> Rule is on</label>
       <span class="spacer"></span>
       <button class="btn" id="atCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
       <button class="btn primary" id="atSave" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
@@ -1595,26 +1640,32 @@
 <dialog id="chmodDialog" aria-labelledby="chmodTitle">
   <form method="dialog" id="chmodForm" class="dialog-card">
     <h2 id="chmodTitle">Permissions</h2>
-    <p id="chmodInfo" class="ask-message"></p>
-    <table class="chmod-grid" aria-label="Permission bits">
-      <thead><tr><th></th><th>Read</th><th>Write</th><th>Execute</th></tr></thead>
-      <tbody>
-        <tr><th>Owner</th><td><input type="checkbox" data-bit="256" aria-label="Owner read"></td><td><input type="checkbox" data-bit="128" aria-label="Owner write"></td><td><input type="checkbox" data-bit="64" aria-label="Owner execute"></td></tr>
-        <tr><th>Group</th><td><input type="checkbox" data-bit="32" aria-label="Group read"></td><td><input type="checkbox" data-bit="16" aria-label="Group write"></td><td><input type="checkbox" data-bit="8" aria-label="Group execute"></td></tr>
-        <tr><th>Others</th><td><input type="checkbox" data-bit="4" aria-label="Others read"></td><td><input type="checkbox" data-bit="2" aria-label="Others write"></td><td><input type="checkbox" data-bit="1" aria-label="Others execute"></td></tr>
-      </tbody>
-    </table>
-    <div class="chmod-presets" role="group" aria-label="Common modes">
-      <button class="btn sm" type="button" data-mode="644">644 file</button>
-      <button class="btn sm" type="button" data-mode="755">755 script / bin</button>
-      <button class="btn sm" type="button" data-mode="777">777 all</button>
+    <p id="chmodInfo" class="chmod-info"></p>
+    <div class="chmod-body">
+      <table class="chmod-grid" aria-label="Permission bits">
+        <thead><tr><th></th><th title="Read">R</th><th title="Write">W</th><th title="Execute / open folder">X</th></tr></thead>
+        <tbody>
+          <tr><th>Owner</th><td><input type="checkbox" data-bit="256" aria-label="Owner read"></td><td><input type="checkbox" data-bit="128" aria-label="Owner write"></td><td><input type="checkbox" data-bit="64" aria-label="Owner execute"></td></tr>
+          <tr><th>Group</th><td><input type="checkbox" data-bit="32" aria-label="Group read"></td><td><input type="checkbox" data-bit="16" aria-label="Group write"></td><td><input type="checkbox" data-bit="8" aria-label="Group execute"></td></tr>
+          <tr><th>Others</th><td><input type="checkbox" data-bit="4" aria-label="Others read"></td><td><input type="checkbox" data-bit="2" aria-label="Others write"></td><td><input type="checkbox" data-bit="1" aria-label="Others execute"></td></tr>
+        </tbody>
+      </table>
+      <div class="chmod-side">
+        <label class="field chmod-octal"><span>Mode</span><input id="chmodInput" spellcheck="false" autocomplete="off" inputmode="numeric" maxlength="4" aria-label="Octal mode"></label>
+        <code class="chmod-sym" id="chmodSym" aria-live="polite"></code>
+      </div>
     </div>
-    <label class="chmod-recursive" id="chmodRecursiveRow" hidden><input type="checkbox" id="chmodRecursive"><span>Apply to everything inside the selected folders</span></label>
-    <label class="field"><span>Octal mode</span><input id="chmodInput" spellcheck="false" autocomplete="off" inputmode="numeric" maxlength="4"></label>
+    <div class="chmod-presets" role="group" aria-label="Common modes">
+      <button class="chip-btn" type="button" data-mode="644" title="File: owner writes, everyone reads"><b>644</b><small>file</small></button>
+      <button class="chip-btn" type="button" data-mode="755" title="Script, program or folder: everyone runs, owner writes"><b>755</b><small>script · folder</small></button>
+      <button class="chip-btn" type="button" data-mode="600" title="Private: only the owner reads and writes"><b>600</b><small>private</small></button>
+      <button class="chip-btn" type="button" data-mode="777" title="Everyone can do everything"><b>777</b><small>open</small></button>
+    </div>
+    <label class="chmod-recursive" id="chmodRecursiveRow" hidden><input type="checkbox" id="chmodRecursive"><span>Include everything inside the folders</span></label>
     <p class="form-error" id="chmodError" role="alert" hidden></p>
     <div class="dialog-actions"><span class="spacer"></span>
       <button class="btn" id="chmodCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
-      <button class="btn primary" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>Apply</button>
+      <button class="btn primary" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Apply</button>
     </div>
   </form>
 </dialog>
@@ -1629,7 +1680,7 @@
       <button class="btn" id="askCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
       <button class="btn" id="askAlt" type="button" hidden></button>
       <button class="btn" id="askAlt2" type="button" hidden></button>
-      <button class="btn primary" id="askOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>OK</button>
+      <button class="btn primary" id="askOk" type="submit">OK</button>
     </div>
   </form>
 </dialog>

@@ -124,6 +124,16 @@ function icon(name, extra = "") {
   svg.append(use);
   return svg;
 }
+// One button for connect and disconnect: its icon and colour show the state, the tooltip says what a click does.
+function connState(button, state, tip) {
+  if (!button) return;
+  button.hidden = false;
+  button.dataset.conn = state;
+  button.querySelector("use")?.setAttribute("href", state === "off" ? "#i-plug-off" : state === "busy" ? "#i-refresh" : "#i-plug");
+  button.title = tip;
+  button.setAttribute("aria-label", tip);
+}
+
 function iconButton(name, title, onClick, extra = "") {
   return h("button", { class: `icon-btn ${extra}`.trim(), type: "button", title, "aria-label": title, onClick }, icon(name));
 }
@@ -231,8 +241,9 @@ const validName = (name) => name && name !== "." && name !== ".." && !/[\\/\0\r\
 
 function openDialog(dialog) { if (!dialog.open) dialog.showModal(); }
 
-function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", alt = "", alt2 = "", danger = false, validate = null }) {
+function ask({ title, message = "", label = "", value = "", input = true, ok = "OK", alt = "", alt2 = "", danger = false, validate = null, icon: iconName = "info" }) {
   const dialog = $("#askDialog");
+  dialog.querySelector(".dlg-head > .ic use")?.setAttribute("href", `#i-${iconName}`);
   $("#askTitle").textContent = title;
   $("#askMessage").textContent = message;
   $("#askField").hidden = !input;
@@ -240,7 +251,7 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
   const field = $("#askInput");
   field.value = value;
   const okButton = $("#askOk");
-  okButton.textContent = ok;
+  okButton.replaceChildren(...(iconName === "trash" ? [icon("trash")] : []), ok);
   okButton.classList.toggle("danger", danger);
   okButton.classList.toggle("primary", !danger);
   const altButton = $("#askAlt");
@@ -290,12 +301,36 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
   });
 }
 
+// A menu opened with keepFocus leaves the keyboard focus where it was (a text box with a selection), so
+// the selection stays coloured while the menu is open. These keys then move into the menu or close it.
+let menuKeys = null;
 function closeMenu() {
+  if (menuKeys) { document.removeEventListener("keydown", menuKeys, true); menuKeys = null; }
   const menu = $("#menu");
   if (!menu.hidden) { try { if (menu.matches(":popover-open")) menu.hidePopover(); } catch { } menu.hidden = true; menu.replaceChildren(); if (menu.parentElement !== document.body) document.body.append(menu); }
 }
-function openMenu(items, x, y, { search = "" } = {}) {
+
+// Every menu entry gets an icon: the one it names, or one picked from its wording.
+const MENU_ICONS = [
+  [/from the list|^remove$/i, "minus"], [/\bcut\b/i, "scissors"], [/\bcopy\b|duplicate/i, "copy"], [/paste/i, "paste"],
+  [/select all|invert/i, "select"], [/rename|edit|marker/i, "edit"], [/delete|remove|clear|erase/i, "trash"],
+  [/to top|first/i, "chev-up"], [/to bottom|last/i, "chev-down"], [/sort|reverse|order/i, "sort"], [/new folder/i, "newfolder"],
+  [/download|export|save/i, "download"], [/upload|import/i, "upload"], [/deep standby|shut|power|standby/i, "power"],
+  [/wake|wol/i, "sun"], [/reboot|restart|reload|refresh|retry|check|scan/i, "refresh"], [/permission|chmod|lock|password/i, "lock"],
+  [/terminal|shell|command/i, "terminal"], [/run|start|play|open|connect/i, "play"], [/stop|disconnect|close|cancel/i, "stop"],
+  [/undo/i, "undo"], [/redo/i, "redo"], [/bookmark|pin|favou?rite/i, "star"], [/stream|link|url/i, "link"], [/preview|view|show/i, "eye"],
+  [/hex|code|script/i, "code"], [/info|propert|detail/i, "info"], [/folder|place|path|home/i, "folder"], [/find|search|filter/i, "search"],
+  [/device|receiver|site/i, "devices"], [/log|fault|error/i, "bug"], [/move|swap/i, "swap"],
+];
+function menuIcon(item) {
+  if (item.icon) return item.icon;
+  if (!item.label || (item.disabled && /^no /i.test(item.label))) return "";
+  for (const [pattern, name] of MENU_ICONS) if (pattern.test(item.label)) return name;
+  return "more";
+}
+function openMenu(items, x, y, { search = "", keepFocus = false } = {}) {
   const menu = $("#menu");
+  if (menuKeys) { document.removeEventListener("keydown", menuKeys, true); menuKeys = null; }
   menu.replaceChildren();
   let box = null;
   if (search) {
@@ -308,7 +343,7 @@ function openMenu(items, x, y, { search = "" } = {}) {
     const main = h("button", {
       type: "button", role: "menuitem", dataset: item.searchable ? { find: `${item.label} ${item.find || item.sub || ""}`.toLowerCase(), searchable: "1" } : { find: "" }, class: item.danger ? "danger" : "", disabled: item.disabled,
       onClick: () => { closeMenu(); item.run?.(); },
-    }, item.icon ? icon(item.icon, "sm") : null, h("span", { class: "ellipsis", text: item.label }), item.sub ? h("span", { class: "sub", text: item.sub }) : null);
+    }, menuIcon(item) ? icon(menuIcon(item), "sm") : null, h("span", { class: "ellipsis", text: item.label }), item.sub ? h("span", { class: "sub", text: item.sub }) : null);
     const extras = [];
     if (item.runNow) extras.push({ icon: "play", title: "Run now", label: `Run ${item.label} now`, cls: "menu-run", run: item.runNow });
     for (const action of item.actions || []) extras.push({ icon: action.icon, title: action.title, label: `${action.title}: ${item.label}`, cls: `menu-act${action.danger ? " danger" : ""}`, run: action.run });
@@ -337,6 +372,21 @@ function openMenu(items, x, y, { search = "" } = {}) {
   const width = menu.offsetWidth, height = menu.offsetHeight;
   menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - width - 6))}px`;
   menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - height - 6))}px`;
+  if (keepFocus && !box) {
+    // Clicking an item must not move the focus away from the text box either.
+    menu.querySelectorAll("button").forEach((b) => b.addEventListener("mousedown", (event) => event.preventDefault()));
+    menuKeys = (event) => {
+      if (menu.hidden || event.key === "Escape" || ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+      if (menu.contains(document.activeElement)) return;
+      const enabled = [...menu.querySelectorAll("button:not(:disabled)")];
+      if ((event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Tab") && enabled.length) {
+        event.preventDefault(); event.stopPropagation();
+        (event.key === "ArrowUp" ? enabled[enabled.length - 1] : enabled[0]).focus({ preventScroll: true });
+      } else if (!event.ctrlKey && !event.metaKey && !event.altKey) closeMenu(); // typing carries on as usual
+    };
+    document.addEventListener("keydown", menuKeys, true);
+    return;
+  }
   (box || menu.querySelector("button:not(:disabled)"))?.focus({ preventScroll: true });
 }
 document.addEventListener("pointerdown", (event) => { if (!event.target.closest("#menu")) closeMenu(); });
@@ -345,6 +395,7 @@ window.addEventListener("blur", closeMenu);
 window.addEventListener("resize", closeMenu);
 
 function applyTheme(theme) {
+  if (!["auto", "light", "dark"].includes(theme)) theme = "light";
   document.documentElement.dataset.theme = theme;
   store.set("theme", theme);
 }
@@ -352,7 +403,7 @@ function effectiveTheme() {
   const theme = document.documentElement.dataset.theme;
   return theme === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
 }
-applyTheme(store.get("theme", "dark"));
+applyTheme(store.get("theme", "light"));
 $("#themeToggle").addEventListener("click", () => applyTheme(effectiveTheme() === "dark" ? "light" : "dark"));
 
 const protoName = (p) => ({ ftp: "FTP", telnet: "Telnet" })[p] || String(p || "");

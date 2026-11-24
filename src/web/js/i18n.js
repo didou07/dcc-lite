@@ -128,7 +128,7 @@
   window.DCC_I18N = {
     get lang() { return lang; }, set,
     t: lookup,
-    locale: () => ({ ar: "ar", fr: "fr", es: "es", de: "de", tr: "tr", ru: "ru", zh: "zh-CN" })[lang] || (window.DCC_I18N?.locale() || "en-GB"),
+    locale: () => ({ ar: "ar", fr: "fr", es: "es", de: "de", tr: "tr", ru: "ru", zh: "zh-CN" })[lang] || "en-GB",
     add(code, dict) { data[code] = { ...(data[code] || {}), ...dict }; delete tpl[code]; if (code === lang) { walk(document.body); document.title = lookup(document.title); } },
   };
   document.documentElement.lang = lang;

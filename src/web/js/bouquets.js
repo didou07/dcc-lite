@@ -538,9 +538,9 @@ function bqMoreMenu() {
   const sel = bq.sel.size > 0, filtered = Boolean(bqFilter());
   return [
     { heading: "Order" },
-    { label: "Sort A–Z", icon: "up", disabled: bq.entries.length < 2 || filtered, run: bqSortAZ },
-    { label: "Sort Z–A", icon: "up", disabled: bq.entries.length < 2 || filtered, run: bqSortZA },
-    { label: "Reverse order", icon: "refresh", disabled: bq.entries.length < 2 || filtered, run: bqReverse },
+    { label: "Sort A–Z", icon: "sort", disabled: bq.entries.length < 2 || filtered, run: bqSortAZ },
+    { label: "Sort Z–A", icon: "sort", disabled: bq.entries.length < 2 || filtered, run: bqSortZA },
+    { label: "Reverse order", icon: "sort", disabled: bq.entries.length < 2 || filtered, run: bqReverse },
     { label: "Move to top", disabled: !sel || filtered, run: () => bqToEdge("top") },
     { label: "Move to bottom", disabled: !sel || filtered, run: () => bqToEdge("bottom") },
     "-", { heading: "Clean up" },

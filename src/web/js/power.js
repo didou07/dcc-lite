@@ -51,21 +51,23 @@ function openPowerDialog() {
   if (!id) return;
   const standby = ch.standby === true;
   $("#powerState").textContent = standby ? "In standby" : ch.standby === false ? "On" : "";
+  $("#powerState").dataset.state = standby ? "standby" : ch.standby === false ? "on" : "";
   powerDialogError("");
 
   const act = (action, doing, confirm) => powerAction(action, doing, confirm, powerDialogError);
   const actions = [
-    { label: "Toggle standby", run: () => act("toggle", "Standby toggled") },
-    standby ? { label: "Wake up", run: () => act("wakeup", "Waking the receiver up…") }
-      : { label: "Standby", run: () => act("standby", "Receiver goes to standby") },
-    { label: "Restart interface (GUI)", run: () => act("restart_gui", "Restarting the interface…", { title: "Restart the interface?", message: "Enigma2 restarts. Recordings in progress may stop.", ok: "Restart GUI" }) },
-    { label: "Reboot", run: () => act("reboot", "Rebooting the receiver…", { title: "Reboot the receiver?", message: "The receiver restarts.", ok: "Reboot" }) },
-    { label: "Wake over the network (WOL)", run: () => wakeOnLan(id, powerDialogError) },
-    { label: "Deep standby", danger: true, run: () => act("deep", "Shutting the receiver down…", { title: "Shut the receiver down?", message: "The receiver switches off completely.", ok: "Shut down" }) },
+    standby ? { label: "Wake up", icon: "sun", title: "Wake the receiver up", run: () => act("wakeup", "Waking the receiver up…") }
+      : { label: "Standby", icon: "eye-off", title: "Send the receiver to standby", run: () => act("standby", "Receiver goes to standby") },
+    { label: "Restart GUI", icon: "screen", title: "Restart the interface (Enigma2)", run: () => act("restart_gui", "Restarting the interface…", { title: "Restart the interface?", message: "Enigma2 restarts. Recordings in progress may stop.", ok: "Restart GUI" }) },
+    { label: "Reboot", icon: "refresh", title: "Reboot the receiver", run: () => act("reboot", "Rebooting the receiver…", { title: "Reboot the receiver?", message: "The receiver restarts.", ok: "Reboot" }) },
+    { label: "Wake on LAN", icon: "signal", title: "Wake the receiver over the network (WOL)", run: () => wakeOnLan(id, powerDialogError) },
+    { label: "Deep standby", icon: "power", title: "Shut the receiver down completely", danger: true, run: () => act("deep", "Shutting the receiver down…", { title: "Shut the receiver down?", message: "The receiver switches off completely.", ok: "Shut down" }) },
   ];
   $("#powerActions").replaceChildren(...actions.map((item) => h("button", {
-    type: "button", class: `power-btn${item.danger ? " danger" : ""}`, text: item.label, onClick: () => powerRun(item.run),
-  })));
+    type: "button", class: `power-btn${item.danger ? " danger" : ""}`, title: item.title, onClick: () => powerRun(item.run),
+  }, icon(item.icon), h("span", { text: item.label }))));
+  $("#powerBootCol").hidden = true;
+  $("#sleepGroup").hidden = false;
 
   $("#powerReload").onclick = () => powerRun(() => powerAction("reload", "Channel lists reloaded on the receiver", null, powerDialogError));
   $("#powerKey").onclick = () => powerRun(async () => { await sendRemoteKey("power", false, $("#remotePower")); return true; });
@@ -86,8 +88,9 @@ async function powerLoadSlots(id) {
     const data = await api(profileURL(id, "multiboot"));
     if (gen !== powerView.gen) return;
     const slots = data.slots || [];
-    if (!slots.length) { note.textContent = "This receiver does not report MultiBoot slots."; return; }
+    if (!slots.length) { note.textContent = ""; return; }
     note.textContent = "";
+    $("#powerBootCol").hidden = false;
     box.replaceChildren(...slots.map((slot) => h("button", {
       type: "button", class: "slot-btn", title: slot.label, disabled: slot.current,
       "aria-current": slot.current ? "true" : null,
@@ -95,7 +98,7 @@ async function powerLoadSlots(id) {
     }, h("span", { class: "ellipsis", text: slot.label }))));
   } catch (error) {
     if (gen !== powerView.gen) return;
-    note.textContent = `MultiBoot slots could not be read: ${error.message}`;
+    note.textContent = "";
   }
 }
 
@@ -142,7 +145,7 @@ async function powerLoadSleep(id) {
     const state = await api(sleepURL(id));
     if (gen === powerView.gen && id === screenView.profileID) sleepShow(state);
   } catch {
-    if (gen === powerView.gen) $("#sleepState").textContent = "This receiver does not report a sleep timer.";
+    if (gen === powerView.gen) { $("#sleepState").textContent = ""; $("#sleepGroup").hidden = true; }
   }
 }
 async function powerSleep(enabled) {

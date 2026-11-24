@@ -338,8 +338,8 @@ async function droppedItems(dataTransfer) {
   target.addEventListener("dragleave", (event) => { if (!target.contains(event.relatedTarget)) { target.classList.remove("drop-os"); markDropRow(panes.remote, null); } });
   target.addEventListener("drop", async (event) => {
     if (files.drag || !hasOSFiles(event)) return;
-    event.preventDefault(); target.classList.remove("drop-os");
-    const folder = dropFolder(panes.remote, event); markDropRow(panes.remote, null);
+    event.preventDefault();
+    const folder = dropFolder(panes.remote, event); clearFileDropState();
     if (!files.sessionID) { toast("Connect to the device first"); return; }
     const expected = { sessionID: files.sessionID, sessionKey: files.sessionKey, profileID: files.profileID, destPath: folder ? folder.path : panes.remote.path };
     try { await uploadFromDevice(await droppedItems(event.dataTransfer), expected.destPath, expected); } catch (error) { toastError(error); }

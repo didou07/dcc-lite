@@ -22,15 +22,14 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// miniFTP is a tiny in-memory FTP server, just enough to exercise the client.
 type miniFTP struct {
 	t        *testing.T
 	ln       net.Listener
 	mu       sync.Mutex
 	files    map[string][]byte
 	dirs     map[string]bool
-	noMLSD   bool // answer MLSD with 500 so the client falls back to LIST
-	noEPSV   bool // answer EPSV with 502 so the client falls back to PASV
+	noMLSD   bool
+	noEPSV   bool
 	password string
 	conns    []net.Conn
 }
@@ -467,7 +466,6 @@ func TestFTPResumeDownload(t *testing.T) {
 	if got, _ := os.ReadFile(partial); !bytes.Equal(got, payload) {
 		t.Fatal("resumed file differs from the original")
 	}
-	// already complete: succeeds without changing anything
 	if err := c.ResumeDownload(testCtx(t), "/big.bin", partial, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +477,6 @@ func TestFTPResumeDownload(t *testing.T) {
 	if got, _ := os.ReadFile(fresh); !bytes.Equal(got, payload) {
 		t.Fatal("fresh resume differs")
 	}
-	// local partial bigger than remote file must be refused, not truncated
 	huge := filepath.Join(dir, "huge.part")
 	os.WriteFile(huge, append(payload, 1, 2, 3), 0o600)
 	if err := c.ResumeDownload(testCtx(t), "/big.bin", huge, nil); err == nil {
@@ -600,7 +597,7 @@ func TestResilientFTPReconnectsAfterServerDropsConnection(t *testing.T) {
 	if _, err := r.List(testCtx(t), "/"); err != nil {
 		t.Fatal(err)
 	}
-	s.dropAll() // simulates the receiver rebooting or the network blipping
+	s.dropAll()
 	time.Sleep(50 * time.Millisecond)
 	entries, err := r.List(testCtx(t), "/")
 	if err != nil {

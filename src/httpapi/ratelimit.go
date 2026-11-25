@@ -7,7 +7,6 @@ import (
 	"github.com/didou07/dcc-lite/src/filetransfer"
 )
 
-// getTransferRateLimit and setTransferRateLimit expose the shared transfer speed limit (KB/s, 0 = unlimited).
 func (s *Server) getTransferRateLimit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"kbps": filetransfer.RateLimitKBps()})
 }

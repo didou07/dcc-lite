@@ -27,7 +27,6 @@ const (
 )
 
 func listDrives() []drive {
-	// Do not pop up "insert a disk" dialogs for empty card readers.
 	previous, _, _ := procSetErrorMode.Call(1)
 	defer procSetErrorMode.Call(previous)
 

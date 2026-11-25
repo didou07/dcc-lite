@@ -38,7 +38,7 @@ func Redact(s string) string {
 	if s == "" {
 		return s
 	}
-	s = authScheme.ReplaceAllString(s, "${1} ***") // before secretPair, which would mask only the word "Bearer"
+	s = authScheme.ReplaceAllString(s, "${1} ***")
 	s = secretPair.ReplaceAllString(s, "${1}${2}***")
 	s = sessionCk.ReplaceAllString(s, "${1}***")
 	s = urlUser.ReplaceAllString(s, "${1}:***@")

@@ -42,7 +42,6 @@ func registryDirs() []string {
 	return out
 }
 
-// Candidates lists the folders that may hold libvlc.dll, best first.
 func Candidates() []string {
 	var dirs []string
 	if env := os.Getenv("DCC_VLC_DIR"); env != "" {

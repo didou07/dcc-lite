@@ -56,8 +56,6 @@ static void stop_app(void) {
 	[NSApp postEvent:ev atStart:YES];
 }
 
-// ---- The picture: a native view over the page ----
-
 static void send_mouse(NSEvent *e, const char *kind) {
 	NSPoint p = [g_container convertPoint:[e locationInWindow] fromView:nil];
 	dccGoMouse((char *)kind, (int)p.x, (int)p.y);
@@ -94,7 +92,6 @@ static void send_mouse(NSEvent *e, const char *kind) {
 	send_mouse(e, "move");
 }
 - (void)scrollWheel:(NSEvent *)e {
-	// Hand the wheel to the page so the view still scrolls.
 	double dy = -[e scrollingDeltaY];
 	if (![e hasPreciseScrollingDeltas]) dy *= 40;
 	if ((int)dy != 0) dccGoMouse((char *)"wheel", 0, (int)dy);
@@ -112,8 +109,6 @@ static void send_mouse(NSEvent *e, const char *kind) {
 	g_view_h = (int)s.height;
 }
 @end
-
-// ---- The window's delegates ----
 
 static NSString *unique_download_path(NSString *name) {
 	NSString *dir = NSSearchPathForDirectoriesInDomains(NSDownloadsDirectory, NSUserDomainMask, YES).firstObject;
@@ -134,13 +129,11 @@ static NSString *unique_download_path(NSString *name) {
 @implementation DCCDelegate
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
-	stop_app(); // Cmd+Q ends the window loop; the program then shuts down in order
+	stop_app();
 	return NSTerminateCancel;
 }
 
 - (void)windowWillClose:(NSNotification *)n { stop_app(); }
-
-// ---- The bridge: window.dccLive(op, json) -> Promise<string> ----
 
 - (void)userContentController:(WKUserContentController *)ucc didReceiveScriptMessage:(WKScriptMessage *)message replyHandler:(void (^)(id, NSString *))reply {
 	if (![[message frameInfo] isMainFrame] || !inside_uri([[[message webView] URL] absoluteString])) {
@@ -170,8 +163,6 @@ static NSString *unique_download_path(NSString *name) {
 	}
 	free(out);
 }
-
-// ---- Links, new windows and downloads ----
 
 - (void)webView:(WKWebView *)wv decidePolicyForNavigationAction:(WKNavigationAction *)action decisionHandler:(void (^)(WKNavigationActionPolicy))handler {
 	NSString *uri = [[[action request] URL] absoluteString];
@@ -270,8 +261,6 @@ static NSString *unique_download_path(NSString *name) {
 
 static DCCDelegate *g_delegate;
 
-// ---- Calls from other threads, run on the main thread ----
-
 void dcc_cocoa_box(int x, int y, int w, int h, int show) {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (!g_video) return;
@@ -306,8 +295,6 @@ void dcc_cocoa_ping(void) {
 
 unsigned long dcc_cocoa_video_view(void) { return g_video_ptr; }
 void dcc_cocoa_view_size(int *w, int *h) { *w = g_view_w; *h = g_view_h; }
-
-// ---- The window ----
 
 static NSString *js_quote(NSString *s) {
 	NSString *t = [s stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];

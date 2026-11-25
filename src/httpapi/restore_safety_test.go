@@ -34,11 +34,8 @@ func (h *harness) postRestore(zipData []byte) (int, map[string]any) {
 	return resp.StatusCode, out
 }
 
-// A restore replaces the whole channel list. If the receiver's current list cannot be saved
-// first, nothing may be written, because the restore could not be undone.
 func TestRestoreStopsWhenRestorePointCannotBeSaved(t *testing.T) {
 	h := newHarness(t)
-	// A regular file where the restore-points folder must go makes saving a restore point fail.
 	if err := os.WriteFile(filepath.Join(h.dir, "restore-points"), []byte("in the way"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +52,6 @@ func TestRestoreStopsWhenRestorePointCannotBeSaved(t *testing.T) {
 	}
 }
 
-// The same restore works when a restore point can be saved, so the test above is not vacuous.
 func TestRestoreRunsWhenRestorePointIsSaved(t *testing.T) {
 	h := newHarness(t)
 	zipData := makeZip(t, map[string]string{"bouquets.tv": "#NAME Other\n", "lamedb": "eDVB services /4/\n"})

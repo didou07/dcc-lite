@@ -123,7 +123,7 @@ func TestReadRestoreZipRejectsBadInput(t *testing.T) {
 }
 
 func TestReadRestoreZipLimits(t *testing.T) {
-	huge := strings.Repeat("A", restoreMaxFile+10) // compresses to almost nothing: a zip bomb in miniature
+	huge := strings.Repeat("A", restoreMaxFile+10)
 	files, skipped, err := readRestoreZip(makeZip(t, map[string]string{"lamedb": "ok", "userbouquet.big.tv": huge}, "lamedb", "userbouquet.big.tv"))
 	if err != nil {
 		t.Fatal(err)

@@ -1,5 +1,3 @@
-// Package ftptest is a tiny in-memory FTP server for tests. It is only imported
-// from _test.go files, so it never ends up in the program.
 package ftptest
 
 import (
@@ -16,15 +14,14 @@ import (
 	"time"
 )
 
-// Server is a tiny in-memory FTP server, just enough to exercise the client.
 type Server struct {
 	t        testing.TB
 	ln       net.Listener
 	mu       sync.Mutex
 	files    map[string][]byte
 	dirs     map[string]bool
-	NoMLSD   bool // answer MLSD with 500 so the client falls back to LIST
-	NoEPSV   bool // answer EPSV with 502 so the client falls back to PASV
+	NoMLSD   bool
+	NoEPSV   bool
 	Password string
 	conns    []net.Conn
 }

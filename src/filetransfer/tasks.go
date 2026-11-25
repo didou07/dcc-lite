@@ -312,8 +312,6 @@ func commitRemoteFile(ctx context.Context, adapter core.FileTransfer, partialPat
 			return fmt.Errorf("could not preserve existing permissions %04o before replacing the remote file: %w", preservedMode, err)
 		}
 	}
-	// Most receivers run Linux, where renaming over an existing file replaces it in one step, so the
-	// file is never missing. Try that first; servers that refuse fall back to the backup swap below.
 	if err := adapter.Rename(ctx, partialPath, remotePath); err == nil {
 		return nil
 	}

@@ -55,7 +55,6 @@ func TestCredentialsSetVerifyAndPersist(t *testing.T) {
 	if strings.Contains(store.hash, "correct") || store.iterations != pbkdf2Iterations {
 		t.Fatalf("stored record looks wrong: %+v", store)
 	}
-	// A new process reading the same record must accept the same password.
 	again, err := OpenCredentials(store)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +137,7 @@ func request(remote string) *http.Request {
 }
 
 func TestLoginLockoutAndRecovery(t *testing.T) {
-	a, clk := newTestAuth(t, "") // nothing configured: every guess fails instantly
+	a, clk := newTestAuth(t, "")
 	r := request("203.0.113.7:5555")
 	for i := 0; i < freeAttempts; i++ {
 		if err := a.Login(httptest.NewRecorder(), r, "guess"); !errors.Is(err, ErrBadPassword) {
@@ -236,7 +235,7 @@ func TestSessionMaxAgeLogoutAndRevokeAll(t *testing.T) {
 		return r
 	}
 	c1 := login()
-	for i := 0; i < 12; i++ { // keep it active, but it must still die at the hard limit
+	for i := 0; i < 12; i++ {
 		clk.t = clk.t.Add(sessionMaxAge / 10)
 		if !a.Authenticated(req(c1)) {
 			break

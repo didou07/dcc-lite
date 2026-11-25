@@ -23,7 +23,7 @@ func TestRateLimitSlowsTransferAndZeroMeansUnlimited(t *testing.T) {
 	p = newPacer(context.Background())
 	start = time.Now()
 	for i := 0; i < 3; i++ {
-		p.wait(200 * 1024) // 600 KB at 400 KB/s is 1.5 s, minus the 0.25 s burst
+		p.wait(200 * 1024)
 	}
 	if got := time.Since(start); got < time.Second || got > 3*time.Second {
 		t.Fatalf("limited transfer took %v, want about 1.25s", got)

@@ -701,7 +701,7 @@ function openTerminalMenu(tab, x, y) {
     { label: "History…", icon: "history", sub: "Ctrl+Shift+H", run: openHistory },
     { label: "Copy all output", icon: "copy", run: () => { tab.terminal.clearSelection(); copyTerminal(); } },
     { label: "Clear screen", icon: "eraser", run: () => clearTerminal(tab) },
-  ], x, y, { keepFocus: true }); // the terminal keeps focus, so its selection keeps its colour while the menu is open
+  ], x, y, { keepFocus: true });
 }
 
 async function renameTab(tab) {

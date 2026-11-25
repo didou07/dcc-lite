@@ -343,7 +343,6 @@ func atList(name string, values []string, keep func(string) bool) (string, error
 		any = true
 	}
 	if !any {
-		// An empty value is how the plugin is told to clear the list.
 		q.WriteString("&" + url.QueryEscape(name) + "=")
 	}
 	return q.String(), nil

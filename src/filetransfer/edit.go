@@ -19,8 +19,6 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// MaxEditBytes is the largest file the editor opens. Channel lists (lamedb) on receivers with many
-// channels pass 1 MiB, so the limit is 8 MiB; bigger files are better downloaded.
 const MaxEditBytes = 8 << 20
 
 var (
@@ -34,12 +32,10 @@ var (
 )
 
 const (
-	EncodingUTF8 = "utf-8"
-	// UTF-16 files start with a byte order mark and are full of zero bytes, which Windows Notepad
-	// ("Unicode") and some XML tools produce. They are opened as text and saved back the same way.
+	EncodingUTF8    = "utf-8"
 	EncodingUTF16LE = "utf-16le"
 	EncodingUTF16BE = "utf-16be"
-	EncodingLatin1  = "latin1" // used for files that are not valid UTF-8; every byte maps to one character, so nothing is lost
+	EncodingLatin1  = "latin1"
 )
 
 const (
@@ -59,20 +55,17 @@ type TextFile struct {
 
 	Hash string `json:"hash"`
 
-	// Mixed is set when the file used both CRLF and LF. LineEnding then holds the more common one,
-	// which is what saving uses, so the few odd lines are the only ones that change.
 	Mixed bool `json:"mixed_line_endings,omitempty"`
 
 	ModeUnknown bool `json:"mode_unknown,omitempty"`
 
-	// Link is set when the path is a symbolic link; the device follows it, so the text is the target's.
 	Link string `json:"link,omitempty"`
 }
 
 type TextWrite struct {
 	Content    string
 	LineEnding string
-	Encoding   string // "" or EncodingUTF8, or EncodingLatin1 for a file that was opened as such
+	Encoding   string
 
 	ExpectedSize       int64
 	ExpectedModifiedAt time.Time
@@ -146,7 +139,6 @@ func (m *Manager) WriteText(ctx context.Context, sessionID, remotePath string, w
 	return result, err
 }
 
-// remoteWrite says how a file is written and what must still be true for the write to go ahead.
 type remoteWrite struct {
 	Create bool
 	Force  bool
@@ -156,8 +148,6 @@ type remoteWrite struct {
 	ExpectedModifiedAt time.Time
 	ExpectedHash       string
 
-	// Before is called with the content now on the receiver, after the checks above and before
-	// anything is written. If it fails nothing is written. It is how a copy of the original is kept.
 	Before func(current []byte) error
 }
 
@@ -169,9 +159,6 @@ type remoteWritten struct {
 	ModeUnknown bool
 }
 
-// writeRemoteBytes replaces (or creates) a file on the receiver with data. The upload goes to a
-// temporary file next to the target and then takes its place, so an interrupted transfer cannot leave a
-// half-written file behind. It refuses when the file changed since it was opened.
 func writeRemoteBytes(ctx context.Context, adapter core.FileTransfer, remotePath string, data []byte, write remoteWrite) (remoteWritten, error) {
 	if base := path.Base(remotePath); remotePath == "/" || base == "." || base == "/" {
 		return remoteWritten{}, errors.New("a file path is required")
@@ -242,10 +229,6 @@ func writeRemoteBytes(ctx context.Context, adapter core.FileTransfer, remotePath
 	}
 	written := remoteWritten{Size: int64(len(data))}
 	if found && entry.LinkTarget != "" {
-		// A symbolic link: write through it so the link itself survives (renaming over it would
-		// replace the link with a plain file).
-		// This write cannot go through a temporary file, so an interrupted upload could leave the
-		// target cut short. Keep the current content and put it back if the upload fails.
 		previous, readErr := currentBytes()
 		if readErr != nil {
 			return remoteWritten{}, fmt.Errorf("could not keep a copy of the file before writing through the link, so nothing was changed: %w", readErr)
@@ -278,8 +261,6 @@ func writeRemoteBytes(ctx context.Context, adapter core.FileTransfer, remotePath
 	return written, nil
 }
 
-// settleLineEnding turns "mixed" into the ending most lines use (LF on a tie) and says it was mixed.
-// The editor cannot show a different ending per line, so saving writes this one everywhere.
 func settleLineEnding(data []byte, lineEnding string) (string, bool) {
 	if lineEnding != LineEndingMixed {
 		return lineEnding, false
@@ -372,7 +353,6 @@ func normalizeEncoding(e string) string {
 	return EncodingUTF8
 }
 
-// notTextError says why a file cannot be edited, so the message can tell the person what to do.
 func notTextError(data []byte) error {
 	reason := "it contains binary data"
 	switch {
@@ -392,7 +372,6 @@ func notTextError(data []byte) error {
 	return fmt.Errorf("%w (%s)", ErrEditNotText, reason)
 }
 
-// decodeUTF16 reads a UTF-16 file that starts with a byte order mark.
 func decodeUTF16(data []byte) (string, string, bool) {
 	var order func([]byte) uint16
 	encoding := ""
@@ -436,10 +415,6 @@ func encodeUTF16(content, encoding string) []byte {
 	return out
 }
 
-// decodeText turns file bytes into editable text. Valid UTF-8 is used as is.
-// Other text (old Latin-1 or Windows code pages, common on receivers) is opened
-// as Latin-1 so that saving writes back exactly the same bytes. Files with NUL
-// bytes are binary and are refused.
 func decodeText(data []byte) (text, lineEnding, encoding string, err error) {
 	encoding = EncodingUTF8
 	if decoded, enc, ok := decodeUTF16(data); ok {

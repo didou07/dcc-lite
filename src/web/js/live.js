@@ -1,7 +1,7 @@
 "use strict";
 
 const liveNative = typeof window.dccLive === "function";
-const liveGui = typeof window.__dccGui === "string"; // running inside the DCC Lite window, bridge or not
+const liveGui = typeof window.__dccGui === "string";
 const liveChoice = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
 const live = {
   on: false, ref: "", name: "", state: "idle", hasPicture: false, paused: false,
@@ -14,8 +14,8 @@ const live = {
   caching: liveChoice(Number(store.get("live.caching", 1500)), [500, 1500, 3000], 1500),
   hw: store.get("live.hw", true) !== false, settingsDirty: false, popKind: "",
   fit: liveChoice(store.get("live.fit", "fit"), ["fit", "fill", "stretch", "16:9", "4:3"], "fit"),
-  panelOn: store.get("live.panel", true) !== false, // the details panel (player, control words, card) beside the picture
-  fs: false, fsTimer: 0, // the player is shown over the whole screen (see liveFullSet)
+  panelOn: store.get("live.panel", true) !== false,
+  fs: false, fsTimer: 0,
   cover: false,
   waitSince: 0, waitTimer: 0,
 };
@@ -32,8 +32,6 @@ async function liveCall(op, args = {}) {
 }
 const liveMessage = (error) => (typeof error === "string" ? error : error?.message) || "The channel could not be played.";
 function liveResetCW() { live.cwKey = ""; live.cw = []; live.cwHistory = []; live.cwChangedAt = 0; live.cwRenderKey = ""; live.ecmRaw = ""; }
-
-// ---- State and layout ----
 
 const liveBusyStates = ["connecting", "buffering", "reconnecting"];
 function liveWaitTick() {
@@ -134,14 +132,12 @@ function liveShowUI(on) {
   liveSyncPlay();
   liveTabMark();
 }
-// A red dot on the Screen tab while a picture plays (also when another page is in front).
 function liveTabMark() {
   const tab = document.querySelector('#mainTabs .tab[data-view="screen"]');
   if (!tab) return;
   tab.classList.toggle("is-live", live.on);
   tab.title = live.on ? "Watching live" : "";
 }
-// Back on the Screen page: put the player back over its place and refresh what ran slowly in the background.
 function liveResume() {
   if (!live.on) return;
   liveSyncNative(true);
@@ -163,8 +159,6 @@ function liveTogglePanel() {
   liveSyncPanelBtn();
 }
 
-// ---- Starting and stopping ----
-
 function liveStop() {
   const wasOn = live.on;
   window.clearTimeout(live.retryTimer);
@@ -179,7 +173,7 @@ function liveStop() {
   live.cover = false;
   live.retries = 0;
   live.audio = [];
-  live.tracksKey = ""; // the track list below is cleared, so it must be drawn again next time
+  live.tracksKey = "";
   live.boundsKey = "";
   livePopClose();
   if (live.fs) liveFullSet(false);
@@ -205,7 +199,7 @@ function liveStart() {
   liveResetCW();
   liveShowUI(true);
   window.clearInterval(live.timer);
-  live.timer = window.setInterval(liveTick, 1000); // every call crosses into the window thread: keep them few
+  live.timer = window.setInterval(liveTick, 1000);
   window.clearInterval(live.ecmTimer);
   live.ecmTimer = window.setInterval(liveEcm, 2000);
   liveBegin();
@@ -216,14 +210,14 @@ async function liveBegin() {
   if (!id || !live.on) return;
   window.clearTimeout(live.retryTimer);
   const same = live.ref === ch.currentRef;
-  live.beginN = (live.beginN || 0) + 1; // a new picture pipeline: the OSD overlay is lost and must be sent again
+  live.beginN = (live.beginN || 0) + 1;
   live.ref = ch.currentRef;
   live.name = liveChannelName();
   $("#liveName").textContent = live.name;
   liveTabMark();
   if (!same) {
     liveResetCW(); liveRenderCW();
-    live.ecmGen++;                       // answers still on their way belong to the old channel
+    live.ecmGen++;
     delete $("#liveEcm").dataset.key;
     $("#liveEcm").replaceChildren(h("p", { class: "muted small live-empty", text: "…" }));
     $("#liveEcm").classList.remove("stale");
@@ -242,8 +236,6 @@ async function liveBegin() {
     if (live.on) liveFail(liveMessage(error));
   }
 }
-
-// ---- Polling the player ----
 
 function liveApply(s) {
   live.audio = s.audio || [];
@@ -305,7 +297,6 @@ const liveCell = (k, v, { wide = false, dim = false } = {}) =>
 const liveFieldDim = (v) => /^(0x0+|0)$/i.test(String(v).trim());
 const liveQuality = (height) => (height >= 2000 ? "4K" : height >= 1000 ? "FHD" : height >= 700 ? "HD" : height > 0 ? "SD" : "");
 
-// Rebuild a block only when what it shows has changed (the polls run every second or two).
 const liveFill = (node, key, build) => {
   if (node.dataset.key === key) return false;
   node.dataset.key = key;
@@ -336,8 +327,6 @@ function liveRenderStats() {
   ]);
   $("#liveTracks").hidden = live.audio.length < 2;
 }
-
-// ---- Audio tracks ----
 
 function liveRenderTracks() {
   const tracks = live.audio;
@@ -391,11 +380,10 @@ function liveAudioMenu() {
     }, h("span", { class: "tick", text: t.id === live.audioCur ? "✓" : "" }), h("span", { class: "grow" }, h("b", { text: t.name })))));
   $("#liveBar").append(pop);
   live.popKind = "audio";
-  live.popup = true;               // the menu would open under VLC's window, so the picture steps aside
+  live.popup = true;
   liveSyncNative();
   pop.querySelector('[aria-checked="true"]')?.focus();
 }
-// ---- Player settings: the one menu where they all live ----
 
 const LIVE_DEINT = [["auto", "Auto", "VLC decides (default)"], ["yadif", "Yadif", "Always smooth interlaced channels"], ["off", "Off", "Never deinterlace"]];
 const LIVE_CACHE = [[500, "Low", "500 ms · faster zapping"], [1500, "Normal", "1.5 s"], [3000, "High", "3 s · for a weak network"]];
@@ -414,7 +402,6 @@ const livePopItem = (checked, label, note, onClick, tip = "") => h("button", {
 const livePopAction = (label, onClick, hint = "") => h("button", { type: "button", role: "menuitem", onClick },
   h("span", { class: "tick", "aria-hidden": "true" }), h("span", { class: "grow" }, h("b", { text: label })), hint && h("span", { class: "hint", text: hint }));
 
-// The picture's size in its window. It applies at once (no restart).
 function liveSetFit(mode) {
   live.fit = mode;
   store.set("live.fit", mode);
@@ -459,13 +446,11 @@ function liveSettingsMenu() {
   const pop = h("div", { class: "live-pop live-pop-settings", id: "livePop", role: "menu", "aria-label": "Player settings" });
   $("#liveBar").append(pop);
   live.popKind = "settings";
-  live.popup = true;               // like the audio menu: the picture steps aside while it is open
+  live.popup = true;
   liveSyncNative();
   liveSettingsRender();
   pop.querySelector('[aria-checked="true"]')?.focus();
 }
-
-// ---- Right-click menu and full screen ----
 
 async function liveFullSet(on) {
   if (on === live.fs) return;
@@ -488,7 +473,7 @@ function liveFsWake() {
     live.fsTimer = 0;
     if (!live.fs || $("#livePop") || stage.querySelector(".live-bar:hover, .live-top:hover")) { liveFsWake(); return; }
     stage.classList.add("fs-idle");
-    liveCall("cursor", { hide: true }).catch(() => { }); // the pointer over VLC's window is hidden by the app
+    liveCall("cursor", { hide: true }).catch(() => { });
   }, 3000);
 }
 function liveFullToggle() {
@@ -553,7 +538,7 @@ function liveContextMenu(x, y) {
   $("#screenStage").append(pop);
   live.popKind = "ctx";
   live.ctxAt = { x, y };
-  live.popup = true;               // the picture steps aside while the menu is open
+  live.popup = true;
   liveSyncNative();
   liveCtxRender();
   pop.querySelector('[aria-checked="true"]')?.focus({ preventScroll: true });
@@ -568,8 +553,6 @@ async function liveRxAudio() {
   } catch { live.rx = []; }
   if (live.popKind === "settings") liveSettingsRender();
 }
-
-// ---- Control words and card details ----
 
 const liveBytes = (hex) => hex.split(" ").map((x) => parseInt(x, 16));
 function liveChecksum(hex) {
@@ -624,7 +607,6 @@ function liveRenderCW() {
     return;
   }
   $("#liveCwCopy").disabled = false;
-  // One verdict for the whole card instead of a mark on every row.
   const zero = live.cw.every((w) => liveZero(w.hex)), bad = live.cw.some((w) => !liveZero(w.hex) && !liveChecksum(w.hex));
   state.hidden = false;
   state.className = `live-chip ${zero || bad ? "bad" : "ok"}`;
@@ -642,7 +624,6 @@ function liveRenderCW() {
       h("div", { class: "live-cw-name" }, h("b", { text: title }), kind && h("span", { class: "live-kind", text: kind })),
       h("div", { class: "live-hex", role: "text", "aria-label": w.hex }, group(0), group(4)));
   }));
-  // History: only real changes. The newest one is on show above, so it carries no codes of its own.
   const changes = live.cwHistory.filter((e) => !e.first);
   const rows = changes.map((e, i) => h("li", {},
     h("time", { text: new Date(e.at).toLocaleTimeString((window.DCC_I18N?.locale() || "en-GB")) }),
@@ -668,8 +649,6 @@ $("#liveCwCopy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(live.cw.map((w) => `${w.name.split(" ")[0]}: ${w.hex}`).join("\n")); toast("Control words copied"); } catch { toast("Could not copy", "error"); }
 });
 
-
-// ---- Controls ----
 
 function liveSyncPlay() {
   $("#livePlay").setAttribute("aria-label", live.paused ? "Play" : "Pause");

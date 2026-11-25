@@ -1,5 +1,4 @@
 "use strict";
-// Right-click menu for text boxes: Cut, Copy, Paste, Select all.
 (() => {
   const TEXT_TYPES = new Set(["", "text", "search", "url", "tel", "email", "password"]);
   const isTextField = (node) => node.tagName === "TEXTAREA" || (node.tagName === "INPUT" && TEXT_TYPES.has((node.getAttribute("type") || "").toLowerCase()));

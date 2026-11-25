@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// ---- Control words (ecm.info) ----
 var caSystems = []struct {
 	lo, hi int
 	name   string

@@ -12,13 +12,12 @@ function updCleanNotes(value) {
     .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, "\n\n")
     .trim();
 }
-// One quiet notice per new version, only while notices are on. It does not install anything.
 function updAnnounce(status) {
   if (!status.available || !status.supported || !status.notify) return;
   try {
     if (localStorage.getItem("dcc-update-seen") === status.latest) return;
     localStorage.setItem("dcc-update-seen", status.latest);
-  } catch { /* storage unavailable: the badge still shows */ }
+  } catch { }
   toast("A new DCC Lite version is available. Open Software update to install it when you are ready.");
 }
 function updRender(status) {

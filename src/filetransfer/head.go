@@ -12,17 +12,14 @@ import (
 	"github.com/didou07/dcc-lite/src/core"
 )
 
-// MaxHexBytes is how much of a file the hex viewer loads. Bigger files show their first part only.
 const MaxHexBytes = 16 << 20
 
-// BinaryFile is a file opened for the hex editor: its bytes (all of them unless Truncated) and what
-// is needed to notice a change made by someone else before saving.
 type BinaryFile struct {
 	Path       string    `json:"path"`
 	Size       int64     `json:"size"`
 	ModifiedAt time.Time `json:"modified_at"`
 	Mode       string    `json:"mode"`
-	Hash       string    `json:"hash,omitempty"` // of the whole file; empty when only the start was read
+	Hash       string    `json:"hash,omitempty"`
 	Link       string    `json:"link,omitempty"`
 	Truncated  bool      `json:"truncated"`
 	Data       []byte    `json:"-"`
@@ -36,9 +33,6 @@ func newBinaryFile(path string, size int64, modified time.Time, mode, link strin
 	return file
 }
 
-// ReadHead returns up to limit bytes from the start of a remote file, with the file's full size.
-// A file that fits is downloaded whole. For a bigger one the download is started and cut off once
-// enough bytes have arrived, so a multi-gigabyte recording is never fetched in full.
 func (m *Manager) ReadHead(ctx context.Context, sessionID, remotePath string, limit int64) (result BinaryFile, found bool, err error) {
 	err = m.withAdapter(sessionID, func(adapter core.FileTransfer) error {
 		entry, ok, listErr := findRemoteEntry(ctx, adapter, remotePath)
@@ -105,13 +99,9 @@ type BinaryWrite struct {
 	ExpectedModifiedAt time.Time
 	ExpectedHash       string
 	Force              bool
-	// Before gets the content now on the receiver and can stop the save, for example when a copy of
-	// the original cannot be kept.
-	Before func(current []byte) error
+	Before             func(current []byte) error
 }
 
-// WriteBytes replaces a file with the given bytes. Only a file that was read in full can be saved: a
-// file bigger than MaxHexBytes is refused, so a cut-off copy can never overwrite the real one.
 func (m *Manager) WriteBytes(ctx context.Context, sessionID, remotePath string, data []byte, write BinaryWrite) (BinaryFile, error) {
 	if int64(len(data)) > MaxHexBytes {
 		return BinaryFile{}, ErrEditTooLarge
@@ -145,7 +135,6 @@ func readPrefix(path string, limit int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(file, limit))
 }
 
-// ReadHead returns up to limit bytes from the start of a file on this computer.
 func (f *LocalFS) ReadHead(relative string, limit int64) (BinaryFile, error) {
 	absolute, clean, err := f.Resolve(relative, false)
 	if err != nil {
@@ -168,8 +157,6 @@ func (f *LocalFS) ReadHead(relative string, limit int64) (BinaryFile, error) {
 	return newBinaryFile(clean, info.Size(), info.ModTime().UTC(), info.Mode().String(), "", data), nil
 }
 
-// WriteBytes replaces a file on this computer with the given bytes, through a temporary file so an
-// interruption cannot leave it half written.
 func (f *LocalFS) WriteBytes(relative string, data []byte, write BinaryWrite) (BinaryFile, error) {
 	if int64(len(data)) > MaxHexBytes {
 		return BinaryFile{}, ErrEditTooLarge

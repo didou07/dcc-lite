@@ -148,7 +148,6 @@ async function autoRunNow() {
   } catch (error) { gdStatus(""); gdError(error.message); } finally { $("#autoRun").disabled = false; }
 }
 
-// ---- rule editor ----
 const atLines = (text) => text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 function atSetWhere(where) {
   auto.where = where;

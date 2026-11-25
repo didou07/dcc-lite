@@ -12,7 +12,6 @@ func startDetached(name string, args ...string) error {
 	return cmd.Start()
 }
 
-// restartSelf starts the updated executable and exits this process.
 func restartSelf(exe string, args []string) error {
 	cmd := exec.Command(exe, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr

@@ -30,7 +30,6 @@ const small = (key, label) => [key, label, "small"];
 const K_QUICK = [[small("pvr", "PVR"), small("tv", "TV"), small("text", "Text"), small("help", "Help")]];
 const MUTE = ["mute", "Mute"], HISTORY = ["history", "History"], INFO = ["info", "Info"];
 
-// Text keys that have a matching icon show the icon; the name stays in the tooltip.
 const RK_ICONS = { menu: "list", exit: "logout", info: "info", back: "undo", history: "history", mute: "volume-off", epg: "calendar", pvr: "video", tv: "tv", text: "text", help: "help", audio: "audio", subtitle: "ft-sub", subs: "ft-sub", video: "video", radio: "radio", setup: "gear", aspect: "expand", fav: "star", favorites: "star", timer: "bell", pip: "pip", rec: "record", record: "record" };
 
 const REMOTE_LAYOUTS = {
@@ -78,7 +77,6 @@ const RC_CLASS = { UP: "nav", DOWN: "nav", LEFT: "nav", RIGHT: "nav", OK: "nav o
 const RC_MAIN = new Set(["POWER", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "UP", "DOWN", "LEFT", "RIGHT", "OK", "RED", "GREEN", "YELLOW", "BLUE", "MENU", "EXIT", "INFO", "VOLUMEUP", "VOLUMEDOWN", "CHANNELUP", "CHANNELDOWN", "MUTE"]);
 const rcNorm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Builds a layout from one OE-Alliance remote definition.
 function rcBuildLayout(code) {
   const buttons = RC_DB.codes[code];
   if (!buttons) return null;
@@ -113,7 +111,6 @@ function rcBuildLayout(code) {
   }
   const quick = ["PVR", "TV", "TEXT", "HELP", "AUDIO", "RADIO"].filter((id) => byId.has(id)).slice(0, 4);
   push(main, row(...quick.map((id) => key(id, "small"))));
-  // Expanded part starts with the volume / channel keys.
   const vol = (id, name, text, cls) => key(id, cls) || generic(name, text, cls);
   const mid = firstOf("LAST", "EPG", "FAVORITES");
   push(extra, row(vol("VOLUMEUP", "volup", "Vol+", "vol"), key("MUTE", ""), vol("CHANNELUP", "chup", "CH+", "ch")));
@@ -219,7 +216,6 @@ function remoteRefreshScreen(profileID) {
   };
   remote.shots = window.setTimeout(next, delays[0]);
 }
-// A remote key may have changed the channel: ask the receiver soon, so the live picture follows at once.
 function remoteFollowChannel(profileID) {
   if (typeof live === "undefined" || !live.on) return;
   window.clearTimeout(remote.follow);
@@ -328,7 +324,7 @@ async function remoteLoadProfile(device) {
     $("#remotePad").dataset.family = remote.family;
     buildRemote();
     remoteVolumeSync();
-  } catch { /* keep the guess made from the saved web kind */ }
+  } catch { }
 }
 function remoteBind() {
   const holder = $("#remoteKeys");

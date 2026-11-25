@@ -180,7 +180,7 @@ jobs:
 
   linux-32bit:
     # 386 and arm are built inside a Debian container of the target CPU (arm runs under qemu).
-    # ubuntu-24.04 on purpose: the ubuntu-26.04 kernel has no 32-bit socket syscall (ENOSYS), so 32-bit programs cannot use the network there.
+    # ubuntu-24.04 on purpose: 26.04 has no 32-bit socket syscall
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     continue-on-error: true

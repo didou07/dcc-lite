@@ -38,7 +38,6 @@ function logRow(entry) {
   return h("div", { class: "lg-group" }, row, stack.pre);
 }
 
-// The stack trace is one small button at the end of the line; it opens the trace under it.
 function stackBlock(text, buttonClass = "lg-stack-btn") {
   const pre = h("pre", { class: "lg-stack", text });
   pre.hidden = true;

@@ -15,14 +15,12 @@ import (
 	"github.com/didou07/dcc-lite/src/vlc"
 )
 
-// The receiver's OSD, drawn over the live video by VLC's logo filter. Two files are used in turn so VLC never reads one being rewritten.
-
 const maxOverlayBytes = 24 << 20
 
 var overlay struct {
 	mu          sync.Mutex
 	flip        int
-	unsupported atomic.Bool // this VLC has no logo filter: the page is told and stops asking
+	unsupported atomic.Bool
 	warned      atomic.Bool
 }
 
@@ -41,7 +39,6 @@ func overlayPath() (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
-// overlayRequest handles {"png": "<base64>"} (show) and {"clear": true} (remove).
 func (n *nativeLive) overlayRequest(raw string) (string, error) {
 	var a struct {
 		PNG   string `json:"png"`

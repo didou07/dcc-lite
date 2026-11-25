@@ -3,7 +3,7 @@ const files = {
   sessionID: "", profileID: "", sessionInfo: null, sessionKey: "", protocol: "ftp",
   connecting: false, gen: 0, manualOff: false, active: "remote", drag: null,
   transfers: [], queueTimer: 0, queueBusy: false, seenDone: new Set(),
-  browserMode: false, ready: null, sync: store.get("filesSync", false), fresh: false, localLeft: store.get("filesLocalLeft", true),
+  browserMode: false, ready: null, sync: false, syncBase: null, fresh: false, localLeft: store.get("filesLocalLeft", true),
   pending: [], fetched: new Set(), autoDone: new Set(), transfersSeen: false,
   clipboard: null, undo: [],
 };
@@ -176,12 +176,16 @@ function fileType(name, mode = "") {
   if (byExt) return byExt;
   return /^-..x|^-.{5}x|^-.{8}x/.test(String(mode)) ? "script" : "";
 }
+const isLinkEntry = (entry) => String(entry.mode || "").startsWith("l") || Boolean(entry.link_target);
 function entryIcon(entry) {
   const hidden = String(entry.name).startsWith(".") ? " is-hidden" : "";
-  if (entry.is_dir) return icon("folder", `dir-ic${hidden}`);
-  if (String(entry.mode || "").startsWith("l")) return icon("link", "link-ic");
-  const type = fileType(entry.name, entry.mode);
-  return type ? icon(`ft-${type}`, `file-ic fi-${type}${hidden}`) : icon("file", `file-ic${hidden}`);
+  let base;
+  if (entry.is_dir) base = icon("folder", `dir-ic${hidden}`);
+  else {
+    const type = fileType(entry.name, entry.mode);
+    base = type ? icon(`ft-${type}`, `file-ic fi-${type}${hidden}`) : icon("file", `file-ic${hidden}`);
+  }
+  return isLinkEntry(entry) ? h("span", { class: "ic-link" }, base) : base;
 }
 function paneAtRoot(pane) {
   if (pane.kind === "remote") return pane.path === pane.rootPath || (!pane.rootPath && (pane.path === "/" || pane.path === "."));
@@ -198,7 +202,7 @@ function renderPane(pane) {
     fragment.append(h("tr", {
       class: `row${pane.selected.has(entry.path) ? " selected" : ""}${index === pane.cursor ? " focus" : ""}`, dataset: { index }, draggable: "true",
     },
-      h("td", { class: "name", title: entry.name }, entryIcon(entry), h("span", { text: entry.name })),
+      h("td", { class: "name", title: isLinkEntry(entry) && entry.link_target && entry.link_target !== "?" ? `${entry.name} → ${entry.link_target}` : entry.name }, entryIcon(entry), h("span", { text: entry.name })),
       h("td", { class: "num muted", text: entry.is_dir ? "—" : formatBytes(entry.size) }),
       h("td", { class: "muted hide-sm", text: formatDate(entry.modified_at) }),
       h("td", { class: "mode hide-sm", text: permissionOctal(entry.mode) })));
@@ -243,7 +247,7 @@ function renderCrumbs(pane) {
     crumbs.push(h("span", { class: "crumb-sep", text: "›" }));
     crumbs.push(h("button", { type: "button", class: `crumb${index === parts.length - 1 ? " last" : ""}`, dataset: { path: current }, text: part }));
   });
-  pane.crumbs.hidden = false; // always shown, so both panels keep their rows level with each other
+  pane.crumbs.hidden = false;
   pane.crumbs.replaceChildren(...crumbs);
   pane.crumbs.scrollLeft = pane.crumbs.scrollWidth;
 }
@@ -323,6 +327,35 @@ function syncPlaces(path) {
   if (select && place) select.value = place.path;
 }
 
+function syncRelative(path, base) {
+  const norm = (v) => String(v).replace(/\\/g, "/").replace(/\/+$/, "");
+  const p = norm(path), b = norm(base);
+  if (p === b) return "";
+  if (b === "") return p.replace(/^\//, "");
+  return p.startsWith(b + "/") ? p.slice(b.length + 1) : null;
+}
+function syncTarget(base, rel) {
+  const sep = base.includes("\\") && !base.includes("/") ? "\\" : "/";
+  const root = base.replace(/[\\/]+$/, "");
+  return rel ? root + sep + rel.split("/").join(sep) : base;
+}
+function syncStop(message) {
+  files.sync = false; files.syncBase = null;
+  applyFilesLayout();
+  if (message) toast(message);
+}
+function mirrorNavigation(kind, path) {
+  if (!files.syncBase) return;
+  const otherKind = kind === "remote" ? "local" : "remote";
+  const rel = syncRelative(path, files.syncBase[kind]);
+  if (rel === null) { syncStop("Linked folders switched off: you left the linked folder."); return; }
+  const target = syncTarget(files.syncBase[otherKind], rel);
+  if (panes[otherKind].path === target) return;
+  loadPane(otherKind, target, { mirror: false, quiet: true }).then((ok) => {
+    if (!ok && files.sync) syncStop("Linked folders switched off: the other panel has no matching folder.");
+  });
+}
+
 function resetPaneHistory(pane) {
   pane.loadSeq++;
   pane.hist = [];
@@ -330,7 +363,7 @@ function resetPaneHistory(pane) {
   pane.historyBusy = false;
   updateHistoryButtons(pane);
 }
-async function loadPane(kind, path, { keepSelection = false, quiet = false, record = true } = {}) {
+async function loadPane(kind, path, { keepSelection = false, quiet = false, record = true, mirror = true } = {}) {
   const pane = panes[kind];
   if (kind === "remote" && !files.sessionID) return false;
   cancelPendingRename(pane);
@@ -365,6 +398,7 @@ async function loadPane(kind, path, { keepSelection = false, quiet = false, reco
     }
     if (kind === "local") store.set("localPath", result.path);
     else if (files.profileID) store.set(`remotePath.${files.profileID}.${files.protocol}`, result.path);
+    if (mirror && !keepSelection && files.sync) mirrorNavigation(kind, result.path);
     return true;
   } catch (error) {
     if (request !== pane.loadSeq) return false;
@@ -378,6 +412,7 @@ async function loadPane(kind, path, { keepSelection = false, quiet = false, reco
 function handleSessionLost(lostID = files.sessionID) {
   if (!lostID || files.sessionID !== lostID) return;
   files.sessionID = ""; files.sessionInfo = null; files.sessionKey = "";
+  if (files.sync) syncStop("");
   resetPaneHistory(panes.remote);
   panes.remote.loaded = false; panes.remote.entries = []; panes.remote.selected.clear(); panes.remote.rootPath = "/";
   setFileStatus("error", "Connection lost");
@@ -387,11 +422,8 @@ function handleSessionLost(lostID = files.sessionID) {
     window.setTimeout(() => { if (!files.sessionID && !files.connecting && !files.manualOff && (view.current === "files" || view.current === "lists" || view.current === "ipk")) fileConnect().then(() => { if (view.current === "lists") listsEnterNow(); }); }, 600);
   } else toast("Connection closed. Press Connect.", "error");
 }
-const goUp = (kind, mirrored = false) => {
-  const other = panes[kind === "remote" ? "local" : "remote"];
-  const result = loadPane(kind, panes[kind].parent || (kind === "remote" ? "/" : "."));
-  if (files.sync && !mirrored && other.loaded && other.parent && other.parent !== other.path) goUp(other.kind, true);
-  return result;
+const goUp = (kind) => {
+  return loadPane(kind, panes[kind].parent || (kind === "remote" ? "/" : "."));
 };
 const goRoot = (kind) => loadPane(kind, kind === "remote" ? (panes.remote.rootPath || "/") : ".");
 const refreshPane = (kind) => loadPane(kind, panes[kind].path, { keepSelection: true });
@@ -557,18 +589,16 @@ $$("#paneSwitch button").forEach((button) => button.addEventListener("click", ()
 function rowEntry(pane, row) { return row && row.dataset.index !== undefined ? pane.visible[Number(row.dataset.index)] : null; }
 function openEntry(pane, entry) {
   if (!entry) return;
-  if (entry.is_dir) {
-    loadPane(pane.kind, entry.path);
-    const other = panes[pane.kind === "remote" ? "local" : "remote"];
-    const twin = files.sync && other.loaded ? other.entries.find((e) => e.is_dir && e.name === entry.name) : null;
-    if (twin) loadPane(other.kind, twin.path);
-  }
-  else if (pane.kind === "remote") transferSelection("download", [entry]);
-  else transferSelection("upload", [entry]);
+  const fileAction = () => (pane.kind === "remote" ? transferSelection("download", [entry]) : transferSelection("upload", [entry]));
+  if (entry.is_dir) loadPane(pane.kind, entry.path);
+  else if (isLinkEntry(entry)) {
+    const mine = pane.loadSeq + 1;
+    loadPane(pane.kind, entry.path, { quiet: true }).then((ok) => { if (!ok && pane.loadSeq === mine) fileAction(); });
+  } else fileAction();
 }
 for (const pane of Object.values(panes)) {
   pane.rows.addEventListener("click", (event) => {
-    if (pane.marqueeDone) return; // the click that ends a drag-select is not a row click
+    if (pane.marqueeDone) return;
     const row = event.target.closest("tr.row");
     if (!row) return;
     setActivePane(pane.kind);
@@ -612,7 +642,6 @@ for (const pane of Object.values(panes)) {
     clearPaneSelection(pane);
     pane.table.focus({ preventScroll: true });
   });
-  // Right-button drag selects rows; left-button drag stays native for file moves.
   pane.table.addEventListener("pointerdown", (event) => {
     if (event.button !== 2 || event.pointerType === "touch") return;
     pane.suppressCtx = false;
@@ -723,8 +752,8 @@ for (const pane of Object.values(panes)) {
   pane.table.addEventListener("contextmenu", (event) => {
     if (event.target.closest?.(".rename-input")) return;
     event.preventDefault();
-    if (pane.suppressCtx) { pane.suppressCtx = false; return; } // the right button was just used to drag-select
-    if (pane.rmb?.down) { pane.rmb.menu = true; return; }       // still held: decide on release (drag = select, click = menu)
+    if (pane.suppressCtx) { pane.suppressCtx = false; return; }
+    if (pane.rmb?.down) { pane.rmb.menu = true; return; }
     showContext(event.clientX, event.clientY, event.target);
   });
   pane.rows.addEventListener("dragstart", (event) => {
@@ -1103,7 +1132,6 @@ function askPermissions(title, info, initial, hasFolder = false) {
   const fromBoxes = () => boxes.reduce((sum, box) => sum + (box.checked ? Number(box.dataset.bit) : 0), 0);
   const setBoxes = (value) => boxes.forEach((box) => { box.checked = Boolean(value & Number(box.dataset.bit)); });
   const symbolic = (value) => "rwxrwxrwx".split("").map((c, i) => (value & (256 >> i) ? c : "-")).join("");
-  // The symbolic form (rw-r--r--) and the highlighted preset follow whatever the boxes or the field say.
   const showMode = (value) => {
     const sym = symbolic(value);
     $("#chmodSym").textContent = sym;
@@ -1411,7 +1439,6 @@ const editorLines = (() => {
   const selected = () => text.value.slice(text.selectionStart, text.selectionEnd);
   const insertText = (clip) => {
     text.focus();
-    // execCommand keeps the browser's own undo history (Ctrl+Z works after a paste).
     let done = false;
     try { done = document.execCommand("insertText", false, clip); } catch { done = false; }
     if (!done) {
@@ -1426,7 +1453,7 @@ const editorLines = (() => {
     if (await clipboardWrite(chosen)) toast("Selection copied");
     else toast("Copy was blocked by the browser.", "error");
     text.focus();
-    text.setSelectionRange(end, end); // the choice is made, so the selection colour goes
+    text.setSelectionRange(end, end);
   };
   const pasteEditor = async () => {
     const clip = await clipboardRead();
@@ -1442,8 +1469,6 @@ const editorLines = (() => {
     }
     if (clip) insertText(clip);
   };
-  // Optional (off by default): copy a selection made with the mouse. Keyboard selection such as
-  // Ctrl+A never copies, so selecting the old text to replace it cannot overwrite the clipboard.
   text.addEventListener("mouseup", (event) => {
     if (event.button !== 0 || !copyOnSelect()) return;
     window.setTimeout(() => { const chosen = selected(); if (chosen) clipboardWrite(chosen); }, 0);
@@ -1523,7 +1548,6 @@ async function openEditor(kind, path) {
     if (kind === "remote" && !isFileSessionCurrent(sessionID, sessionKey)) return;
     showEditor(kind, data.file, false, sessionID, sessionKey);
   } catch (error) {
-    // A file that is not text cannot be edited, but it can still be looked at as bytes.
     const pane = panes[kind], index = pane.visible.findIndex((e) => e.path === path);
     if (error?.code === "not_text" && index >= 0) { toast("This file is not text, so it opened in the hex editor."); showPreview(pane, index); return; }
     editorError(kind, error, sessionID);
@@ -1619,8 +1643,6 @@ async function editorReload() {
   dialog.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (!$("#editorSave").disabled) editorSave(); }
   });
-  // Tab inserts a tab (and indents or outdents a multi-line selection) instead of leaving the editor.
-  // Shift+Tab with no selection and Esc, Tab still move focus out, so the keyboard is never trapped.
   text.addEventListener("keydown", (event) => {
     if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey || text.readOnly) return;
     const { selectionStart: from, selectionEnd: to, value } = text;
@@ -1657,8 +1679,13 @@ function applyFilesLayout() {
 }
 $("#fileSwap").addEventListener("click", () => { files.localLeft = !files.localLeft; store.set("filesLocalLeft", files.localLeft); applyFilesLayout(); });
 $("#fileSync").addEventListener("click", () => {
-  files.sync = !files.sync; store.set("filesSync", files.sync); applyFilesLayout();
-  toast(files.sync ? "Synchronised browsing on: folders open in both panels" : "Synchronised browsing off");
+  if (files.sync) { syncStop("Linked folders off"); return; }
+  const local = panes.local, remote = panes.remote;
+  if (!local.loaded || !remote.loaded || !files.sessionID) { toast("Connect to the device and open a folder in both panels first", "error"); return; }
+  if (local.path === "." || remote.path === ".") { toast("Open a real folder on this computer first (not the home view)", "error"); return; }
+  files.sync = true; files.syncBase = { local: local.path, remote: remote.path };
+  applyFilesLayout();
+  toast("Linked: opening a folder inside these two opens the matching one in the other panel. Copy, move and delete still act on one panel only.");
 });
 function renderSitesSide() {
   const side = $("#sitesSide");
@@ -1724,7 +1751,6 @@ applyFilesLayout();
   }
   const indexAtSelection = () => matches.findIndex((m) => m.s === text.selectionStart && m.e === text.selectionEnd);
 
-  // ---- the coloured layer that sits behind the text ----
   function geometry() {
     if (layer.hidden) return;
     const cs = getComputedStyle(text);
@@ -1764,7 +1790,6 @@ applyFilesLayout();
     if (!needle) { setInfo(""); return; }
     if (!matches.length) { setInfo("No matches", "none"); return; }
     const total = `${matches.length}${capped ? "+" : ""}`;
-    // Numbers only, so the counter reads the same in every language.
     let message = `${current >= 0 ? current + 1 : "–"}/${total}`;
     if (wrapped) message += " ↻";
     const notes = [];
@@ -1781,7 +1806,6 @@ applyFilesLayout();
     updateInfo();
   }
 
-  // ---- moving to a match ----
   function scrollTo(index) {
     const el = markEls[index], m = matches[index];
     if (el) {
@@ -1877,7 +1901,6 @@ applyFilesLayout();
       else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeBar(); }
     });
   }
-  // Typing in the search box colours the matches and selects the first one at or after the cursor.
   needleInput.addEventListener("input", () => {
     holdInfo = false; dirty = true;
     refresh();
@@ -1888,7 +1911,6 @@ applyFilesLayout();
     }
   });
   $("#findCase").addEventListener("change", () => { holdInfo = false; dirty = true; refresh(); });
-  // Edits move the text under the colours: hide them at once and redo them a moment later.
   text.addEventListener("input", () => {
     if (bar.hidden) return;
     dirty = true;
@@ -1930,7 +1952,6 @@ applyFilesLayout();
     close(false);
     text.focus();
     text.setSelectionRange(start, end);
-    // Bring the line into the middle of the view (textarea scrolls only as far as needed otherwise).
     const style = getComputedStyle(text), lineHeight = parseFloat(style.lineHeight) || 20;
     const before = text.value.slice(0, start).split("\n");
     const rows = text.getAttribute("wrap") === "soft" ? Math.round(text.scrollHeight / lineHeight) * (start / Math.max(1, value.length)) : before.length - 1;
@@ -2086,7 +2107,6 @@ function searchHex(direction = 1) {
   setHexSearchStatus(`Found at ${location}${found.wrapped ? " · wrapped" : ""}`);
   $("#previewHexBox").focus({ preventScroll: true });
 }
-// Opens the raw bytes of the file in the hex editor. Nothing is changed on the receiver until Save.
 async function showHexPreview(pane, entry, sessionID, sessionKey, seq, binary) {
   const info = $("#previewHexInfo");
   preview.mode = "hex"; preview.binary = binary; preview.meta = null;
@@ -2110,7 +2130,6 @@ async function showHexPreview(pane, entry, sessionID, sessionKey, seq, binary) {
       size: Number(header("X-File-Size")) || bytes.length, truncated: header("X-File-Truncated") === "true",
       hash: header("X-File-Hash"), modified: header("X-File-Modified"), path: entry.path, kind: pane.kind, sessionID, sessionKey,
     };
-    // A file that was only read in part can be looked at but never saved: the rest would be lost.
     previewHexView.set(bytes, { editable: !preview.meta.truncated });
     hexStatus();
     previewHexView.host.focus({ preventScroll: true });
@@ -2154,7 +2173,6 @@ async function saveHexEdits(force = false) {
   preview.saving = false;
   hexStatus();
 }
-// Closing or leaving the window with unsaved byte changes asks first.
 async function closePreview() {
   if (hexDirty()) {
     const discard = await ask({ title: "Discard byte changes?", input: false, ok: "Discard", danger: true, message: "The changes you made to this file's bytes have not been saved." });
@@ -2197,7 +2215,6 @@ async function showPreview(pane, index) {
   } catch (error) {
     if (seq !== preview.seq) return true;
     if (pane.kind === "remote" && sessionLost(error)) { dialog.close(); handleSessionLost(sessionID); return true; }
-    // A file that is not text, or is too big for the text view, is shown as bytes instead.
     if (error.code === "not_text" || error.code === "too_large") { await showHexPreview(pane, entry, sessionID, sessionKey, seq, error.code === "not_text"); return true; }
     body.textContent = error.message;
   }
@@ -2224,7 +2241,7 @@ function cmdPreview() {
     const typing = event.target.tagName === "INPUT";
     const hex = preview.mode === "hex";
     if (hex && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); saveHexEdits(); return; }
-    if (typing || hex) return; // in the hex editor every key belongs to the editor
+    if (typing || hex) return;
     if (event.key === " " && !onButton) { event.preventDefault(); dialog.close(); }
     else if ((event.key === "ArrowDown" || event.key === "ArrowRight") && !onButton && !hex) { event.preventDefault(); step(1); }
     else if ((event.key === "ArrowUp" || event.key === "ArrowLeft") && !onButton && !hex) { event.preventDefault(); step(-1); }

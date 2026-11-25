@@ -21,7 +21,6 @@ func (h *harness) saveFile(m map[string]any) (out map[string]any, code int) {
 	return out, code
 }
 
-// openAndSave opens a file as the editor does and saves it back unchanged.
 func (h *harness) openAndSave(t *testing.T, path string) map[string]any {
 	t.Helper()
 	f, code := h.readFile(path)
@@ -68,7 +67,6 @@ func TestEditorOpensNonUTF8FilesAsLatin1(t *testing.T) {
 	if code != 200 || f["encoding"] != "latin1" || f["content"] != "café\n" {
 		t.Fatalf("%d %v", code, f)
 	}
-	// Edit the ASCII part; the unknown bytes must survive untouched.
 	_, code = h.saveFile(map[string]any{
 		"path": "/etc/enigma2/old.cfg", "content": "café = 2\n", "line_ending": "lf", "encoding": "latin1",
 		"expected_size": f["size"], "expected_modified_at": f["modified_at"], "expected_hash": f["hash"],
@@ -76,7 +74,6 @@ func TestEditorOpensNonUTF8FilesAsLatin1(t *testing.T) {
 	if got, _ := h.ftp.Get("/etc/enigma2/old.cfg"); code != 200 || string(got) != "caf\xe9 = 2\n" {
 		t.Fatalf("%d %q", code, got)
 	}
-	// Typing characters Latin-1 cannot hold is refused clearly and writes nothing.
 	f, _ = h.readFile("/etc/enigma2/old.cfg")
 	out, code := h.saveFile(map[string]any{
 		"path": "/etc/enigma2/old.cfg", "content": "مرحبا\n", "line_ending": "lf", "encoding": "latin1",
@@ -142,7 +139,6 @@ func TestEditorCreateErrors(t *testing.T) {
 	}
 }
 
-// A channel list (lamedb) on a receiver with many channels is well over 1 MB; it must open and save.
 func TestEditorOpensAndSavesAFileOverOneMegabyte(t *testing.T) {
 	h := newHarness(t)
 	line := "0001:00000001:0001:0001:1:0\nChannel name\np:Provider\n"

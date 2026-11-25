@@ -36,7 +36,6 @@
   }
 
 
-  // Small screens: utility buttons move into the top bar.
   const rail = document.querySelector(".rail");
   const railFoot = document.querySelector(".rail-foot");
   const topbar = document.querySelector(".topbar");
@@ -97,8 +96,6 @@
     guideDialog: "calendar", timerDialog: "bell", atDialog: "bolt", erDialog: "calendar", svcDialog: "info", askDialog: "info", themeDialog: "palette", diagDialog: "plug", keysDialog: "keyboard",
     updDialog: "refresh", chmodDialog: "lock", commandEditDialog: "terminal", previewDialog: "eye",
   };
-  // Information-only windows close when the backdrop is clicked (press and release both outside, so a drag that
-  // starts inside a field and ends outside never closes anything).
   for (const id of ["diagDialog", "svcDialog"]) {
     const dialog = document.getElementById(id);
     if (!dialog) continue;
@@ -134,7 +131,6 @@
       else if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) dialog.close();
     });
     if (!hasClose) head.append(close);
-    // The header close already does this: a second "Close" in the footer is only noise.
     for (const dup of dialog.querySelectorAll('.dialog-actions [id$="Close"]')) {
       dup.classList.add("dlg-dup");
       const bar = dup.closest(".dialog-actions");
@@ -144,7 +140,6 @@
     if (field && !dialog.querySelector("[autofocus]")) field.setAttribute("autofocus", "");
   }
 
-  // Action buttons in toolbars show only their icon; the name moves into the tooltip.
   const ICONIFY = [
     ".view-actions .btn", ".device-actions .btn", ".connbar .btn", "#btnDownload", "#btnUpload", "button[data-cmd]",
     ".bq-tools .btn", "#liveToggle", "#remoteShow", "#channelShow", "#remoteMore", "#bqLoad", "#listsConnect", "#bqReload", "#bqSave", "#guideShow", ".tools-sec .btn", ".ipk-card .btn", "#pkUpdate", "#pkUpgrade", ".pk-item .btn", ".ft-actions .btn", "#faultsAckAll", ".tools-actions .btn",
@@ -172,7 +167,6 @@
     .observe(document.querySelector("main") || document.body, { childList: true, subtree: true });
   iconifyAll();
 
-  // Long explanations live behind a small (i) button instead of sitting in the layout.
   let helpSeq = 0;
   function helpify(el) {
     const id = el.id || (el.id = `help-${++helpSeq}`);

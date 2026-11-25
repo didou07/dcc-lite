@@ -607,8 +607,6 @@ document.addEventListener("keydown", (event) => {
   else if (key === "Escape") cmdSelectNone();
 });
 
-// Transfer speed limit (from the original DCC's packet-delay slider). The server keeps it in memory, so the
-// saved choice is sent again when the page loads.
 (function speedLimit() {
   const select = $("#speedLimit");
   if (!select) return;

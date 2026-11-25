@@ -141,27 +141,26 @@ type Player struct {
 	mu  sync.Mutex
 	mp  uintptr
 
-	deint string // the deinterlace mode the current picture pipeline was started with
+	deint string
 
 	hwnd   uintptr
 	vol    int
 	volSet bool
 	muted  bool
 
-	overlayOn bool // the receiver-OSD picture (see SetOverlay) is currently shown
+	overlayOn bool
 }
 
 type PlayOptions struct {
-	CachingMs   int    // network and live buffering in milliseconds; 0 keeps the default
+	CachingMs   int
 	Deinterlace string // "auto" (VLC decides), "yadif" or "off"
 	NoHardware  bool   // decode in software
 }
 
-// Video fit modes: how the picture meets the edges of its window.
 const (
-	FitOriginal = "fit"     // the broadcast's own proportions, black bars where needed (default)
-	FitFill     = "fill"    // zoom until the window is full; the overflow is cut off
-	FitStretch  = "stretch" // stretch the picture to the window's shape
+	FitOriginal = "fit"
+	FitFill     = "fill"
+	FitStretch  = "stretch"
 	Fit169      = "16:9"
 	Fit43       = "4:3"
 )
@@ -173,7 +172,6 @@ const (
 	DeinterlaceOff   = "off"
 )
 
-// NewPlayer creates a player. Call SetWindow before Play.
 func (l *Lib) NewPlayer() (*Player, error) {
 	mp, err := l.newMP()
 	if err != nil {
@@ -193,7 +191,6 @@ func (l *Lib) newMP() (uintptr, error) {
 	return mp, nil
 }
 
-// SetWindow tells VLC which window (HWND) to draw into.
 func (p *Player) SetWindow(hwnd uintptr) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -216,7 +213,7 @@ func (p *Player) Play(mrl string, opt PlayOptions) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.overlayOn && p.mp != 0 && p.OverlaySupported() {
-		p.lib.call("libvlc_video_set_logo_int", p.mp, logoEnable, 0) // the old picture has the old channel's size
+		p.lib.call("libvlc_video_set_logo_int", p.mp, logoEnable, 0)
 	}
 	p.overlayOn = false
 	if mode != p.deint && p.mp != 0 {
@@ -362,7 +359,6 @@ func (p *Player) SetPause(paused bool) {
 	p.lib.call("libvlc_media_player_set_pause", p.mp, v)
 }
 
-// SetVolume sets the volume (0 to 100, VLC allows up to 200).
 func (p *Player) SetVolume(v int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -475,12 +471,10 @@ const (
 	logoPosition = 7
 )
 
-// OverlaySupported reports whether this libvlc has the logo filter.
 func (p *Player) OverlaySupported() bool {
 	return p.lib.procs["libvlc_video_set_logo_int"] != 0 && p.lib.procs["libvlc_video_set_logo_string"] != 0
 }
 
-// SetOverlay draws the PNG at path over the video from its top left corner; it must be as large as the video.
 func (p *Player) SetOverlay(path string) error {
 	if !p.OverlaySupported() {
 		return errors.New("this VLC cannot draw a picture over the video")
@@ -510,7 +504,6 @@ func (p *Player) SetOverlay(path string) error {
 	return nil
 }
 
-// ClearOverlay removes the picture drawn by SetOverlay.
 func (p *Player) ClearOverlay() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

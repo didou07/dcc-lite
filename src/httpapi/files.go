@@ -47,7 +47,6 @@ func (s *Server) listLocalFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"root": s.app.LocalFiles.RootLabel(), "path": current, "parent": s.app.LocalFiles.ParentOf(current), "entries": entries})
 }
 
-// listLocalPlaces feeds the drive picker above the local panel.
 func (s *Server) listLocalPlaces(w http.ResponseWriter, r *http.Request) {
 	if s.denyHostFiles(w) {
 		return
@@ -561,8 +560,6 @@ func (s *Server) restartFileTransfer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"task": task})
 }
 
-// writeBytes sends a file (or its start) as raw bytes for the hex editor. The headers carry what the
-// editor needs to notice a change by someone else when it saves.
 func writeBytes(w http.ResponseWriter, file filetransfer.BinaryFile) {
 	h := w.Header()
 	h.Set("Content-Type", "application/octet-stream")
@@ -622,8 +619,6 @@ func (s *Server) readRemoteBytes(w http.ResponseWriter, r *http.Request) {
 	writeBytes(w, file)
 }
 
-// binaryWriteFromRequest reads a save from the hex editor: the new bytes are the body, and the
-// query says which version of the file the editor opened.
 func binaryWriteFromRequest(w http.ResponseWriter, r *http.Request) (path string, data []byte, write filetransfer.BinaryWrite, ok bool) {
 	q := r.URL.Query()
 	path = q.Get("path")

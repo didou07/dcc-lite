@@ -95,7 +95,6 @@ func TestSettleLineEndingUsesMostCommon(t *testing.T) {
 }
 
 func TestUTF16FilesOpenAndSaveBackTheSameWay(t *testing.T) {
-	// "<a>é</a>\r\n" saved by Windows Notepad as "Unicode" (UTF-16 LE with a byte order mark).
 	le := []byte{0xff, 0xfe, '<', 0, 'a', 0, '>', 0, 0xe9, 0, '<', 0, '/', 0, 'a', 0, '>', 0, '\r', 0, '\n', 0}
 	be := []byte{0xfe, 0xff, 0, '<', 0, 'a', 0, '>', 0, 0xe9, 0, '<', 0, '/', 0, 'a', 0, '>', 0, '\r', 0, '\n'}
 	for name, raw := range map[string][]byte{"le": le, "be": be} {

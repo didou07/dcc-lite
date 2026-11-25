@@ -19,7 +19,6 @@
 
   // Two ways to browse commands.
   const classic = () => store.get("termCmdStyle", "panel") === "classic";
-  // On a narrow window the side panel floats over the terminal, so it starts closed and closes after use.
   const overlay = () => window.matchMedia("(max-width: 760px)").matches;
 
   function typeCommand(item, run = false) {

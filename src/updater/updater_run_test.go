@@ -28,7 +28,6 @@ func runAsync(e *testEnv, t *testing.T) (stop func()) {
 	}
 }
 
-// The background loop only notices a new version. It must never install one by itself.
 func TestRunNotifiesButNeverInstalls(t *testing.T) {
 	e := newEnv(t, "1.1.9", fakeRelease{tag: "v1.2.0"})
 	fastRun(e)

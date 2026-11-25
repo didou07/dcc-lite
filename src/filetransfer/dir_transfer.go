@@ -10,7 +10,10 @@ import (
 	"strings"
 
 	"github.com/didou07/dcc-lite/src/core"
+	"github.com/didou07/dcc-lite/src/logx"
 )
+
+var dirLog = logx.For("folder-transfer")
 
 func checkRemoteDestination(ctx context.Context, adapter core.FileTransfer, remotePath string, isDirectory, overwrite bool) error {
 	if remotePath == "/" || path.Base(remotePath) == "." || path.Base(remotePath) == "/" {
@@ -56,7 +59,8 @@ func uploadDirectory(ctx context.Context, adapter core.FileTransfer, localRoot, 
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("folder transfer does not follow symbolic links: %s", entry.Name())
+			dirLog.Info("symbolic link skipped", "name", entry.Name())
+			return nil
 		}
 		if invalidFTPArgument(entry.Name()) || strings.ContainsAny(entry.Name(), "/\\") {
 			return fmt.Errorf("folder transfer found an unsupported file name: %q", entry.Name())
@@ -180,7 +184,8 @@ func downloadDirectory(ctx context.Context, adapter core.FileTransfer, local *Lo
 				return fmt.Errorf("remote directory contains an unsafe entry name: %q", entry.Name)
 			}
 			if strings.HasPrefix(entry.Mode, "l") || strings.Contains(strings.ToLower(entry.Mode), "slink") {
-				return fmt.Errorf("folder download does not follow remote symbolic links: %s", entry.Name)
+				dirLog.Info("remote symbolic link skipped", "name", entry.Name)
+				continue
 			}
 			localPath := joinLocal(localDir, entry.Name)
 			remoteEntryPath := path.Join(remoteDir, entry.Name)

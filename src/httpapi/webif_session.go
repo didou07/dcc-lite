@@ -65,7 +65,6 @@ func withSessionID(pathAndQuery, id string) string {
 	return clean + sep + "sessionid=" + url.QueryEscape(id)
 }
 
-// fetchSession asks the receiver for a session id and remembers it.
 func (d deviceWeb) fetchSession(ctx context.Context) (string, error) {
 	resp, err := d.sendOnce(ctx, http.MethodPost, "/web/session", "sessionid=0")
 	if err != nil {

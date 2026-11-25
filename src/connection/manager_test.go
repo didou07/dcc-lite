@@ -119,7 +119,7 @@ func TestClassifyNetworkError(t *testing.T) {
 type fakeChecker struct {
 	mu      sync.Mutex
 	calls   int
-	started chan int // receives the call number when a check begins
+	started chan int
 	fn      func(ctx context.Context, n int, p config.Profile) Status
 }
 
@@ -177,7 +177,7 @@ func TestManagerShowsCheckingWhileRunning(t *testing.T) {
 func TestNewerCheckSupersedesOlderOne(t *testing.T) {
 	fc := &fakeChecker{started: make(chan int, 2)}
 	fc.fn = func(ctx context.Context, n int, p config.Profile) Status {
-		if n == 1 { // slow check: waits until the manager cancels it
+		if n == 1 {
 			<-ctx.Done()
 			return Status{ProfileID: p.ID, State: "offline", Message: "stale"}
 		}

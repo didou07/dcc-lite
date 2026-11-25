@@ -115,12 +115,9 @@ function screenStop() {
   img.removeAttribute("src");
   img.hidden = true;
 }
-// Leaving the page: a live picture keeps playing in the background (the native player is only hidden);
-// everything else on the page is stopped.
 function screenLeave() {
   if (typeof liveIsOn === "function" && liveIsOn()) {
     livePopClose();
-    // view.current changes right after this call, then the player steps aside
     queueMicrotask(() => liveSyncNative(true));
     return;
   }
@@ -135,7 +132,7 @@ function screenRestart() {
   screenView.wake?.();
 }
 function screenRestartNow() {
-  if (typeof liveOsdNow === "function" && liveOsdNow()) return; // live: the OSD overlay asks for its own picture
+  if (typeof liveOsdNow === "function" && liveOsdNow()) return;
   screenView.once = true;
   screenView.lastStart = -1e9;
   screenView.controller?.abort();

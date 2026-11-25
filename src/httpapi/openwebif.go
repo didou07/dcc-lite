@@ -68,7 +68,6 @@ const maxWebRequestsPerDevice = 2
 
 var webSlots sync.Map
 
-// Remote-control presses get a slot of their own, so a slow screenshot never makes a key wait.
 type keyPriorityKey struct{}
 
 var prioritySlots sync.Map

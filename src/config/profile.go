@@ -34,16 +34,15 @@ type Profile struct {
 	InsecureTLS bool   `json:"tls_insecure_skip_verify,omitempty"`
 	WebKind     string `json:"web_kind,omitempty"`
 
-	Group    string `json:"group,omitempty"`     // folder name in the site list
-	Color    string `json:"color,omitempty"`     // one of SiteColors, or empty
-	Favorite bool   `json:"favorite,omitempty"`  // pinned to the top
-	StartDir string `json:"start_dir,omitempty"` // remote folder opened by Files and Terminal
-	Note     string `json:"note,omitempty"`      // free text, shown on the card
+	Group    string `json:"group,omitempty"`    // folder name in the site list
+	Color    string `json:"color,omitempty"`    // one of SiteColors, or empty
+	Favorite bool   `json:"favorite,omitempty"` // pinned to the top
+	StartDir string `json:"start_dir,omitempty"`
+	Note     string `json:"note,omitempty"` // free text, shown on the card
 
-	MAC string `json:"mac,omitempty"` // learned from the receiver; used by Wake-on-LAN
+	MAC string `json:"mac,omitempty"`
 }
 
-// SiteColors are the colour labels a saved site can carry.
 var SiteColors = []string{"red", "orange", "amber", "green", "teal", "blue", "violet", "pink"}
 
 func validSiteColor(c string) bool {

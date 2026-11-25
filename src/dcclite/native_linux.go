@@ -63,7 +63,6 @@ func nativeNotice(text string) {
 	}
 }
 
-// runNative shows the window and returns when it is closed.
 func runNative(d nativeDeps) error {
 	bin := findAppBrowser()
 	if bin == "" {

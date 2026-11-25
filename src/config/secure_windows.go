@@ -17,7 +17,7 @@ func restrictToOwner(path string, isDir bool) error {
 	}
 	grant := current.Username + ":F"
 	if isDir {
-		grant = current.Username + ":(OI)(CI)F" // folders pass the right on to the files created inside
+		grant = current.Username + ":(OI)(CI)F"
 	}
 	cmd := exec.Command("icacls", path, "/inheritance:r", "/grant:r", grant)
 	if out, err := cmd.CombinedOutput(); err != nil {

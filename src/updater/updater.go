@@ -1,4 +1,3 @@
-// Package updater installs newer DCC Lite releases from GitHub.
 package updater
 
 import (
@@ -38,7 +37,7 @@ type Options struct {
 	Variant string
 	DataDir string // stores update.json and downloads
 	Log     *slog.Logger
-	Idle    func() bool // an install the person asks for is refused while this returns false (nil = always idle)
+	Idle    func() bool
 
 	// Overridable for tests.
 	APIBase                      string
@@ -52,7 +51,7 @@ type Status struct {
 	Current    string    `json:"current"`
 	Latest     string    `json:"latest,omitempty"`
 	Available  bool      `json:"available"`
-	Notify     bool      `json:"notify"` // look for new versions in the background and show a notice; nothing is ever installed without a click
+	Notify     bool      `json:"notify"`
 	Supported  bool      `json:"supported"`
 	Reason     string    `json:"reason,omitempty"`
 	Busy       string    `json:"busy,omitempty"` // "checking", "installing" or "restarting"
@@ -151,14 +150,12 @@ func (u *Updater) Status() Status {
 	return u.st
 }
 
-// DisableNotify turns off the background checks for this run, without touching the saved choice.
 func (u *Updater) DisableNotify() {
 	u.mu.Lock()
 	u.st.Notify = false
 	u.mu.Unlock()
 }
 
-// prefs is the saved choice. Auto is only read: older versions saved the choice under that name.
 type prefs struct {
 	Notify *bool `json:"notify,omitempty"`
 	Auto   *bool `json:"auto,omitempty"`
@@ -316,11 +313,8 @@ func truncate(s string, n int) string {
 	return s
 }
 
-// ErrActive is returned when an install is asked for while transfers or terminal tabs are open,
-// because the restart would cut them off.
 var ErrActive = errors.New("file transfers or terminal sessions are active; finish or close them, then install the update")
 
-// Install downloads and installs the available version. It only runs when the person asks for it.
 func (u *Updater) Install(ctx context.Context) error {
 	if u.opt.Idle != nil && !u.opt.Idle() {
 		return ErrActive
@@ -527,8 +521,6 @@ func (u *Updater) CleanupOld() {
 	_ = os.RemoveAll(filepath.Join(u.opt.DataDir, "updates"))
 }
 
-// Run looks for new releases in the background while notices are on and records them in the
-// status, which the interface shows. It never installs anything.
 func (u *Updater) Run(ctx context.Context) {
 	if ok, _ := u.supported(); !ok {
 		return
@@ -550,7 +542,7 @@ func (u *Updater) Run(ctx context.Context) {
 		}
 		wait = every
 		if !u.Status().Notify {
-			continue // switched off: no request is made to GitHub
+			continue
 		}
 		if _, err := u.Check(ctx); err != nil {
 			u.log.Debug("update check failed", "error", err)

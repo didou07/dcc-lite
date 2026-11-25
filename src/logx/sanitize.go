@@ -14,7 +14,7 @@ import (
 
 type Term struct {
 	Value string
-	Kind  string // label prefix: "device", "host", "user", ...
+	Kind  string
 }
 
 type Sanitizer struct {
@@ -122,7 +122,7 @@ func (s *Sanitizer) Text(text string) string {
 	})
 	text = reUserPath.ReplaceAllStringFunc(text, func(m string) string {
 		parts := reUserPath.FindStringSubmatch(m)
-		if strings.EqualFold(parts[2], "root") { // /home/root is the receiver's own home, not a person
+		if strings.EqualFold(parts[2], "root") {
 			return m
 		}
 		return parts[1] + "user"

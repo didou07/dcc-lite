@@ -26,7 +26,6 @@ var libDirs = func() []string {
 	return dirs
 }()
 
-// Candidates lists the libvlc files that exist on this machine.
 func Candidates() []string {
 	var out []string
 	if v := os.Getenv("DCC_LIBVLC"); v != "" {
@@ -52,5 +51,5 @@ func FindLib() (string, error) {
 	if v := os.Getenv("DCC_LIBVLC"); v != "" {
 		return "", errors.New("DCC_LIBVLC does not point to a file: " + v)
 	}
-	return libNames[0], nil // the loader's own search; LoadFrom explains a failure
+	return libNames[0], nil
 }

@@ -31,8 +31,6 @@ static void logf_(const char *level, const char *fmt, ...) {
 	g_free(s);
 }
 
-// ---- The bridge: window.dccLive(op, json) -> Promise<string> ----
-
 static gboolean origin_ok(void) {
 	const char *uri = g_view ? webkit_web_view_get_uri(WEBKIT_WEB_VIEW(g_view)) : NULL;
 	size_t n = g_origin ? strlen(g_origin) : 0;
@@ -72,8 +70,6 @@ static gboolean on_message(WebKitUserContentManager *m, JSCValue *value, WebKitS
 	g_free(msg);
 	return TRUE;
 }
-
-// ---- Links, new windows and downloads ----
 
 static void open_outside(const char *uri) {
 	GError *e = NULL;
@@ -158,8 +154,6 @@ static gboolean on_process_crashed(WebKitWebView *v, gpointer data) {
 	return TRUE;
 }
 
-// ---- The picture: a native X11 window over the page ----
-
 static gboolean on_video_draw(GtkWidget *w, cairo_t *cr, gpointer data) {
 	(void)w; (void)data;
 	cairo_set_source_rgb(cr, 0, 0, 0);
@@ -227,8 +221,6 @@ static void on_destroy(GtkWidget *w, gpointer data) {
 	gtk_main_quit();
 }
 
-// ---- Calls from other threads, run on the GTK thread ----
-
 typedef struct { int x, y, w, h, show; } box_t;
 
 static gboolean idle_box(gpointer p) {
@@ -285,8 +277,6 @@ void dcc_gtk_ping(void) { g_idle_add(idle_ping, NULL); }
 
 unsigned long dcc_gtk_video_xid(void) { return g_xid; }
 void dcc_gtk_view_size(int *w, int *h) { *w = g_view_w; *h = g_view_h; }
-
-// ---- The window ----
 
 static const char *bridge_js =
 	"window.__dccGui = %s;\n"
@@ -386,8 +376,8 @@ int dcc_gtk_run(const char *url, const char *origin, const char *datadir, const 
 	gtk_container_add(GTK_CONTAINER(g_win), g_overlay);
 
 	gtk_widget_show_all(g_win);
-	gtk_widget_realize(g_video); // so the picture window exists before the first channel
-	gtk_widget_hide(g_video);    // and stays out of sight until the page asks for it
+	gtk_widget_realize(g_video);
+	gtk_widget_hide(g_video);
 
 	webkit_web_view_load_uri(WEBKIT_WEB_VIEW(g_view), url);
 	gtk_main();

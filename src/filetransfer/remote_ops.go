@@ -161,7 +161,7 @@ func copyRemoteFile(ctx context.Context, adapter core.FileTransfer, src, dst, mo
 		return err
 	}
 	if perm, ok := parseRemoteMode(mode); ok {
-		_ = adapter.Chmod(ctx, dst, perm&0o7777) // best effort: some servers do not support CHMOD
+		_ = adapter.Chmod(ctx, dst, perm&0o7777)
 	}
 	return nil
 }

@@ -1,6 +1,4 @@
 "use strict";
-// The receiver's OSD drawn over the live video: the OSD is fetched as a transparent PNG, scaled to the video size
-// and handed to the native player, which draws it over the picture.
 
 const liveOsd = {
   on: store.get("live.osd", true) !== false,
@@ -23,14 +21,12 @@ const liveOsdSleep = (ms) => new Promise((resolve) => {
   liveOsd.wake = () => { window.clearTimeout(timer); resolve(); };
 });
 
-// True while the overlay can be shown: playing, nothing opened over the picture, the page is in front.
 function liveOsdActive() {
   return !!(liveNative && live.on && liveOsd.on && !liveOsd.blocked && live.hasPicture && live.video && live.video.w > 0 && live.video.h > 0
     && (live.state === "playing" || live.state === "paused") && !live.popup && !document.hidden
     && view.current === "screen" && screenView.profileID && !document.querySelector("dialog[open]"));
 }
 
-// Asks for a fresh OSD picture now (after a key press). False when the overlay is not running.
 function liveOsdNow() {
   if (!liveOsdActive()) return false;
   liveOsd.burstUntil = performance.now() + 8000;
@@ -62,7 +58,6 @@ function liveOsdBlock(reason) {
   toast(LIVE_OSD_MESSAGES[reason] || "The OSD overlay is off.", "error");
 }
 
-// A cheap fingerprint of the picture's bytes, enough to tell "nothing changed" from "something changed".
 async function liveOsdDigest(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const stride = Math.max(1, bytes.length >> 17);
@@ -79,7 +74,6 @@ const liveOsdBase64 = (blob) => new Promise((resolve, reject) => {
 });
 const liveOsdPng = (canvas) => new Promise((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("The OSD picture could not be made."))), "image/png"));
 
-// Draws img into ctx at w x h. A big reduction is done in halving steps: one jump makes text jagged.
 const liveOsdStepCanvas = document.createElement("canvas");
 function liveOsdDraw(ctx, img, w, h) {
   ctx.imageSmoothingEnabled = true;
@@ -100,7 +94,6 @@ function liveOsdDraw(ctx, img, w, h) {
   ctx.drawImage(src, 0, 0, w, h);
 }
 
-// A standard-definition picture is small and VLC enlarges the overlay with the video: sharpen it a little first.
 function liveOsdSharpen(ctx, w, h) {
   const img = ctx.getImageData(0, 0, w, h), d = img.data, n = w * h;
   const pre = new Float32Array(n * 4);
@@ -134,8 +127,6 @@ async function liveOsdStep(gen) {
   const id = screenView.profileID;
   const begun = live.beginN, vw = live.video.w, vh = live.video.h;
   const stale = () => gen !== liveOsd.gen || begun !== live.beginN || !liveOsdActive() || live.video.w !== vw || live.video.h !== vh;
-  // Ask for a picture at least as wide as the video, so it is never stretched (a stretched OSD looks blurry).
-  // While no OSD is showing, only a small picture is fetched to see whether one has appeared: far less work for the receiver.
   const quiet = !liveOsd.shown && performance.now() > liveOsd.burstUntil;
   const want = quiet ? 640 : (vw > 1280 ? 1920 : 1280);
   const params = new URLSearchParams({ mode: "osd", width: String(want) });
@@ -152,7 +143,6 @@ async function liveOsdStep(gen) {
     try { await img.decode(); } catch { throw new Error("The receiver returned an invalid OSD picture."); }
     if (stale()) return;
 
-    // Does this picture carry transparency? Look at a small copy of it.
     const pw = 192, ph = 108;
     liveOsdProbe.width = pw; liveOsdProbe.height = ph;
     const pctx = liveOsdProbe.getContext("2d", { willReadFrequently: true });
@@ -164,12 +154,11 @@ async function liveOsdStep(gen) {
     const total = pw * ph;
     if (total - opaque > total * 0.015) { liveOsd.sawAlpha = true; liveOsd.opaqueRun = 0; }
     else if (!liveOsd.sawAlpha) {
-      // Every pixel solid, and never a transparent one: a picture of the whole screen or a capture without alpha.
       if (++liveOsd.opaqueRun >= 3) liveOsdBlock("noalpha");
       return;
     }
 
-    if (quiet) { // something appeared: fetch it in full quality next
+    if (quiet) {
       liveOsd.probeKey = key;
       if (visible) liveOsd.burstUntil = performance.now() + 8000;
       return;
@@ -182,7 +171,6 @@ async function liveOsdStep(gen) {
       return;
     }
 
-    // The overlay has the video's own size: the player does not scale it.
     liveOsdCanvas.width = vw; liveOsdCanvas.height = vh;
     const ctx = liveOsdCanvas.getContext("2d");
     ctx.clearRect(0, 0, vw, vh);
@@ -199,12 +187,12 @@ async function liveOsdStep(gen) {
 
 async function liveOsdLoop(gen) {
   while (gen === liveOsd.gen) {
-    if (!live.on) { // watching stopped: take the overlay down and forget what was sent
+    if (!live.on) {
       if (liveOsd.shown) liveOsdClear();
       liveOsd.hash = ""; liveOsd.failures = 0; liveOsd.opaqueRun = 0;
     }
     if (!liveOsdActive()) {
-      if (live.on && !live.hasPicture) { liveOsdClear(); liveOsd.sig = ""; } // a channel change: the old overlay no longer fits
+      if (live.on && !live.hasPicture) { liveOsdClear(); liveOsd.sig = ""; }
       await liveOsdSleep(500);
       continue;
     }
@@ -231,7 +219,6 @@ async function liveOsdLoop(gen) {
   }
 }
 
-// Items for the video's right-click menu (live.js asks for them).
 function liveOsdCtxItems(then) {
   return [livePopAction(liveOsd.on && !liveOsd.blocked ? "Hide the receiver menus over the video" : "Show the receiver menus over the video", then(liveOsdToggle))];
 }

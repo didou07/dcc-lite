@@ -63,7 +63,6 @@ type timerChangeRequest struct {
 	timerExtras
 }
 
-// timerExtras holds the OpenWebif timer options beyond the basics.
 type timerExtras struct {
 	RecordingType  string `json:"recordingtype"`
 	AllowDuplicate *bool  `json:"allow_duplicate"`
@@ -71,7 +70,6 @@ type timerExtras struct {
 	AlwaysZap      *int   `json:"always_zap"`
 }
 
-// extraQuery turns the extra timer options into query parameters.
 func (e timerExtras) extraQuery() string {
 	q := ""
 	switch e.RecordingType {
@@ -132,7 +130,7 @@ func (s *Server) deviceTimerChange(w http.ResponseWriter, r *http.Request) {
 		"&beginOld=" + strconv.FormatInt(in.OldBegin, 10) + "&endOld=" + strconv.FormatInt(in.OldEnd, 10) +
 		"&disabled=" + boolFlag(in.Disabled) + "&justplay=" + boolFlag(in.JustPlay) +
 		"&afterevent=" + strconv.Itoa(in.AfterEvent) + "&repeated=" + strconv.Itoa(in.Repeated) +
-		"&deleteOldOnSave=1" // the old DreamOS interface adds a second timer without this flag
+		"&deleteOldOnSave=1"
 	if dir := timerDir(in.Dir); dir != "" {
 		path += "&dirname=" + url.QueryEscape(dir)
 	}

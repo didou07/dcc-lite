@@ -97,7 +97,6 @@ var compressible = map[string]bool{".js": true, ".css": true, ".html": true, ".s
 
 var assets sync.Map
 
-// Gzipped returns the gzip form of a bundled text file, or nil.
 func Gzipped(name string) []byte {
 	name = strings.TrimPrefix(path.Clean("/"+name), "/")
 	if !compressible[path.Ext(name)] {

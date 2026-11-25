@@ -38,7 +38,6 @@ const nativeBuild = true
 var nativeLog = logx.For("native")
 
 func init() {
-	// Cocoa and its main loop must stay on the program's first thread.
 	runtime.LockOSThread()
 }
 
@@ -71,7 +70,6 @@ func browserFallback(d nativeDeps) error {
 	return nil
 }
 
-// runNative shows the window and returns when it is closed.
 func runNative(d nativeDeps) error {
 	origin := strings.TrimRight(d.URL, "/")
 	live := &nativeLive{app: d.App, origin: origin, snap: stateOut{State: "opening", AudioCurrent: -1}}
@@ -79,7 +77,7 @@ func runNative(d nativeDeps) error {
 	nativeLive_ = live
 	nativeMu.Unlock()
 	live.uiAlive.Store(time.Now().UnixNano())
-	go func() { _, _ = live.vlc() }() // load VLC in the background so the first channel starts fast
+	go func() { _, _ = live.vlc() }()
 	go live.poll()
 	go live.watchdog()
 
@@ -146,8 +144,6 @@ func dccGoLog(level, text *C.char) {
 	}
 }
 
-// ---- Live TV through the user's VLC ----
-
 type boxArgs struct {
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
@@ -159,13 +155,12 @@ type boxArgs struct {
 }
 
 type playArgs struct {
-	Profile   string `json:"profile"`
-	Ref       string `json:"ref"`
-	Name      string `json:"name"`
-	Volume    int    `json:"volume"`
-	Muted     bool   `json:"muted"`
-	AudioLang string `json:"audioLang"`
-	// Player settings, all from the one settings menu of the page.
+	Profile     string `json:"profile"`
+	Ref         string `json:"ref"`
+	Name        string `json:"name"`
+	Volume      int    `json:"volume"`
+	Muted       bool   `json:"muted"`
+	AudioLang   string `json:"audioLang"`
 	Deinterlace string `json:"deinterlace"` // auto, yadif or off
 	Caching     int    `json:"caching"`     // buffering in milliseconds
 	Hardware    *bool  `json:"hw"`          // hardware decoding; nil or true = on
@@ -203,28 +198,27 @@ type nativeLive struct {
 	origin string
 
 	vlcOnce sync.Once
-	vlcDone atomic.Bool // set when loading VLC has finished, successfully or not
+	vlcDone atomic.Bool
 	lib     *vlc.Lib
 	player  *vlc.Player
 	vlcErr  error
 
 	playMu sync.Mutex // one start of the player at a time
 
-	mu        sync.Mutex
-	last      placed
-	gen       int
-	started   bool
-	errMsg    string
-	startedAt time.Time
-	volume    int
-	muted     bool
-	audioLang string
-	// audioApplied: the preferred language was applied for this channel
+	mu           sync.Mutex
+	last         placed
+	gen          int
+	started      bool
+	errMsg       string
+	startedAt    time.Time
+	volume       int
+	muted        bool
+	audioLang    string
 	audioApplied bool
-	opts         vlc.PlayOptions // the player settings of the running channel
+	opts         vlc.PlayOptions
 	snap         stateOut
-	fit          string      // how the picture fills its window (vlc.Fit...)
-	fitTimer     *time.Timer // debounces a re-fit after the box changed size
+	fit          string
+	fitTimer     *time.Timer
 	lastVW       float64
 	lastVH       float64
 	events       []mouseEvent // mouse events for the page, newest last
@@ -234,7 +228,7 @@ type nativeLive struct {
 	closed       atomic.Bool
 	uiAlive      atomic.Int64
 	pageAlive    atomic.Int64 // unix nanos: last time the page called in
-	lastOp       atomic.Value // the request being handled, for the watchdog
+	lastOp       atomic.Value
 }
 
 const installHint = "VLC was not found. Install VLC (videolan.org, the VLC.app in the Applications folder), or set DCC_LIBVLC to the path of libvlc.dylib, then restart DCC Lite."
@@ -691,7 +685,7 @@ func (n *nativeLive) poll() {
 		case vlc.StateError:
 			out.State = "error"
 			out.Error = "VLC could not play this channel. The receiver may be in standby or busy, or the channel is encrypted and no tuner is free."
-		default: // idle and stopped: VLC needs a moment before it reports "opening"
+		default:
 			if since < 15*time.Second {
 				out.State = "opening"
 			} else {
@@ -737,7 +731,7 @@ func (n *nativeLive) poll() {
 					moved, movedAt = false, now
 				}
 			}
-			if !deintDone && out.Width > 0 { // the first frame exists: now the deinterlace choice can be applied
+			if !deintDone && out.Width > 0 {
 				deintDone = true
 				p.ApplyDeinterlace()
 				n.mu.Lock()
@@ -746,14 +740,14 @@ func (n *nativeLive) poll() {
 				p.SetFit(mode, fw, fh)
 			}
 		} else {
-			movedAt = now // paused, buffering or opening: the clock starts again
+			movedAt = now
 		}
 		if out.State != lastState {
 			lastState = out.State
 			nativeLog.Info("vlc state", "state", out.State, "video", fmt.Sprintf("%dx%d", out.Width, out.Height))
 		}
 		n.mu.Lock()
-		if n.started { // not stopped or replaced while VLC was being asked
+		if n.started {
 			n.snap = out
 		}
 		n.mu.Unlock()

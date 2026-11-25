@@ -40,6 +40,8 @@
   <script src="/js/guide-auto.js" defer></script>
   <script src="/js/guide-epgrefresh.js" defer></script>
   <script src="/js/packages.js" defer></script>
+  <script src="/js/softcam.js" defer></script>
+  <script src="/js/settings-backup.js" defer></script>
   <script src="/js/logs.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
   <script src="/js/update.js" defer></script>
@@ -245,7 +247,7 @@
       <span class="spacer"></span>
       <button class="icon-btn" id="fileSites" type="button" title="Saved sites: switch device without leaving Files" aria-label="Saved sites" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-devices"/></svg></button>
       <button class="icon-btn" id="fileSwap" type="button" title="Swap the panels (local left or right)" aria-label="Swap the panels"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg></button>
-      <button class="icon-btn" id="fileSync" type="button" title="Synchronised browsing" aria-label="Synchronised browsing" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg></button>
+      <button class="icon-btn" id="fileSync" type="button" title="Link the two panels at their current folders (navigation only)" aria-label="Link the two panels" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg></button>
       <span class="vr"></span>
       <button class="btn" id="fileTerminalHere" type="button" title="Open a terminal in the current remote folder"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span>Terminal here</span></button>
       <button class="btn" id="fileRun" type="button" title="Run the selected remote file in a terminal"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span>Run…</span></button>
@@ -435,30 +437,31 @@
 
     <div class="lists-pane" id="listsBackup" hidden>
       <div class="tools-body bk">
-        <section class="tools-sec bk-card" aria-labelledby="toolsBackupTitle">
+        <section class="tools-sec bk-card" aria-labelledby="stTitle">
           <header class="bk-head">
-            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg></span>
-            <div><h3 id="toolsBackupTitle">Back up</h3></div>
+            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg></span>
+            <div><h3 id="stTitle">Backup</h3><p class="muted small" data-help>Channels, settings and softcam, saved on this computer as one file.</p></div>
           </header>
-          <div class="seg bk-scope" id="toolsScope" role="radiogroup" aria-label="What to back up">
-            <button type="button" role="radio" data-scope="channels" aria-checked="true"><span class="bk-opt-t">Channel list</span><span class="bk-opt-d">lamedb and all bouquets</span></button>
-            <button type="button" role="radio" data-scope="all" aria-checked="false"><span class="bk-opt-t">All files</span><span class="bk-opt-d">The whole settings folder</span></button>
+          <div class="st-scopes" id="stScopes">
+            <label class="check"><input type="checkbox" value="channels" checked> Channels</label>
+            <label class="check"><input type="checkbox" value="settings" checked> Settings</label>
+            <label class="check"><input type="checkbox" value="softcam" checked> Softcam</label>
           </div>
-          <div class="bk-foot"><button class="btn primary" id="toolsBackup" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download backup</button></div>
+          <div class="bk-foot"><button class="btn primary" id="stBackup" type="button"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Download backup</button></div>
         </section>
-        <section class="tools-sec bk-card" aria-labelledby="toolsRestoreTitle">
+        <section class="tools-sec bk-card" aria-labelledby="stRestoreTitle">
           <header class="bk-head">
-            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg></span>
-            <div><h3 id="toolsRestoreTitle">Restore</h3></div>
+            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg></span>
+            <div><h3 id="stRestoreTitle">Restore</h3></div>
           </header>
-          <label class="bk-drop" id="toolsDrop">
-            <input type="file" id="toolsRestoreFile" accept=".zip,application/zip" aria-label="Backup .zip file">
+          <label class="bk-drop" id="stDrop">
+            <input type="file" id="stFile" accept=".gz,.tgz,.zip,application/gzip,application/zip" aria-label="Backup file">
             <svg class="ic xl" aria-hidden="true"><use href="#i-ft-archive"/></svg>
-            <b id="toolsDropName">Choose a backup .zip</b>
-            <span class="muted small" id="toolsDropHint">or drop it here</span>
+            <b id="stDropName">Choose a backup file</b>
+            <span class="muted small">or drop it here</span>
           </label>
-          <p class="small" id="toolsRestoreResult" role="status" hidden></p>
-          <div class="bk-foot"><button class="btn" id="toolsRestore" type="button"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Restore…</button></div>
+          <label class="field" id="stAfterField"><span>When done</span><select id="stAfter" aria-label="After restoring"><option value="restart">Restart Enigma2</option><option value="reboot">Reboot the receiver</option></select></label>
+          <div class="bk-foot"><button class="btn" id="stRestore" type="button"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg>Restore…</button></div>
         </section>
         <section class="tools-sec bk-card" aria-labelledby="rpTitle">
           <header class="bk-head">
@@ -468,32 +471,12 @@
           <ul class="rp-list" id="rpList" aria-live="polite"></ul>
           <p class="muted small" id="rpEmpty" hidden>No restore points yet.</p>
         </section>
-        <section class="tools-sec bk-card" aria-labelledby="flashTitle">
-          <header class="bk-head">
-            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-box"/></svg></span>
-            <div><h3 id="flashTitle">Flash image backup</h3><p class="muted small" data-help>Saves a flash partition to this computer. Read-only: nothing is written to the receiver, and restoring a flash image is not offered here.</p></div>
-          </header>
-          <ul class="rp-list" id="flashList" aria-live="polite"></ul>
-          <p class="small" id="flashResult" role="status" hidden></p>
-          <div class="bk-foot"><button class="btn" id="flashRead" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Read partitions</button></div>
-        </section>
-        <section class="tools-sec bk-card" aria-labelledby="eplTitle">
-          <header class="bk-head">
-            <span class="bk-ic"><svg class="ic" aria-hidden="true"><use href="#i-video"/></svg></span>
-            <div><h3 id="eplTitle">Recordings list (recordings.epl)</h3><p class="muted small" data-help>For Enigma1 receivers. Finds recordings that are on the disk but missing from the list, and adds them. The old list is kept as recordings.bak.</p></div>
-          </header>
-          <label class="check"><input type="checkbox" id="eplPrune"> Also remove entries whose file is gone</label>
-          <p class="small" id="eplResult" role="status" hidden></p>
-          <div class="bk-foot">
-            <button class="btn" id="eplCheck" type="button"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Check</button>
-            <button class="btn primary" id="eplRebuild" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Rebuild list</button>
-          </div>
-        </section>
-        <div class="tools-progress" id="toolsProgress" hidden>
+        <p class="small bk-wide" id="stResult" role="status" hidden></p>
+        <div class="tools-progress bk-wide" id="toolsProgress" hidden>
           <div class="tools-bar"><span></span></div>
           <span class="small" id="toolsProgressText"></span>
         </div>
-        <p class="form-error" id="toolsError" hidden></p>
+        <p class="form-error bk-wide" id="toolsError" hidden></p>
       </div>
     </div>
   </section>
@@ -648,6 +631,42 @@
       <p class="muted logs-empty" id="faultsEmpty" hidden>No faults recorded.</p>
     </div>
   </section>
+  <section class="view" id="view-softcam" aria-label="Softcam" hidden>
+    <div class="tools-top">
+      <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
+    </div>
+    <div class="sc-wrap">
+      <div class="sc-wait" aria-hidden="true"><i></i></div>
+      <header class="sc-head">
+        <div class="sc-heading">
+          <h2>Softcam</h2>
+          <span class="sc-spin" id="scSpin" role="status" hidden><i class="sc-spin-ring" aria-hidden="true"></i><span id="scSpinText"></span></span>
+          <span class="sc-count" id="scProcCount" aria-live="polite"></span>
+        </div>
+        <div class="sc-tools">
+          <button class="btn sm danger" id="scKillAll" type="button" data-sc="1" hidden title="Kill every running softcam"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg>Kill all</button>
+          <button class="icon-btn" id="scReload" type="button" data-sc="1" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+        </div>
+      </header>
+      <p class="sc-result small" id="scResult" role="status" hidden></p>
+      <p class="form-error" id="scError" role="alert" hidden></p>
+
+      <section class="sc-card sc-cams-card" aria-label="Softcam" aria-busy="false">
+        <div class="sc-list" id="scCams"></div>
+        <p class="muted small sc-empty" id="scEmpty" hidden>No softcam start scripts were found in /etc/init.d on this receiver.</p>
+      </section>
+
+      <details class="sc-card sc-files-card" id="scFilesFold">
+        <summary class="sc-card-head sc-files-summary">
+          <h3>Configuration files</h3>
+          <span class="sc-count" id="scFilesCount"></span>
+          <span class="sc-disclosure" aria-hidden="true">▸</span>
+        </summary>
+        <div class="sc-list sc-files-list" id="scFiles"></div>
+      </details>
+    </div>
+  </section>
+
   <section class="view" id="view-signal" aria-label="Signal meter" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>

@@ -85,7 +85,7 @@
       return b;
     };
     const mark = (root) => root.querySelectorAll(".flag-btn[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
-    if (!anchor) { // sign-in page: one flag per language, side by side
+    if (!anchor) {
       const row = document.createElement("div");
       row.className = "lang-row"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "Language");
       for (const code of codes) row.append(make(code));

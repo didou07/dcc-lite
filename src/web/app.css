@@ -1,4 +1,3 @@
-/* --ui is the interface size (Appearance > Interface size). */
 :root { --ui: 1; }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -1572,7 +1571,6 @@ input:-webkit-autofill { -webkit-box-shadow: 0 0 0 calc(40px * var(--ui)) var(--
   .sites-side { flex: none; max-height: calc(190px * var(--ui)); }
   .tpane-badge { max-width: 60%; }
 }
-/* Unified design system (final layer): one rule set for controls */
 
 .seg button[aria-checked="true"], .seg button[aria-selected="true"], .seg button[aria-pressed="true"], .seg button.on {
   background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -1598,20 +1596,15 @@ kbd { color: var(--faint); font-weight: 600; background: transparent; border-col
 .rk.rec { color: var(--bad); }
 
 .statusbar .sb-item:has(#sbDevice) { display: none; }
-/* device cards: calm header, one tidy row of launchers */
 .device-menu .icon-btn { width: calc(28px * var(--ui)); height: calc(28px * var(--ui)); }
 .device-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(6px * var(--ui)); }
 .device-actions .btn { min-width: 0; padding: 0 calc(6px * var(--ui)); gap: calc(6px * var(--ui)); font-size: calc(12.5px * var(--ui)); }
 @media (max-width: 420px) {
   .device-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* main action: accent edge + accent text, still no fill */
 .device-actions .btn.primary { background: transparent; border: calc(1.5px * var(--ui)) solid var(--accent); color: var(--accent-ink); font-weight: 650; }
 .device-actions .btn.primary:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
-/* destructive: red edge and text, tint on hover */
-/* fields: clearly outlined in both themes */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
-/* icon buttons get a visible edge on hover and when active */
 
 .seg { background: transparent; }
 .seg button[aria-checked="true"], .seg button[aria-selected="true"], .seg button[aria-pressed="true"], .seg button.on { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 calc(1.5px * var(--ui)) var(--accent); }
@@ -1651,7 +1644,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .login-card form { display: grid; gap: calc(14px * var(--ui)); }
 .login-card .btn.primary { width: 100%; }
 .login-card .brand-name b { font-weight: 700; }
-/* notices keep their edge; the fill is only a whisper */
 .notice { background: color-mix(in srgb, var(--warn) 8%, transparent); }
 .notice.safe { background: color-mix(in srgb, var(--ok) 8%, transparent); }
 /* dialogs: clearer edge in dark mode */
@@ -1956,7 +1948,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 }
 .remote .rk.red:hover, .remote .rk.green:hover, .remote .rk.yellow:hover, .remote .rk.blue:hover { background: color-mix(in srgb, var(--k) 16%, transparent); border-color: var(--k); }
 .remote .rk.red:active, .remote .rk.green:active, .remote .rk.yellow:active, .remote .rk.blue:active, .remote .rk.red.sending, .remote .rk.green.sending, .remote .rk.yellow.sending, .remote .rk.blue.sending { background: color-mix(in srgb, var(--k) 28%, transparent); transform: none; }
-/* Appearance customisation (set from the palette button) */
 :root[data-accent]:not([data-theme="dark"]) {
   --accent: hsl(var(--acc-h) var(--acc-s) 33%); --accent-strong: hsl(var(--acc-h) var(--acc-s) 25%); --accent-ink: hsl(var(--acc-h) var(--acc-s) 24%); --accent-soft: hsl(var(--acc-h) calc(var(--acc-s) * .7) 92%); --on-accent: #fff; --sel: hsl(var(--acc-h) calc(var(--acc-s) * .7) 93%); --sel-border: hsl(var(--acc-h) var(--acc-s) 66%);
 }
@@ -2039,8 +2030,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 }
 :root[data-font="serif"] { --font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Noto Serif", serif; }
 :root[data-motion="reduced"] *:not(.xterm-cursor), :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
-/* Appearance dialog */
-/* The Appearance dialog keeps its own fixed scale (the default 85%), so changing "Interface size" can never push its own controls off screen. */
 #themeDialog { --ui: .85; --ctl-h: calc(28px * .85); --ctl-fs: calc(13px * .85); --ctl-size: calc(30px * .85); font-size: calc(13px * .85); max-width: min(calc(580px * var(--ui)), calc(100vw - 24px)); }
 :root[data-radius="soft"] #themeDialog { --radius: calc(18px * .85); --radius-sm: calc(12px * .85); }
 :root[data-radius="round"] #themeDialog { --radius: calc(24px * .85); --radius-sm: calc(12px * .85); }
@@ -2082,7 +2071,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 :root[data-radius="soft"] { --radius: calc(18px * var(--ui)); --radius-sm: calc(12px * var(--ui)); }
 :root[data-radius="round"] { --radius: calc(24px * var(--ui)); --radius-sm: calc(12px * var(--ui)); }
 :root[data-radius="sharp"] *, :root[data-radius="sharp"] *::before, :root[data-radius="sharp"] *::after, :root[data-radius="sharp"] ::-webkit-scrollbar-thumb { border-radius: 0 !important; }
-/* Sharp corners must not square off things that are round by meaning: status dots, spinners and live indicators. */
 :root[data-radius="sharp"] :is(.dot, .sig-state i, .status-pill, .sig-live, .live-badge i, .live-spin, .term-status .dot),
 :root[data-radius="sharp"] :is(.chip, .chip.on, .chip.off, .logs-live, .lg-chip[data-level="warn"], .lg-chip[data-level="error"], .ra-state, #editorDialog .check)::before,
 :root[data-radius="sharp"] .tab.is-live::after { border-radius: 50% !important; }
@@ -2186,7 +2174,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .sites[data-mode="list"] .device-top:has(.avatar.has-img) { display: flex; }
 .sites[data-mode="list"] .device-card .avatar.has-img { width: calc(64px * var(--ui)); height: calc(40px * var(--ui)); padding: calc(2px * var(--ui)); }
 
-/* v1.2.8: terminal theme = two squares, black and white */
 .term-swatches { display: inline-flex; gap: calc(6px * var(--ui)); margin: 0 calc(6px * var(--ui)); align-items: center; }
 .term-swatch { width: calc(22px * var(--ui)); height: calc(22px * var(--ui)); padding: 0; border-radius: calc(5px * var(--ui)); border: calc(1.5px * var(--ui)) solid var(--border-strong); cursor: pointer; flex: none; }
 .term-swatch.dark { background: #000; }
@@ -2223,7 +2210,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .editor-find input[type="text"] { flex: 1 1 calc(140px * var(--ui)); min-width: calc(110px * var(--ui)); }
 .editor-find[hidden] { display: none; }
 
-/* ---- programme grid ---- */
 .gd-narrow { flex: 0 1 calc(130px * var(--ui)) !important; max-width: calc(160px * var(--ui)) !important; }
 .gd-body[data-tab="grid"] { overflow: auto; padding: 0; }
 .gg-inner { position: relative; width: max-content; min-width: 100%; }
@@ -2246,7 +2232,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .gg-ev.remind { box-shadow: inset 0 calc(-3px * var(--ui)) 0 var(--accent); }
 .gg-now { position: absolute; top: 0; bottom: 0; width: calc(2px * var(--ui)); background: var(--bad); opacity: .75; pointer-events: none; z-index: 2; }
 
-/* ---- timer dialog extras, recordings tags, channel details ---- */
 .tm-adv { border: 1px solid var(--border); border-radius: calc(8px * var(--ui)); padding: calc(8px * var(--ui)) calc(12px * var(--ui)) calc(12px * var(--ui)); display: grid; gap: calc(14px * var(--ui)); }
 .tm-adv > summary { cursor: pointer; font-size: calc(12.5px * var(--ui)); font-weight: 650; color: var(--muted); }
 .tm-adv[open] > summary { margin-bottom: calc(2px * var(--ui)); }
@@ -2261,7 +2246,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .svc-list dt { color: var(--muted); }
 .svc-list dd { margin: 0; font-variant-numeric: tabular-nums; }
 
-/* ---- AutoTimer ---- */
 .gd-head { flex-wrap: wrap; row-gap: calc(6px * var(--ui)); }
 #guideTabs { flex-wrap: wrap; }
 .at-card { width: 100%; max-height: 92vh; overflow: auto; }
@@ -2275,7 +2259,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .at-opt .ellipsis { flex: 1 1 auto; min-width: 0; }
 .tm-adv textarea { min-height: calc(52px * var(--ui)); resize: vertical; }
 
-/* ---- packages, audio tracks ---- */
 .pk-tools .filter-input { flex: 1 1 calc(220px * var(--ui)); max-width: calc(360px * var(--ui)); }
 .pk-tools .btn { font-size: calc(13px * var(--ui)); gap: calc(6px * var(--ui)); flex: 1 1 auto; }
 @media (min-width: 641px) { .pk-tools .btn { flex: none; } }
@@ -2293,7 +2276,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .svc-audio { display: flex; flex-wrap: wrap; gap: calc(6px * var(--ui)); }
 .svc-audio .btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 calc(1.5px * var(--ui)) var(--accent); }
 
-/* ---- Live player (Screen > Watch live) ---- */
 .screen-stage { position: relative; }
 .screen-stage.is-live { display: flex; flex-direction: column; min-height: 0; background: #000; }
 .screen-stage.is-live .live-overlay { width: 100%; flex: 1 1 auto; min-height: 0; }
@@ -2404,7 +2386,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 
 /* Screen tab: picture settings in one menu */
 
-/* ===== Screen tab layout ===== */
 .live-panel[hidden] { display: none; }
 .live-panel-close { grid-column: 1 / -1; justify-self: end; }
 .live-tabs { display: none; grid-column: 1 / -1; }
@@ -2479,7 +2460,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
   #view-screen:has(#remotePad[hidden]) .live-panel { grid-column: 2; grid-row: 1 / 4; max-height: none; gap: calc(8px * var(--ui)); }
 }
 
-/* Short windows: trim the details so nothing needs scrolling */
 @media (min-width: 1100px) and (max-height: 820px) {
   #view-screen .live-card[data-card="cw"] .live-more { display: none; }
   #view-screen .live-track { padding: calc(4px * var(--ui)) calc(8px * var(--ui)); }
@@ -2488,7 +2468,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
   #view-screen .live-hex { font-size: calc(12.5px * var(--ui)); }
 }
 
-/* ===== Compact details under / beside the picture ===== */
 .live-card { gap: calc(6px * var(--ui)); }
 .live-card > header { min-height: calc(24px * var(--ui)); }
 .live-card > header .icon-btn { width: calc(24px * var(--ui)); height: calc(24px * var(--ui)); }
@@ -2500,7 +2479,6 @@ select:focus, textarea:focus, input:focus { outline: none; border-color: var(--a
 .live-cell.wide { grid-column: span 2; }
 .live-track { padding: calc(4px * var(--ui)) calc(9px * var(--ui)); }
 .live-tracks { gap: calc(3px * var(--ui)); }
-/* control words: name, bytes and checksum mark on one line */
 .live-cw { display: flex; align-items: center; gap: calc(8px * var(--ui)); padding: calc(5px * var(--ui)) calc(8px * var(--ui)); }
 .live-cw + .live-cw { margin-top: 0; }
 .live-cw-name { display: grid; flex: none; min-width: calc(34px * var(--ui)); line-height: 1.15; }
@@ -2633,7 +2611,6 @@ html:not([lang="en"]) .actionbar .btn { padding-left: calc(6px * var(--ui)); pad
 }
 .live-center[data-state="buffering"], .live-center[data-state="reconnecting"] { --wait: #f5b942; }
 .live-center[data-state="error"] { --wait: #ff6b6e; }
-/* SVG ring: "sharp" corners would turn a CSS ring square */
 .live-spin { flex: none; box-sizing: border-box; width: calc(48px * var(--ui)); height: calc(48px * var(--ui)); border: 0; background: none; box-shadow: none; animation: liveSpin .9s linear infinite; }
 .live-spin circle { fill: none; stroke-width: 4; }
 .live-spin .trk { stroke: rgb(255 255 255 / .16); }
@@ -2725,7 +2702,6 @@ html:not([lang="en"]) .actionbar .btn { padding-left: calc(6px * var(--ui)); pad
   .pane-switch button { min-height: calc(30px * var(--ui)); }
   .pane-head { padding: calc(4px * var(--ui)) calc(6px * var(--ui)); gap: calc(4px * var(--ui)); }
 
-  /* File actions: a single scrollable strip, the main action first */
   .actionbar { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: calc(6px * var(--ui)); scrollbar-width: none; padding-bottom: 0; }
   .actionbar .btn { flex: none; }
   .actionbar #btnTransferActive { order: -1; }
@@ -2760,7 +2736,6 @@ html:not([lang="en"]) .actionbar .btn { padding-left: calc(6px * var(--ui)); pad
   .lg-chips > * { flex: none; }
 }
 
-/* Phone portrait: device cards use two short rows instead of five */
 @media (max-width: 560px), (max-height: 500px) {
   .sites:not([data-mode="list"]) .device-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: calc(4px * var(--ui)) calc(8px * var(--ui)); align-items: center; padding: calc(8px * var(--ui)) calc(10px * var(--ui)); }
   .sites:not([data-mode="list"]) .device-card > * { grid-column: 1 / -1; }
@@ -2773,7 +2748,6 @@ html:not([lang="en"]) .actionbar .btn { padding-left: calc(6px * var(--ui)); pad
   .sites:not([data-mode="list"]) .device-card .device-actions .btn { min-width: 0; padding-inline: calc(4px * var(--ui)); font-size: calc(11.5px * var(--ui)); gap: calc(4px * var(--ui)); }
 }
 
-/* Scrolling strips keep their height in column layouts */
 @media (max-width: 900px), (max-height: 500px) {
   .connbar, .actionbar, .termtools, .quickkeys, .toolsnav, .lg-chips, .logs-tabs { flex: none; }
   .actionbar #btnTransferActive { flex: 0 0 auto; width: auto; min-width: calc(112px * var(--ui)); }
@@ -2915,7 +2889,6 @@ body.cmd-classic .term-command-dock { position: fixed; top: 50%; right: auto; le
 .chmod-presets { display: flex; flex-wrap: wrap; gap: calc(6px * var(--ui)); }
 #chmodInput { font-family: var(--mono); }
 
-/* Inline rename (click an already selected name, or press F2) */
 .rename-input { width: calc(100% - calc(28px * var(--ui))); display: inline-block; vertical-align: middle; box-sizing: border-box; height: calc(22px * var(--ui)); margin: calc(-3px * var(--ui)) 0; line-height: 1.2; min-width: 0; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--accent); border-radius: calc(4px * var(--ui)); padding: 0 calc(5px * var(--ui)); outline: none; user-select: text; -webkit-user-select: text; -webkit-user-drag: none; cursor: text; }
 .rename-input::selection { background: Highlight; color: HighlightText; }
 
@@ -2945,20 +2918,17 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 :root[data-density="roomy"] .files tr.row td.name.renaming { height: calc(38px * var(--ui)); }
 .files td.name.renaming .rename-input { width: calc(100% - calc(38px * var(--ui))); max-width: 100%; margin: 0; vertical-align: middle; }
 
-/* Editor: the text area fills the window and the button row stays visible (Save was scrolling out of view). */
 #editorDialog .dialog-card.editor-card { display: flex; flex-direction: column; overflow: hidden; height: min(calc(100vh - calc(32px * var(--ui))), calc(820px * var(--ui))); max-height: none; }
 #editorDialog .editor-card > * { flex: none; }
 #editorDialog .editor-card > .editor-body { flex: 1 1 auto; min-height: calc(120px * var(--ui)); }
 #editorDialog .editor-text { height: auto; min-height: 0; resize: none; }
 #editorDialog .editor-card > .dialog-actions { padding-bottom: calc(14px * var(--ui)); }
 
-/* The menu is a popover (top layer): drop the popover defaults that would stretch or centre it. */
 .menu[popover] { inset: auto; margin: 0; color: var(--text); }
 .menu[popover]:not(:popover-open) { display: none; }
 .editor-tools { display: flex; flex-wrap: wrap; gap: calc(6px * var(--ui)); align-items: center; }
 .editor-tools .btn { min-width: 0; }
 
-/* ===== Text editor window: resizable, tidy toolbar, coloured buttons ===== */
 #editorDialog { max-width: none; overflow: visible; }
 #editorDialog.ew-dragging { user-select: none; -webkit-user-select: none; animation: none; }
 #editorDialog.ew-dragging .editor-text { pointer-events: none; }
@@ -2984,14 +2954,12 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 
 #editorDialog .editor-card > .form-error { margin: 0; padding: calc(7px * var(--ui)) calc(14px * var(--ui)); border-radius: 0; border-width: 0 0 1px 0; }
 
-/* Toolbar: one tidy row, groups separated by thin dividers, options on the right */
 #editorDialog .editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6px * var(--ui)) calc(8px * var(--ui)); padding: calc(8px * var(--ui)) calc(12px * var(--ui)); background: var(--surface); border-bottom: 1px solid var(--border); }
 #editorDialog .et-group { display: flex; align-items: center; gap: calc(5px * var(--ui)); }
 #editorDialog .et-sep { align-self: stretch; width: 1px; margin: calc(2px * var(--ui)) calc(2px * var(--ui)); background: var(--border); }
 #editorDialog .et-opts { margin-left: auto; gap: calc(6px * var(--ui)); }
 #editorDialog .editor-tools .btn { min-width: 0; min-height: calc(30px * var(--ui)); gap: calc(6px * var(--ui)); }
 
-/* Option switches (line numbers / wrap) as pills instead of loose checkboxes */
 #editorDialog .editor-tools .check, #editorDialog .editor-find .check { position: relative; display: inline-flex; align-items: center; gap: calc(6px * var(--ui)); min-height: calc(28px * var(--ui)); padding: 0 calc(11px * var(--ui)); border: 1px solid var(--field-border); border-radius: 999px; color: var(--muted); font-size: calc(12.5px * var(--ui)); cursor: pointer; user-select: none; white-space: nowrap; transition: background .12s, border-color .12s, color .12s; }
 #editorDialog .check input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
 #editorDialog .check::before { content: ""; width: calc(8px * var(--ui)); height: calc(8px * var(--ui)); border-radius: 50%; background: var(--faint); opacity: .55; transition: background .12s, opacity .12s; }
@@ -3010,12 +2978,10 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 #editorDialog .editor-text { height: auto; min-height: 0; resize: none; }
 #editorDialog .editor-gutter { background: color-mix(in srgb, var(--accent) 6%, var(--surface-3)); color: color-mix(in srgb, var(--accent) 45%, var(--faint)); }
 
-/* Footer: status and cursor on the left, the three main buttons on the right */
 #editorDialog .editor-card > .dialog-actions.editor-foot { position: static; margin: 0; padding: calc(9px * var(--ui)) calc(12px * var(--ui)); gap: calc(8px * var(--ui)); flex-wrap: nowrap; align-items: center; background: var(--surface-2); border-top: 1px solid var(--border); }
 #editorDialog .editor-foot .editor-status { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #editorDialog .editor-foot .editor-cursor { flex: none; padding: calc(2px * var(--ui)) calc(9px * var(--ui)); border-radius: 999px; background: var(--surface-3); color: var(--muted); font-size: calc(12px * var(--ui)); white-space: nowrap; }
 #editorDialog .editor-foot .btn { min-width: 0; min-height: calc(32px * var(--ui)); flex: none; }
-/* Narrow window: toolbar buttons show only their icons (hover for the name) */
 @container (max-width: 760px) {
   #editorDialog .et-btn .lbl { display: none; }
   #editorDialog .et-btn { padding: 0 calc(9px * var(--ui)); }
@@ -3046,7 +3012,7 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
   #editorDialog .editor-text { height: auto; }
 }
 
-/* Status line inside the flash and recordings.epl cards. */
+/* Status line inside the backup cards. */
 .bk-card .small[role="status"].bad { color: var(--bad); }
 .bk-card .bk-foot { gap: calc(8px * var(--ui)); flex-wrap: wrap; }
 
@@ -3078,7 +3044,6 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 .hex-box { cursor: text; }
 .hex-box.hex-readonly { cursor: default; }
 
-/* Find in the text editor: every match is coloured behind the text, the current one stands out. */
 .editor-body .editor-text { position: relative; z-index: 1; }
 .editor-marks { position: absolute; z-index: 0; overflow: hidden; pointer-events: none; }
 .editor-marks[hidden] { display: none; }
@@ -3105,15 +3070,12 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 .color-pick .swatch.none[aria-checked="true"] { box-shadow: 0 0 0 calc(2px * var(--ui)) var(--surface), 0 0 0 calc(4px * var(--ui)) var(--faint); }
 .color-pick .swatch:focus-visible { outline: calc(2px * var(--ui)) solid var(--accent); outline-offset: calc(2px * var(--ui)); }
 .adv-start { margin-top: calc(10px * var(--ui)); }
-/* Card actions: two columns when the card is narrow, four when there is room (no lonely fourth button). */
 .sites:not([data-mode="list"]) .device-card { container-type: inline-size; }
 .sites:not([data-mode="list"]) .device-card .device-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(6px * var(--ui)); }
 .sites:not([data-mode="list"]) .device-card .device-actions .btn { min-width: 0; width: auto; flex: none; padding-inline: calc(6px * var(--ui)); font-size: calc(12.5px * var(--ui)); }
 @container (min-width: 370px) { .sites:not([data-mode="list"]) .device-card .device-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-/* A selected row that also holds the cursor keeps both its accent bar and its outline. */
 .files tr.row.selected.focus td:first-child { box-shadow: inset calc(3px * var(--ui)) 0 0 var(--accent), inset 0 1px 0 var(--sel-border), inset 0 -1px 0 var(--sel-border); }
 
-/* Editor: go-to-line bar, clickable cursor label; hex editor: column header */
 #editorDialog .editor-foot button.editor-cursor { border: 0; font: inherit; font-family: var(--mono); font-size: calc(12px * var(--ui)); cursor: pointer; transition: background .12s, color .12s; }
 #editorDialog .editor-foot button.editor-cursor:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface-3)); color: var(--text); }
 #editorDialog .editor-foot button.editor-cursor:focus-visible { outline: calc(2px * var(--ui)) solid var(--accent); outline-offset: 1px; }
@@ -3126,7 +3088,6 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 
 [dir="rtl"] .hex-box, [dir="rtl"] .hex-rows { direction: ltr; text-align: left; }
 
-/* Terminal: split-pane labels stay out of the way, tab-list status, appearance dialog */
 .tpane-badge { opacity: .72; transition: opacity .12s; }
 .tpane:hover > .tpane-badge, .tpane > .terminal-screen.focused ~ .tpane-badge { opacity: 1; }
 #termCfgDialog .field > small { display: block; margin-top: calc(4px * var(--ui)); font-size: calc(12px * var(--ui)); }
@@ -3141,8 +3102,6 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 .term-status-text { max-width: calc(380px * var(--ui)); }
 @media (max-width: 560px) { .term-status-text { max-width: calc(120px * var(--ui)); } }
 
-/* ===== Polish: status icons, close buttons, duplicate controls =====
-   One set of icons for success / failure / warning, drawn with masks so they follow the theme colours. */
 :root {
   --m-ok: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='6.5' fill='%23000'/%3E%3C/svg%3E");
   --m-fail: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9 9l6 6M15 9l-6 6'/%3E%3C/svg%3E");
@@ -3150,7 +3109,6 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 }
 .dup-hide, .dlg-dup { display: none !important; }
 
-/* status dots become icons: ✓ online, ! partial, ✕ offline / error */
 .dot[data-state="online"], .dot[data-state="partial"], .dot[data-state="offline"], .dot[data-state="error"] {
   width: calc(15px * var(--ui)); height: calc(15px * var(--ui)); border-radius: 0; box-shadow: none;
   -webkit-mask: var(--mask) center / contain no-repeat; mask: var(--mask) center / contain no-repeat;
@@ -3184,17 +3142,14 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 .toast:not(.error)::before { background: var(--ok); }
 .toast.error::before { -webkit-mask-image: var(--m-fail); mask-image: var(--m-fail); background: var(--bad); }
 
-/* windows: one close control (the header ×), a calmer Cancel, nothing doubled in the footer */
 .dlg-head .dlg-close { width: calc(28px * var(--ui)); height: calc(28px * var(--ui)); color: var(--muted); }
 .dlg-head .dlg-close .ic { width: calc(16px * var(--ui)); height: calc(16px * var(--ui)); stroke-width: 2; }
 .dlg-head .dlg-close:hover:not(:disabled) { color: var(--bad); background: var(--bad-soft); }
 .dialog-actions [id$="Cancel"] > .ic, .dialog-actions [id$="Cancel"] > svg { display: none; }
 .dialog-actions:not(:has(> *:not(.spacer))) { display: none; }
 
-/* files: the breadcrumb row adds nothing while we are at the root (the path box already says "/") */
 .crumbs:has(.crumb:only-child) { display: none; }
 
-/* ---- Round 2 ---- */
 .dlg-close, .dlg-head .dlg-close { color: var(--bad) !important; }
 .dlg-close .ic, .dlg-head .dlg-close .ic { stroke-width: 2.4; }
 .dlg-close:hover:not(:disabled) { background: var(--bad-soft) !important; }
@@ -3202,7 +3157,6 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 .btn.ico-only > :not(svg) { display: none !important; }
 .device-actions .btn.ico-only { flex: 1 1 0; width: auto; }
 
-/* ---- Round 3: explanations behind an (i) button ---- */
 .help-btn { width: calc(22px * var(--ui)); height: calc(22px * var(--ui)); flex: none; color: var(--muted); }
 .help-btn .ic { width: calc(15px * var(--ui)); height: calc(15px * var(--ui)); }
 .help-btn:hover, .help-btn[aria-expanded="true"] { color: var(--accent); }
@@ -3219,7 +3173,6 @@ body.cmd-classic .menu { max-width: calc(400px * var(--ui)); }
 .bk-head .help-row > h3 { margin: 0; }
 .bk-head .help-row > .help-btn { margin-top: calc(2px * var(--ui)); }
 
-/* ---- Round 4: one size for every control ---- */
 :root { --ctl-size: calc(30px * var(--ui)); }
 .btn, .btn.sm, .bridge-btn, .toolsnav-btn { min-height: var(--ctl-size); height: var(--ctl-size); font-size: var(--ctl-fs); padding-block: 0; }
 .btn.sm { padding-inline: calc(12px * var(--ui)); }
@@ -3234,7 +3187,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .device-actions .btn.ico-only { width: auto !important; }
 .dock-command-row > .icon-btn, .command-actions .icon-btn, .remote-top, .rv-mute { width: var(--ctl-size); height: var(--ctl-size); }
 
-/* ---- Round 5: connection state lives in the button; red close on terminal tabs ---- */
 .term-status { display: none !important; }
 #terminalConnect[data-conn], #fileConnect[data-conn] { font-weight: 600; }
 #terminalConnect[data-conn="on"], #fileConnect[data-conn="on"] { color: var(--ok); border-color: var(--ok); }
@@ -3248,13 +3200,11 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .tt .icon-btn .ic { stroke-width: 2.4; }
 .tt .icon-btn:hover:not(:disabled) { background: var(--bad-soft); color: var(--bad); }
 
-/* ---- Round 6: an empty strip in every file pane, and rubber-band selection ---- */
 .pane table.files { width: calc(100% - 14px * var(--ui)); user-select: none; -webkit-user-select: none; }
 .pane .table-wrap::after { content: ""; display: block; height: calc(56px * var(--ui)); }
 .table-wrap.marqueeing, .table-wrap.marqueeing * { user-select: none; cursor: default; }
 .marquee { position: absolute; z-index: 4; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 2px; }
 
-/* ---- Round 7: Screen page ---- */
 .screen-opts { display: flex; align-items: center; gap: calc(10px * var(--ui)); flex-wrap: wrap; }
 .field-ic { display: inline-flex; align-items: center; gap: calc(6px * var(--ui)); color: var(--muted); }
 .field-ic > .ic, .field-ic .check .ic { width: calc(16px * var(--ui)); height: calc(16px * var(--ui)); flex: none; }
@@ -3271,7 +3221,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .remote-sel { grid-template-columns: 1fr calc(72px * var(--ui)); }
 .bq-side .seg button .ic, .ch-tools .seg button .ic { width: calc(17px * var(--ui)); height: calc(17px * var(--ui)); }
 
-/* ---- Round 8: Power window ---- */
 .power-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(8px * var(--ui)); }
 .power-btn { flex-direction: column; gap: calc(5px * var(--ui)); min-height: calc(62px * var(--ui)); padding: calc(8px * var(--ui)) calc(6px * var(--ui)); font-size: calc(11.5px * var(--ui)); text-align: center; }
 .power-btn .ic { width: calc(22px * var(--ui)); height: calc(22px * var(--ui)); }
@@ -3288,21 +3237,18 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .power-head .badge[data-state="standby"] { color: var(--warn); border-color: var(--warn); }
 #powerDialog .dialog-actions { justify-content: flex-start; }
 
-/* ---- Round 8b: Guide and its windows ---- */
 .gd-head .seg button { min-width: calc(34px * var(--ui)); padding: 0 calc(10px * var(--ui)); }
 .gd-head .seg button .ic { width: calc(17px * var(--ui)); height: calc(17px * var(--ui)); }
 .gd-tools .btn.sq { margin: 0; }
 .tm-adv:not([open]) { display: block; padding-bottom: calc(8px * var(--ui)); }
 .dialog-actions > .check { margin: 0; }
 
-/* ===== Round 9: live keeps playing when another page is in front; calmer details panel ===== */
 .tab.is-live { position: relative; }
 .tab.is-live::after { content: ""; position: absolute; top: calc(7px * var(--ui)); right: calc(8px * var(--ui)); width: calc(8px * var(--ui)); height: calc(8px * var(--ui)); border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 calc(2px * var(--ui)) var(--surface); animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .tab.is-live::after { animation: none; } }
 .live-card > header .live-chip { flex: none; cursor: help; }
 .live-cw.bad { border-color: var(--bad); }
 .live-card > header .muted.small:empty { display: none; }
-/* With the three tabs on show, the tab already names the card: drop the repeated title and icon */
 @media (min-width: 1100px) and (max-width: 1279px) and (min-height: 560px) {
   #view-screen .live-card > header > :is(.ic, h3) { display: none; }
   #view-screen .live-card > header:not(:has(.icon-btn:not([hidden]), .live-chip:not([hidden]), .muted:not(:empty))) { display: none; }
@@ -3315,7 +3261,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 #liveCwAgo { font-variant-numeric: tabular-nums; }
 #liveCwAgo:not(:empty)::before { content: "\21BB\00a0"; }
 
-/* ===== Round 9: permissions, terminal look, remote access ===== */
 .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(10px * var(--ui)); }
 .chmod-info { margin-block: 0; font-size: calc(12.5px * var(--ui)); color: var(--muted); overflow-wrap: anywhere; }
 .chmod-info:empty { display: none; }
@@ -3343,7 +3288,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 #raDialog .dialog-card { gap: calc(9px * var(--ui)); }
 .ra-pass { padding: calc(6px * var(--ui)); }
 
-/* Player and Card: the same two-column grid of label / value cells; the track picker is a row of chips */
 .live-cells { grid-template-columns: repeat(auto-fill, minmax(calc(136px * var(--ui)), 1fr)); }
 .live-cell { min-height: calc(28px * var(--ui)); align-items: center; }
 .live-cell .k { min-width: calc(44px * var(--ui)); }
@@ -3354,7 +3298,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .live-cells.stale { opacity: .55; }
 #liveEcmStamp { font-variant-numeric: tabular-nums; }
 
-/* ===== Logs and Tools: fewer rows, icon buttons ===== */
 .logs-pane { gap: calc(8px * var(--ui)); }
 .logs-tools { gap: calc(8px * var(--ui)); padding: calc(6px * var(--ui)) calc(10px * var(--ui)); }
 .logs-tools #logsComp { max-width: calc(170px * var(--ui)); }
@@ -3394,7 +3337,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .logs-tools .lg-chips { flex: 0 1 auto; }
 .screen-tools.logs-tools .btn.sm { flex: none; min-width: var(--ctl-size); }
 
-/* Wider scrollbars: a bigger track and a fatter thumb that is easier to see and grab (Appearance > Scrollbars > Thin still gives the slim one). */
 *::-webkit-scrollbar { width: calc(18px * var(--ui)); height: calc(18px * var(--ui)); }
 *::-webkit-scrollbar-track { background: color-mix(in srgb, var(--text) 5%, transparent); }
 *::-webkit-scrollbar-thumb { min-height: calc(44px * var(--ui)); min-width: calc(44px * var(--ui)); border: calc(4px * var(--ui)) solid transparent; background-clip: content-box; background: var(--border-strong); }
@@ -3404,7 +3346,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 .crumbs::-webkit-scrollbar { display: none; }
 :root[data-scrollbars="thin"] *::-webkit-scrollbar { width: calc(10px * var(--ui)); height: calc(10px * var(--ui)); }
 
-/* Sidebar footer (language / appearance / light-dark): three equal cells that always fit the rail, with one consistent border. */
 @media (min-width: 901px) and (min-height: 501px) {
   .rail .rail-foot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(3px * var(--ui)); width: 100%; padding: 0 calc(3px * var(--ui)) calc(8px * var(--ui)); box-sizing: border-box; }
   .rail .rail-foot > .icon-btn, .rail .rail-foot > .flag-btn { display: inline-grid; place-items: center; width: 100%; min-width: 0; height: calc(28px * var(--ui)); min-height: 0; margin: 0; padding: 0; box-sizing: border-box; background: transparent; border: 1px solid var(--border); }
@@ -3414,7 +3355,6 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
 }
 
 
-/* Hex window: compact search, focused byte view, no redundant column banner. */
 #previewDialog {
   width: min(calc(1080px * var(--ui)), calc(100vw - calc(24px * var(--ui))));
   max-width: none;
@@ -3560,3 +3500,104 @@ main select, main .filter-input { height: var(--ctl-size) !important; min-height
   #previewDialog .hex-search-status { flex-basis: auto; }
 }
 
+
+.bk-opts { display: grid; gap: calc(10px * var(--ui)); margin: calc(8px * var(--ui)) 0; }
+#imgBar { width: 100%; height: calc(6px * var(--ui)); accent-color: var(--accent); }
+
+/* Softcam manager and settings backup */
+.st-scopes { display: grid; gap: calc(4px * var(--ui)); }
+.st-foot { flex-wrap: wrap; gap: calc(8px * var(--ui)); align-items: center; }
+.st-foot input[type="file"] { max-width: 100%; font-size: calc(12px * var(--ui)); }
+#stResult.is-error { color: var(--danger, #c0392b); }
+
+/* Settings backup card: two clear parts */
+.st-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(260px * var(--ui))), 1fr)); gap: calc(12px * var(--ui)); }
+.st-part { display: grid; gap: calc(10px * var(--ui)); align-content: start; padding: calc(12px * var(--ui)); border: 1px solid var(--border); border-radius: calc(10px * var(--ui)); min-width: 0; }
+.st-part h4 { margin: 0; font-size: calc(13px * var(--ui)); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.st-part .bk-foot { margin-top: 0; }
+.st-part .bk-drop { padding: calc(16px * var(--ui)) calc(10px * var(--ui)); }
+
+.sc-result, #stResult { margin: 0; padding: calc(7px * var(--ui)) calc(10px * var(--ui)); border-radius: calc(8px * var(--ui)); background: var(--ok-soft); color: var(--ok); }
+.sc-result.is-error, #stResult.is-error { background: var(--bad-soft); color: var(--bad); }
+.sc-wrap { width: min(100%, calc(1120px * var(--ui))); margin: 0 auto; padding: calc(8px * var(--ui)) 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(10px * var(--ui)); align-content: start; }
+.sc-head { display: flex; align-items: center; justify-content: space-between; gap: calc(12px * var(--ui)); min-width: 0; }
+.sc-heading { display: flex; align-items: center; gap: calc(10px * var(--ui)); min-width: 0; }
+.sc-heading h2 { margin: 0; font-size: calc(18px * var(--ui)); font-weight: 700; }
+.sc-tools { display: flex; align-items: center; justify-content: flex-end; gap: calc(6px * var(--ui)); flex-wrap: wrap; }
+.sc-count { color: var(--muted); font-size: calc(11.5px * var(--ui)); white-space: nowrap; }
+.sc-card { min-width: 0; padding: calc(10px * var(--ui)) calc(12px * var(--ui)); border: 1px solid var(--border); border-radius: calc(9px * var(--ui)); background: var(--surface, transparent); }
+.sc-card-head { display: flex; align-items: center; gap: calc(8px * var(--ui)); min-width: 0; }
+.sc-card-head h3 { margin: 0; font-size: calc(13px * var(--ui)); font-weight: 700; }
+.sc-list { min-width: 0; }
+.sc-cam { min-width: 0; padding: calc(10px * var(--ui)) 0; border-bottom: 1px solid var(--border); }
+.sc-cam:first-child { padding-top: calc(7px * var(--ui)); }
+.sc-cam:last-child { padding-bottom: calc(4px * var(--ui)); border-bottom: 0; }
+.sc-cam-main { display: flex; align-items: center; gap: calc(10px * var(--ui)); min-width: 0; }
+.sc-ident { display: flex; align-items: center; flex-wrap: wrap; gap: calc(7px * var(--ui)); min-width: 0; flex: 1 1 180px; }
+.sc-name { font-size: calc(13px * var(--ui)); font-weight: 700; overflow-wrap: anywhere; }
+.sc-dot { width: calc(9px * var(--ui)); height: calc(9px * var(--ui)); flex: 0 0 auto; border-radius: 50%; background: var(--muted); opacity: .55; }
+.sc-dot[data-on="true"] { background: var(--ok, #239b56); opacity: 1; box-shadow: 0 0 0 calc(3px * var(--ui)) var(--ok-soft); }
+.sc-tag { display: inline-flex; align-items: center; gap: calc(4px * var(--ui)); padding: calc(2px * var(--ui)) calc(6px * var(--ui)); border-radius: 99px; background: var(--inset, color-mix(in srgb, var(--border) 35%, transparent)); color: var(--muted); font-size: calc(10.5px * var(--ui)); white-space: nowrap; }
+.sc-tag.active { background: var(--accent-soft, var(--inset)); color: var(--accent); }
+.sc-subline { min-width: 0; margin-top: calc(3px * var(--ui)); color: var(--muted); font: calc(10.5px * var(--ui))/1.4 var(--mono, ui-monospace, monospace); overflow-wrap: anywhere; }
+.sc-actions { display: flex; align-items: center; justify-content: flex-end; gap: calc(5px * var(--ui)); flex: 0 0 auto; }
+.sc-actions .btn { min-height: calc(29px * var(--ui)); padding: 0 calc(8px * var(--ui)); font-size: calc(11px * var(--ui)); }
+.sc-actions button:disabled { opacity: .38; cursor: default; }
+.sc-actions .sc-web { margin-inline-end: calc(4px * var(--ui)); }
+.sc-files-card { padding: 0; }
+.sc-files-summary { min-height: calc(40px * var(--ui)); padding: 0 calc(12px * var(--ui)); cursor: pointer; list-style: none; user-select: none; }
+.sc-files-summary::-webkit-details-marker { display: none; }
+.sc-files-summary h3 { flex: 1; }
+.sc-disclosure { color: var(--muted); font-size: calc(13px * var(--ui)); transition: transform .14s ease; }
+.sc-files-card[open] .sc-disclosure { transform: rotate(90deg); }
+.sc-files-list { padding: 0 calc(12px * var(--ui)) calc(9px * var(--ui)); }
+.sc-file { display: flex; align-items: center; gap: calc(8px * var(--ui)); min-width: 0; min-height: calc(31px * var(--ui)); padding: calc(3px * var(--ui)) 0; border-top: 1px solid var(--border); }
+.sc-path { display: flex; align-items: baseline; gap: 0; min-width: 0; flex: 1; overflow: hidden; font-size: calc(11.5px * var(--ui)); }
+.sc-path span, .sc-path b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-size { flex: 0 0 auto; color: var(--muted); font-size: calc(10.5px * var(--ui)); }
+.sc-file .icon-btn { width: calc(25px * var(--ui)); height: calc(25px * var(--ui)); }
+@media (max-width: 760px) {
+  .sc-head { align-items: flex-start; flex-wrap: wrap; }
+  .sc-tools { justify-content: flex-start; width: 100%; }
+  .sc-cam-main { align-items: flex-start; flex-wrap: wrap; }
+  .sc-ident { flex-basis: calc(100% - 24px); }
+  .sc-actions { width: 100%; justify-content: flex-start; padding-inline-start: calc(19px * var(--ui)); }
+}
+
+/* Softcam page: busy spinner, empty state, tidy rows */
+#scReload.busy .ic, #mainTabs .tab[data-view="tools"].busy .ic { animation: connSpin .9s linear infinite; }
+.sc-cams-card { position: relative; min-height: calc(46px * var(--ui)); }
+.sc-cams-card[aria-busy="true"]:not(:has(.sc-cam))::before { content: ""; display: block; width: calc(22px * var(--ui)); height: calc(22px * var(--ui)); margin: calc(12px * var(--ui)) auto; border-radius: 50%; border: calc(2.5px * var(--ui)) solid var(--border); border-top-color: var(--accent); animation: connSpin .8s linear infinite; }
+.sc-cams-card[aria-busy="true"] .sc-list { opacity: .72; transition: opacity .15s; }
+.sc-empty { margin: 0; padding: calc(10px * var(--ui)) 0; text-align: center; }
+.sc-cam { transition: background-color .2s; }
+.sc-cam[data-on="true"] { background: linear-gradient(90deg, var(--ok-soft), transparent 55%); }
+.sc-actions .btn.sq { width: calc(29px * var(--ui)); padding: 0; justify-content: center; }
+.sc-actions { flex-wrap: wrap; }
+#scKillAll[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  #scReload.busy .ic, #mainTabs .tab[data-view="tools"].busy .ic, .sc-cams-card[aria-busy="true"]:not(:has(.sc-cam))::before { animation-duration: 2.4s; }
+}
+
+.sc-spin { display: inline-flex; align-items: center; gap: calc(7px * var(--ui)); color: var(--muted); font-size: calc(11.5px * var(--ui)); }
+.sc-spin[hidden] { display: none; }
+.sc-spin-ring { flex: none; width: calc(18px * var(--ui)); height: calc(18px * var(--ui)); box-sizing: border-box; border-radius: 50%; border: calc(2.5px * var(--ui)) solid var(--border); border-top-color: var(--accent); border-right-color: var(--accent); animation: connSpin .7s linear infinite; }
+.sc-wait { position: relative; height: calc(3px * var(--ui)); margin-bottom: calc(-6px * var(--ui)); overflow: hidden; border-radius: 99px; opacity: 0; transition: opacity .15s; }
+.sc-wait.on { opacity: 1; }
+.sc-wait i { position: absolute; inset: 0 auto 0 0; width: 38%; border-radius: inherit; background: var(--accent); animation: scBar 1.1s ease-in-out infinite; }
+@keyframes scBar { from { transform: translateX(-100%); } to { transform: translateX(270%); } }
+@media (prefers-reduced-motion: reduce) { .sc-spin-ring, .sc-wait i { animation-duration: 2.4s; } }
+
+/* Backup page: three cards, one size */
+#listsBackup .tools-body.bk { max-width: none; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: auto; align-items: stretch; }
+#listsBackup .tools-body.bk > .bk-card { min-height: calc(330px * var(--ui)); height: 100%; box-sizing: border-box; }
+#listsBackup .bk-wide { grid-column: 1 / -1; margin: 0; }
+#listsBackup .bk-card > .bk-foot { margin-top: auto; }
+#listsBackup .bk-card .bk-drop { flex: 1 1 auto; justify-content: center; }
+@media (max-width: 1000px) { #listsBackup .tools-body.bk { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { #listsBackup .tools-body.bk { grid-template-columns: minmax(0, 1fr); } #listsBackup .tools-body.bk > .bk-card { min-height: 0; } }
+
+:root:root .sc-spin-ring, :root:root #scReload.busy .ic, :root:root #mainTabs .tab[data-view="tools"].busy .ic,
+:root:root .sc-cams-card[aria-busy="true"]:not(:has(.sc-cam))::before,
+:root:root #devicesRefresh.busy .ic, :root:root #terminalConnect[data-conn="busy"] .ic, :root:root #fileConnect[data-conn="busy"] .ic { animation: connSpin .8s linear infinite !important; }
+:root:root .sc-wait i { animation: scBar 1.2s ease-in-out infinite !important; }

@@ -24,7 +24,6 @@ const (
 
 var noFileReply = regexp.MustCompile(`^/tmp/[^\s<>]+\.(?:jpg|png|bmp)\b`)
 
-// screenAddressTimeout is the time one screenshot address may take.
 func screenAddressTimeout(addr string) time.Duration {
 	if strings.HasPrefix(addr, "/freezeframe") && strings.Contains(addr, "resolution=3840x2160") {
 		return freezeFrame4KTimeout
@@ -48,7 +47,6 @@ func classifyScreenReply(body []byte) (kind, evidence string) {
 	return screenReplyOther, evidence
 }
 
-// screenEvidence is the start of a reply made safe for a log line.
 func screenEvidence(body []byte) string {
 	const keep = 120
 	if len(body) > keep {
@@ -138,7 +136,6 @@ func logScreenVideo(web deviceWeb) {
 	devLog.Warn("screenshots failed; the receiver is decoding", "base", web.base, "channel", name, "width", rawW, "height", rawH, "width_px", w)
 }
 
-// screenDiagResult is one address tried by the diagnosis.
 type screenDiagResult struct {
 	Address     string `json:"address"`
 	Status      int    `json:"status,omitempty"`

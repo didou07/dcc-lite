@@ -6,11 +6,8 @@ import (
 	"time"
 )
 
-// The original DCC had a "packet delay" slider so a slow or old receiver is not overloaded by a fast upload.
-// This is the same idea as a plain speed limit in KB/s, shared by every file transfer (0 = unlimited).
 var rateLimitBytesPerSecond atomic.Int64
 
-// MaxRateLimitKBps keeps the setting sane (100 MB/s is already more than any receiver accepts).
 const MaxRateLimitKBps = 100 * 1024
 
 func SetRateLimitKBps(kbps int64) {
@@ -25,8 +22,6 @@ func SetRateLimitKBps(kbps int64) {
 
 func RateLimitKBps() int64 { return rateLimitBytesPerSecond.Load() / 1024 }
 
-// pacer spaces out the bytes of one transfer. The limit is read on every call, so changing it
-// takes effect on transfers that are already running.
 type pacer struct {
 	ctx  context.Context
 	next time.Time
@@ -48,7 +43,6 @@ func (p *pacer) wait(n int) {
 		p.next = now
 	}
 	p.next = p.next.Add(time.Duration(int64(n)) * time.Second / time.Duration(limit))
-	// Allow a short burst (a quarter of a second) so small files are not slowed down needlessly.
 	delay := p.next.Sub(now) - 250*time.Millisecond
 	if delay <= 0 {
 		return

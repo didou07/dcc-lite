@@ -167,7 +167,6 @@ function renderSitesSummary() {
   node.textContent = parts.join(" · ");
 }
 function renderDeviceGrid() {
-  // Keep the keyboard focus on the same control when the grid is drawn again (a status check finishing, say).
   const had = document.activeElement?.closest?.("#deviceGrid") ? document.activeElement : null;
   const keep = had ? { id: had.closest(".device-card")?.dataset.id, label: had.getAttribute("aria-label") || had.getAttribute("title") || had.textContent.trim(), card: had.classList.contains("device-card") } : null;
   drawDeviceGrid();
@@ -241,14 +240,14 @@ async function loadBrief(id) {
   state.busy = true;
   const before = state.data ? briefSignature(state.data) : "";
   try { state.data = await api(profileURL(id, "info")); state.at = Date.now(); }
-  catch { /* keep the last reading; the card just stays as it was */ }
+  catch { }
   state.busy = false;
   if (state.data && briefSignature(state.data) !== before && deviceBrief.get(id) === state) renderDeviceGrid();
 }
 window.setInterval(() => {
   if (document.hidden || !$("#deviceGrid").offsetParent) return;
   for (const profile of devices.list) if (devices.status.get(profile.id)?.state === "online" && !deviceInfoState.has(profile.id)) loadBrief(profile.id);
-}, 60000); // once a minute, only while the Devices page is visible
+}, 60000);
 function toggleDeviceInfo(id) {
   if (deviceInfoState.has(id)) { deviceInfoState.delete(id); renderDeviceGrid(); return; }
   deviceInfoState.set(id, { loading: true, data: null, error: "" });
@@ -403,7 +402,6 @@ function setPasswordShown(shown) {
   $("#devPassToggle use").setAttribute("href", shown ? "#i-eye-off" : "#i-eye");
   $("#devPassToggle").setAttribute("aria-pressed", String(shown));
 }
-// Accepts what people paste: http://192.168.1.20:8080/ becomes the address 192.168.1.20 and the web port 8080.
 function cleanHost(raw) {
   let host = raw.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/[\/?#].*$/, "");
   let port = 0;
@@ -509,6 +507,7 @@ function refreshCurrentDeviceView() {
     case "screen": screenEnter(); break;
     case "signal": signalEnter(); break;
     case "packages": packagesEnter(); break;
+    case "softcam": softcamEnter(); break;
   }
 }
 function setCurrentDevice(id, deferViewRefresh = false) {
@@ -520,7 +519,6 @@ function setCurrentDevice(id, deferViewRefresh = false) {
   renderDeviceGrid();
   globalThis.DccCommandPanel?.refreshSystem?.();
   if (changed) {
-    // a picture playing in the background belongs to the previous device
     if (view.current !== "screen" && typeof liveIsOn === "function" && liveIsOn()) screenStop();
     const own = store.get(`tool.${id}`, "");
     if (toolKnown(own) && ![...toolViews].includes(view.current)) tools.current = own;
@@ -539,16 +537,16 @@ const TOOL_PAGES = [
   { id: "packages", label: "Packages", icon: "box", view: "packages" },
   { id: "ipk", label: "Install .ipk", icon: "upload", view: "ipk" },
   { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
+  { id: "softcam", label: "Softcam", icon: "key", view: "softcam" },
 ];
 const toolKnown = (id) => TOOL_PAGES.some((t) => t.id === id);
 const tools = { current: store.get("tool", "editor") };
 if (!toolKnown(tools.current)) tools.current = "editor";
-// The last tool is remembered per device and overall.
 function rememberTool() {
   store.set("tool", tools.current);
   if (devices.currentID) store.set(`tool.${devices.currentID}`, tools.current);
 }
-const toolViews = ["lists", "ipk", "signal", "packages"];
+const toolViews = ["lists", "ipk", "signal", "packages", "softcam"];
 function updateToolsNav() {
   for (const nav of $$("[data-toolsnav]")) {
     nav.replaceChildren(...TOOL_PAGES.map((t) => h("button", {
@@ -572,8 +570,8 @@ function showView(name) {
   if (view.current === "signal" && name !== "signal") signalStop();
   if (view.current === "logs" && name !== "logs") logsLeave();
   view.current = name;
-  if (name === "ipk" || name === "signal" || name === "packages") tools.current = name;
-  else if (name === "lists" && ["ipk", "signal", "packages"].includes(tools.current)) tools.current = "editor";
+  if (name === "ipk" || name === "signal" || name === "packages" || name === "softcam") tools.current = name;
+  else if (name === "lists" && ["ipk", "signal", "packages", "softcam"].includes(tools.current)) tools.current = "editor";
   document.body.dataset.view = name;
   const top = toolViews.includes(name) ? "tools" : name;
   for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === top));
@@ -587,6 +585,7 @@ function showView(name) {
   if (name === "screen") screenEnter();
   if (name === "signal") signalEnter();
   if (name === "packages") packagesEnter();
+  if (name === "softcam") softcamEnter();
   if (name === "logs") logsEnter();
 }
 for (const tab of $$("#mainTabs .tab")) tab.addEventListener("click", () => showView(tab.dataset.view));

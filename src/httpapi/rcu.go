@@ -125,7 +125,6 @@ func (s *Server) deviceRemoteText(w http.ResponseWriter, r *http.Request) {
 	query.Set("text", strings.ReplaceAll(text, "%", "%25"))
 	status, body, err := web.pressRemote(ctx, "/api/remotecontrol?"+query.Encode())
 	if err == nil && remoteRefused(status, body) && len(text) <= 64 {
-		// Some images ignore text=; type the characters one by one instead.
 		status, body, err = web.typeAscii(ctx, text)
 	}
 	if writeWebFailure(w, web, status, body, err) {

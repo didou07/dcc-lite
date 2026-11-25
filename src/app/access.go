@@ -6,7 +6,6 @@ import (
 	"github.com/didou07/dcc-lite/src/updater"
 )
 
-// UpdateController is implemented by *updater.Updater.
 type UpdateController interface {
 	Status() updater.Status
 	Check(ctx context.Context) (updater.Status, error)

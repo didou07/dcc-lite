@@ -7,11 +7,9 @@
   const FOLDERS = { teal: [187, 72], violet: [262, 72], green: [146, 62], slate: [215, 20], gold: [48, 78] };
   const ATTRS = ["tone", "btn", "edge", "radius", "density", "icons", "font", "motion", "rows", "scrollbars"];
 
-  // interface size: 50-170%, stored as a factor ("0.85")
   const SCALE_MIN = 50, SCALE_MAX = 170;
   const scalePct = (v) => { const n = Math.round(parseFloat(v) * 100); return Number.isFinite(n) ? Math.min(SCALE_MAX, Math.max(SCALE_MIN, n)) : Math.round(parseFloat(DEFAULTS.scale) * 100); };
   const scaleStr = (v) => String(scalePct(v) / 100);
-  // light / dark / auto lives in its own key (shared with core.js and the sign-in page); light is the default
   const THEME_KEY = "dcclite.theme", THEMES = ["auto", "light", "dark"], DEFAULT_THEME = "light";
   const readMode = () => { try { const v = JSON.parse(localStorage.getItem(THEME_KEY)); return THEMES.includes(v) ? v : DEFAULT_THEME; } catch { return DEFAULT_THEME; } };
   const writeMode = (mode) => { root.dataset.theme = mode; try { localStorage.setItem(THEME_KEY, JSON.stringify(mode)); } catch { } };
@@ -20,7 +18,7 @@
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
     if (saved.v === DEFAULTS.v) state = { ...DEFAULTS, ...saved };
-    else { // older settings: keep the choices, but switch to the new default (light) one time
+    else {
       state = { ...DEFAULTS, ...saved, v: DEFAULTS.v };
       writeMode(DEFAULT_THEME);
       localStorage.setItem(KEY, JSON.stringify(state));
@@ -39,7 +37,6 @@
     const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
     return [Math.round(h), Math.round(Math.min(95, Math.max(12, s * 100)))];
   }
-  // browser/PWA chrome colour: one tag, driven by the page background that is actually showing
   function syncChrome() {
     let meta = document.querySelector('meta[name="theme-color"]:not([media])');
     if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.appendChild(meta); }
@@ -117,7 +114,6 @@
   for (const [id, key] of [["apAccentCustom", "accent"], ["apFolderCustom", "folder"]]) {
     document.getElementById(id).addEventListener("input", (event) => { state[`${key}Hex`] = event.target.value; save(); apply(); });
   }
-  // applied on release so the dialog does not resize while dragging
   const apScale = document.getElementById("apScale");
   apScale?.addEventListener("input", () => { document.getElementById("apScaleVal").textContent = `${apScale.value}%`; });
   apScale?.addEventListener("change", () => { state.scale = scaleStr(Number(apScale.value) / 100); save(); apply(); });

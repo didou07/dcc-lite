@@ -4,7 +4,6 @@ package config
 
 import "os"
 
-// bestEffortPerms is false here: a failed chmod is an error.
 const bestEffortPerms = false
 
 func restrictToOwner(path string, isDir bool) error {

@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -82,80 +81,6 @@ func backupHostLabel(host string) string {
 	return b.String()
 }
 
-func (s *Server) backupEnigma2(w http.ResponseWriter, r *http.Request) {
-	logAction(w, r, "Enigma2 backup requested")
-	longTransfer(w) // backups can outlast the server-wide WriteTimeout on slow links
-	id := r.PathValue("id")
-	profile, ok := s.sessionProfile(id)
-	if !ok {
-		writeSessionNotFound(w)
-		return
-	}
-	dir, err := bouquetDir(r.URL.Query().Get("dir"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	scope := r.URL.Query().Get("scope")
-	if scope != "all" {
-		scope = "channels"
-	}
-	keep := isChannelFile
-	if scope == "all" {
-		keep = backupFileName.MatchString
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
-	defer cancel()
-	files, skipped, err := s.app.Files.ReadDirFiles(ctx, id, dir, keep, backupMaxFile, backupMaxTotal)
-	if err != nil {
-		writeEditError(w, err)
-		return
-	}
-	if len(files) == 0 {
-		writeError(w, http.StatusNotFound, "no channel list files were found in "+dir)
-		return
-	}
-	now := time.Now()
-	names := make([]string, 0, len(files))
-	for _, f := range files {
-		names = append(names, f.Name)
-	}
-	manifest, _ := json.MarshalIndent(map[string]any{
-		"application": "DCC Lite", "created": now.Format(time.RFC3339), "scope": scope,
-		"source_host": profile.Host, "folder": dir, "files": names, "skipped_too_large": skipped,
-	}, "", "  ")
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	add := func(name string, data []byte) error {
-		fw, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate, Modified: now})
-		if err != nil {
-			return err
-		}
-		_, err = fw.Write(data)
-		return err
-	}
-	if err := add(backupManifest, manifest); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	for _, f := range files {
-		if err := add(f.Name, f.Data); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-	if err := zw.Close(); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	label := "enigma2-" + scope + "-" + backupHostLabel(profile.Host) + "-" + now.Format("20060102-1504") + ".zip"
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+label+`"`)
-	w.Header().Set("Content-Length", fmt.Sprint(buf.Len()))
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(buf.Bytes())
-}
-
 type restoreSkip struct {
 	Name   string `json:"name"`
 	Reason string `json:"reason"`
@@ -178,7 +103,7 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, restoreMaxZip+(1<<20))
 	reader, err := r.MultipartReader()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "send the backup as a multipart upload")
+		writeError(w, http.StatusBadRequest, "Upload the backup as a file.")
 		return
 	}
 	var upload []byte
@@ -188,7 +113,7 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			writeError(w, http.StatusRequestEntityTooLarge, "the backup is too large or the upload was interrupted")
+			writeError(w, http.StatusRequestEntityTooLarge, "The upload failed or is too large.")
 			return
 		}
 		if part.FormName() != "file" {
@@ -196,7 +121,7 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 		}
 		upload, err = io.ReadAll(io.LimitReader(part, restoreMaxZip+1))
 		if err != nil || len(upload) > restoreMaxZip {
-			writeError(w, http.StatusRequestEntityTooLarge, "the backup is larger than 64 MB")
+			writeError(w, http.StatusRequestEntityTooLarge, "The backup is larger than 64 MB.")
 			return
 		}
 	}
@@ -208,11 +133,9 @@ func (s *Server) restoreEnigma2(w http.ResponseWriter, r *http.Request) {
 	sort.SliceStable(files, func(i, j int) bool { return restoreRank(files[i].Name) < restoreRank(files[j].Name) })
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
-	// Keep what is on the receiver now, so a wrong backup can be undone.
 	if err := s.snapshotChannelsChecked(ctx, id, profile, dir, "before-restore", true); err != nil {
-		// Without a restore point a wrong or broken restore could not be undone, so nothing is changed.
 		writeJSON(w, http.StatusConflict, map[string]any{
-			"error": "Nothing was changed. The receiver's current channel list could not be saved first, so the restore was stopped: " + err.Error(),
+			"error": "Nothing was changed. The current channel list could not be saved first: " + err.Error(),
 			"code":  "restore_point_failed",
 		})
 		return
@@ -244,14 +167,14 @@ func (s *Server) applyChannelFiles(ctx context.Context, w http.ResponseWriter, i
 
 func readRestoreZip(upload []byte) ([]filetransfer.RemoteFile, []restoreSkip, error) {
 	if len(upload) == 0 {
-		return nil, nil, errors.New("choose a backup .zip file")
+		return nil, nil, errors.New("Choose a backup file.")
 	}
 	zr, err := zip.NewReader(bytes.NewReader(upload), int64(len(upload)))
 	if err != nil {
-		return nil, nil, errors.New("this is not a valid .zip file")
+		return nil, nil, errors.New("This is not a valid .zip file.")
 	}
 	if len(zr.File) > restoreMaxList {
-		return nil, nil, errors.New("the backup holds too many files")
+		return nil, nil, errors.New("The backup has too many files.")
 	}
 	var files []filetransfer.RemoteFile
 	var skipped []restoreSkip
@@ -275,7 +198,7 @@ func readRestoreZip(upload []byte) ([]filetransfer.RemoteFile, []restoreSkip, er
 		}
 		rc, err := f.Open()
 		if err != nil {
-			return nil, nil, fmt.Errorf("cannot read %s from the backup", name)
+			return nil, nil, fmt.Errorf("Cannot read %s from the backup.", name)
 		}
 		data, err := io.ReadAll(io.LimitReader(rc, restoreMaxFile+1))
 		rc.Close()
@@ -284,7 +207,7 @@ func readRestoreZip(upload []byte) ([]filetransfer.RemoteFile, []restoreSkip, er
 		}
 		total += int64(len(data))
 		if total > restoreMaxData {
-			return nil, nil, errors.New("the backup holds too much data")
+			return nil, nil, errors.New("The backup is too large.")
 		}
 		seen[name] = true
 		if name == "lamedb" || name == "lamedb5" || name == "bouquets.tv" || name == "bouquets.radio" {
@@ -293,7 +216,7 @@ func readRestoreZip(upload []byte) ([]filetransfer.RemoteFile, []restoreSkip, er
 		files = append(files, filetransfer.RemoteFile{Name: name, Data: data})
 	}
 	if !hasList {
-		return nil, nil, errors.New("this does not look like a channel list backup (no lamedb or bouquets file)")
+		return nil, nil, errors.New("No channel list found (lamedb or bouquets).")
 	}
 	return files, skipped, nil
 }

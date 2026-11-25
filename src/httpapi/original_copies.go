@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// Before a hex edit replaces a file, the file as it was is saved on this computer. A wrong byte in a
-// binary file cannot be spotted by reading it, so this is the way back. Only the newest copies are kept.
 const originalCopiesKept = 10
 
 func (s *Server) originalCopiesDir(scope string) string {
@@ -21,8 +19,6 @@ func (s *Server) originalCopiesDir(scope string) string {
 	return filepath.Join(s.app.DataDir, "file-backups", scope)
 }
 
-// keepOriginal saves content and returns the path of the copy. An error means the copy could not be
-// made, and the edit must not go ahead.
 func (s *Server) keepOriginal(scope, remotePath string, content []byte) (string, error) {
 	dir := s.originalCopiesDir(scope)
 	if dir == "" {
@@ -51,7 +47,7 @@ func pruneOriginalCopies(dir string) {
 			names = append(names, e.Name())
 		}
 	}
-	sort.Strings(names) // each name starts with the time, so the oldest come first
+	sort.Strings(names)
 	for len(names) > originalCopiesKept {
 		_ = os.Remove(filepath.Join(dir, names[0]))
 		names = names[1:]

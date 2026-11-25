@@ -12,7 +12,7 @@ type legacyMemoEntry struct {
 	at     time.Time
 }
 
-var legacyMemo sync.Map // device base + "|" + function -> legacyMemoEntry
+var legacyMemo sync.Map
 
 func legacyRecall(base, fn string) string {
 	v, ok := legacyMemo.Load(base + "|" + fn)

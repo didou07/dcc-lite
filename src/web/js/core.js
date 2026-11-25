@@ -124,7 +124,6 @@ function icon(name, extra = "") {
   svg.append(use);
   return svg;
 }
-// One button for connect and disconnect: its icon and colour show the state, the tooltip says what a click does.
 function connState(button, state, tip) {
   if (!button) return;
   button.hidden = false;
@@ -301,8 +300,6 @@ function ask({ title, message = "", label = "", value = "", input = true, ok = "
   });
 }
 
-// A menu opened with keepFocus leaves the keyboard focus where it was (a text box with a selection), so
-// the selection stays coloured while the menu is open. These keys then move into the menu or close it.
 let menuKeys = null;
 function closeMenu() {
   if (menuKeys) { document.removeEventListener("keydown", menuKeys, true); menuKeys = null; }
@@ -310,7 +307,6 @@ function closeMenu() {
   if (!menu.hidden) { try { if (menu.matches(":popover-open")) menu.hidePopover(); } catch { } menu.hidden = true; menu.replaceChildren(); if (menu.parentElement !== document.body) document.body.append(menu); }
 }
 
-// Every menu entry gets an icon: the one it names, or one picked from its wording.
 const MENU_ICONS = [
   [/from the list|^remove$/i, "minus"], [/\bcut\b/i, "scissors"], [/\bcopy\b|duplicate/i, "copy"], [/paste/i, "paste"],
   [/select all|invert/i, "select"], [/rename|edit|marker/i, "edit"], [/delete|remove|clear|erase/i, "trash"],
@@ -362,9 +358,6 @@ function openMenu(items, x, y, { search = "", keepFocus = false } = {}) {
   // Use all the room the window has.
   menu.style.maxHeight = `${Math.max(120, window.innerHeight - 12)}px`;
   menu.hidden = false;
-  // A modal dialog (the file editor) lives in the browser's top layer and paints over every normal element,
-  // whatever its z-index. A popover joins the top layer too and is added last, so the menu shows above it.
-  // A modal dialog also makes everything outside it unclickable, so the menu moves inside the open dialog.
   const modal = [...document.querySelectorAll("dialog[open]")].pop();
   if (modal && menu.parentElement !== modal) modal.append(menu);
   else if (!modal && menu.parentElement !== document.body) document.body.append(menu);
@@ -373,7 +366,6 @@ function openMenu(items, x, y, { search = "", keepFocus = false } = {}) {
   menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - width - 6))}px`;
   menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - height - 6))}px`;
   if (keepFocus && !box) {
-    // Clicking an item must not move the focus away from the text box either.
     menu.querySelectorAll("button").forEach((b) => b.addEventListener("mousedown", (event) => event.preventDefault()));
     menuKeys = (event) => {
       if (menu.hidden || event.key === "Escape" || ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;

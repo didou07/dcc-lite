@@ -1,6 +1,4 @@
 "use strict";
-// Text editor window: drag the title bar to move it, drag any edge or corner to resize it,
-// double-click the title bar (or press the expand button) to maximise, and the size is remembered.
 (() => {
   const dialog = document.getElementById("editorDialog");
   const head = document.getElementById("editorHead");
@@ -61,7 +59,6 @@
   maxBtn.addEventListener("click", () => toggleMax());
   head.addEventListener("dblclick", (event) => { if (!event.target.closest("button, input, select, a")) toggleMax(); });
 
-  // ---- move: drag the title bar ----
   head.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || state.max || small() || event.target.closest("button, input, select, a")) return;
     const rect = dialog.getBoundingClientRect();
@@ -86,7 +83,6 @@
     head.addEventListener("pointercancel", up);
   });
 
-  // ---- resize: edges and corners ----
   for (const dir of ["n", "s", "e", "w", "ne", "nw", "se", "sw"]) {
     const grip = document.createElement("div");
     grip.className = `editor-rs rs-${dir}`;
@@ -125,7 +121,6 @@
     dialog.append(grip);
   }
 
-  // Apply the stored size whenever the dialog opens, and keep it on screen when the window changes.
   new MutationObserver(() => { if (dialog.open) apply(); }).observe(dialog, { attributes: true, attributeFilter: ["open"] });
   window.addEventListener("resize", () => { if (dialog.open) apply(); });
   // F11 inside the editor: maximise / restore.

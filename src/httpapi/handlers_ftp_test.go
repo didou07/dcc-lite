@@ -21,7 +21,6 @@ const (
 	sampleTV    = "#NAME Favourites\n#SERVICE 1:0:1:6DCA:44D:1:C00000:0:0:0:\n#DESCRIPTION Channel One\n"
 )
 
-// harness runs the real HTTP handlers against a fake FTP receiver.
 type harness struct {
 	t       *testing.T
 	ftp     *ftptest.Server
@@ -160,7 +159,6 @@ func TestBouquetSaveWritesFileAndKeepsRestorePoint(t *testing.T) {
 		t.Fatalf("file on the receiver = %q", text)
 	}
 
-	// The same expected_hash is now stale: saving again must be refused, not overwrite.
 	var e map[string]any
 	if code := h.do("PUT", h.url("/enigma2/bouquet"), save, &e); code != http.StatusConflict || e["code"] != "conflict" {
 		t.Fatalf("stale save: %d %v", code, e)
@@ -285,34 +283,12 @@ func TestOpenSessionRejectsUnknownProfileAndBadBody(t *testing.T) {
 	}
 }
 
-func TestBackupThenRestoreRoundTrip(t *testing.T) {
+func TestRestoreLegacyZipRoundTrip(t *testing.T) {
 	h := newHarness(t)
 	h.ftp.Put("/etc/enigma2/lamedb", []byte("eDVB services /4/\n"))
+	// An older .zip channel backup is still accepted.
+	zipData := makeZip(t, map[string]string{"lamedb": "eDVB services /4/\n", "bouquets.tv": sampleIndex, "userbouquet.favourites.tv": sampleTV})
 
-	resp, err := http.Get(h.srv.URL + h.url("/enigma2/backup"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	zipData, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != 200 || len(zipData) < 100 {
-		t.Fatalf("backup: %d, %d bytes", resp.StatusCode, len(zipData))
-	}
-	files, _, err := readRestoreZip(zipData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]bool{}
-	for _, f := range files {
-		got[f.Name] = true
-	}
-	for _, want := range []string{"lamedb", "bouquets.tv", "userbouquet.favourites.tv"} {
-		if !got[want] {
-			t.Errorf("backup is missing %s (has %v)", want, got)
-		}
-	}
-
-	// The user breaks the bouquet, then restores the backup.
 	h.ftp.Put("/etc/enigma2/userbouquet.favourites.tv", []byte("#NAME Broken\n"))
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -334,7 +310,6 @@ func TestBackupThenRestoreRoundTrip(t *testing.T) {
 		t.Fatalf("bouquet after restore = %q", d)
 	}
 
-	// A restore point of the broken state was taken first, so the restore can be undone.
 	var points map[string]any
 	if code := h.do("GET", h.url("/enigma2/restore-points"), nil, &points); code != 200 {
 		t.Fatalf("restore points: %d", code)

@@ -121,7 +121,6 @@ func telnetUser(profile config.Profile) string {
 	return config.DefaultUsername
 }
 
-// dreamOSPackageList answers the package list; the caller caches it.
 func dreamOSPackageList(ctx context.Context, w http.ResponseWriter, profile config.Profile) ([]packageEntry, bool) {
 	out, _, err := terminal.RunCommand(ctx, profile.Host, profile.EffectiveTelnetPort(), telnetUser(profile), profile.Password, dreamOSListCommand, 24<<20)
 	if err != nil {

@@ -1,6 +1,5 @@
 "use strict";
 
-// ---- EPG refresh (needs the EPGRefresh plugin on the receiver) ----
 const er = { picks: new Map(), busy: false, retry: 0, settings: null };
 
 function erError(message) { const n = $("#erError"); n.textContent = message || ""; n.hidden = !message; }

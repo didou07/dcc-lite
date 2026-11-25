@@ -85,7 +85,7 @@ func TestValidWebSocketOrigin(t *testing.T) {
 		t.Error("same-origin loopback rejected")
 	}
 	for _, c := range [][2]string{
-		{"127.0.0.1:8080", ""}, // browsers always send Origin on WebSocket; its absence is suspicious
+		{"127.0.0.1:8080", ""},
 		{"127.0.0.1:8080", "http://evil.example"},
 		{"127.0.0.1:8080", "http://127.0.0.1:1"},
 		{"evil.example", "http://evil.example"}, // same origin but not loopback

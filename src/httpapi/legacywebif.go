@@ -138,7 +138,6 @@ func (d deviceWeb) viaLegacy(ctx context.Context, pathAndQuery string, do func()
 	return 0, nil, bad
 }
 
-// ---- Reading the old interface ----
 func xmlClean(body []byte) []byte {
 	out := bytes.Map(func(r rune) rune {
 		if r < 0x20 && r != '\t' && r != '\n' && r != '\r' {
@@ -149,7 +148,6 @@ func xmlClean(body []byte) []byte {
 	return []byte(strings.ToValidUTF8(string(out), "?"))
 }
 
-// legacyXML fetches an old /web/ address and decodes its XML into v.
 func (d deviceWeb) legacyXML(ctx context.Context, pathAndQuery string, limit int64, v any) error {
 	status, body, err := d.getBoundedRaw(ctx, pathAndQuery, limit)
 	if err != nil {
@@ -387,7 +385,7 @@ func legacyCurrent(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, erro
 			} `xml:"e2about>e2service"`
 		}
 		if aerr := d.legacyXML(ctx, "/web/about", 1<<20, &about); aerr != nil || (strings.TrimSpace(about.Service.Ref) == "" && strings.TrimSpace(about.Service.Name) == "") {
-			return nil, err // report the first failure: it names the address that is missing
+			return nil, err
 		}
 		cur.Service = about.Service
 	}
@@ -435,7 +433,6 @@ func legacyCurrent(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, erro
 	return asJSON(map[string]any{"result": true, "info": info, "now": event(0), "next": event(1)})
 }
 
-// legacyPower answers /api/powerstate, with or without newstate.
 func legacyPower(ctx context.Context, d deviceWeb, q url.Values) ([]byte, error) {
 	keep := url.Values{}
 	if v := q.Get("newstate"); v != "" {
@@ -475,7 +472,7 @@ func legacyResult(ctx context.Context, d deviceWeb, webPath string, q url.Values
 
 type legacyAboutData struct {
 	Device string `xml:"e2devicename"`
-	Model  string `xml:"e2model"` // /web/about of the official DreamOS plugin
+	Model  string `xml:"e2model"`
 	Nim    []struct {
 		Name string `xml:"name"`
 		Type string `xml:"type"`
@@ -530,7 +527,7 @@ func legacyAbout(ctx context.Context, d deviceWeb, _ url.Values) ([]byte, error)
 		}
 		if err := d.legacyXML(ctx, "/web/about", 1<<20, &about); err != nil {
 			if derr != nil {
-				return nil, derr // the receiver's answer to the address it is expected to have
+				return nil, derr
 			}
 			return nil, err
 		}

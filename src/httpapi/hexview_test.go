@@ -23,7 +23,6 @@ func (h *harness) getBytes(path string) (int, []byte, http.Header) {
 	return resp.StatusCode, data, resp.Header
 }
 
-// Any file can be looked at as bytes, including ones the text editor refuses.
 func TestBytesEndpointReturnsBinaryFilesExactly(t *testing.T) {
 	h := newHarness(t)
 	binary := []byte{0x00, 0x01, 0xfe, 0xff, 'e', 'p', 'g', 0x00, 0x7f, 0x80}
@@ -47,7 +46,6 @@ func TestBytesEndpointReturnsBinaryFilesExactly(t *testing.T) {
 	}
 }
 
-// A file bigger than the limit is cut off, not downloaded in full, and the session keeps working.
 func TestReadHeadCutsOffBigFilesAndKeepsTheSession(t *testing.T) {
 	h := newHarness(t)
 	big := make([]byte, 3<<20)
@@ -91,8 +89,6 @@ func TestLocalBytes(t *testing.T) {
 	}
 }
 
-// ---- saving from the hex editor ----
-
 func (h *harness) putBytes(path string, data []byte, header http.Header, query string) (int, map[string]any) {
 	h.t.Helper()
 	req, _ := http.NewRequest("PUT", h.srv.URL+h.url("/bytes?path="+url.QueryEscape(path)+query), bytes.NewReader(data))
@@ -107,7 +103,6 @@ func (h *harness) putBytes(path string, data []byte, header http.Header, query s
 	return resp.StatusCode, out
 }
 
-// opened returns the query string a hex editor sends for the file as it was opened.
 func (h *harness) opened(path string) string {
 	h.t.Helper()
 	_, _, header := h.getBytes(path)
@@ -182,7 +177,6 @@ func TestHexEditNeedsTheOpenedVersionAndRefusesBigFiles(t *testing.T) {
 	if code, _ := h.putBytes("/etc/enigma2/a.bin", []byte{2}, nil, ""); code != http.StatusBadRequest {
 		t.Fatalf("a save without the opened version: %d", code)
 	}
-	// A file bigger than the editor loads is only ever viewed in part, so it cannot be saved.
 	big := make([]byte, 16<<20+10)
 	h.ftp.Put("/etc/enigma2/big.bin", big)
 	if code, out := h.putBytes("/etc/enigma2/big.bin", []byte{1}, nil, "&force=1"); code != http.StatusRequestEntityTooLarge {

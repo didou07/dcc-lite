@@ -29,7 +29,6 @@ func listDrives() []drive {
 			if err != nil || !info.IsDir() {
 				continue
 			}
-			// /media/<user>/<disk>: show the disks, not the user folder.
 			if entry.Name() == userName && userName != "" && (base == "/media" || base == "/run/media") {
 				if sub, err := os.ReadDir(full); err == nil {
 					for _, child := range sub {

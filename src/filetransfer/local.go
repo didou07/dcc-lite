@@ -714,7 +714,6 @@ func (f *LocalFS) isAbsolute(value string) bool {
 	return strings.HasPrefix(value, "/")
 }
 
-// isRootPath is true for a drive root ("D:/") or "/".
 func (f *LocalFS) isRootPath(clean string) bool {
 	if !f.isAbsolute(clean) {
 		return false

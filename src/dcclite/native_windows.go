@@ -84,7 +84,7 @@ const (
 	swpShowWindow  = 0x0040
 	swpHideWindow  = 0x0080
 	swpNoZOrder    = 0x0004
-	swpAsyncPos    = 0x4000 // post the request instead of waiting for another thread
+	swpAsyncPos    = 0x4000
 	gwChild        = 5
 	gwHwndPrev     = 3
 	gwlExStyle     = ^uintptr(19) // -20
@@ -135,7 +135,6 @@ func classLongName() string {
 
 type winPoint struct{ X, Y int32 }
 
-// winPlacement is WINDOWPLACEMENT and monitorInfo is MONITORINFO.
 type winPlacement struct {
 	Length, Flags, ShowCmd uint32
 	MinPos, MaxPos         winPoint
@@ -238,7 +237,6 @@ func browserFallback(d nativeDeps) error {
 	return nil
 }
 
-// runNative shows the window and returns when it is closed.
 func runNative(d nativeDeps) error {
 	if dir := fixedRuntime(d.DataDir); dir != "" {
 		_ = os.Setenv("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", dir)
@@ -247,7 +245,7 @@ func runNative(d nativeDeps) error {
 		nativeLog.Warn("no WebView2 runtime found; opening the interface in the default browser", "url", d.URL)
 		return browserFallback(d)
 	}
-	_, _, _ = procSetDPIAware.Call() // crisp text on scaled displays; must come before the window exists
+	_, _, _ = procSetDPIAware.Call()
 
 	view := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
@@ -270,7 +268,7 @@ func runNative(d nativeDeps) error {
 	setApplicationIcon(uintptr(view.Window()))
 
 	live := &nativeLive{app: d.App, view: view, parent: uintptr(view.Window()), snap: stateOut{State: "opening", AudioCurrent: -1}}
-	go func() { _, _ = live.vlc() }() // load VLC in the background so the first channel starts fast
+	go func() { _, _ = live.vlc() }()
 	go func() { _ = live.ensureChild() }()
 	go live.poll()
 	go live.follow()
@@ -281,7 +279,6 @@ func runNative(d nativeDeps) error {
 	if err := view.Bind("dccLive", live.handle); err != nil {
 		return err
 	}
-	// Only this program's own pages may drive the player.
 	view.Init(fmt.Sprintf(`if (location.origin !== %q) { try { delete window.dccLive; } catch (e) {} }`, strings.TrimRight(d.URL, "/")))
 	view.Navigate(d.URL)
 	view.Run()
@@ -314,7 +311,6 @@ func setApplicationIcon(hwnd uintptr) {
 	}
 }
 
-// ---- Live TV through the user's VLC ----
 type boxArgs struct {
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
@@ -326,13 +322,12 @@ type boxArgs struct {
 }
 
 type playArgs struct {
-	Profile   string `json:"profile"`
-	Ref       string `json:"ref"`
-	Name      string `json:"name"`
-	Volume    int    `json:"volume"`
-	Muted     bool   `json:"muted"`
-	AudioLang string `json:"audioLang"`
-	// Player settings, all from the one settings menu of the page.
+	Profile     string `json:"profile"`
+	Ref         string `json:"ref"`
+	Name        string `json:"name"`
+	Volume      int    `json:"volume"`
+	Muted       bool   `json:"muted"`
+	AudioLang   string `json:"audioLang"`
 	Deinterlace string `json:"deinterlace"` // auto, yadif or off
 	Caching     int    `json:"caching"`     // buffering in milliseconds
 	Hardware    *bool  `json:"hw"`          // hardware decoding; nil or true = on
@@ -360,18 +355,18 @@ type nativeLive struct {
 	parent uintptr
 
 	vlcOnce sync.Once
-	vlcDone atomic.Bool // set when loading VLC has finished, successfully or not
+	vlcDone atomic.Bool
 	lib     *vlc.Lib
 	player  *vlc.Player
 	vlcErr  error
 
 	playMu  sync.Mutex // one start of the player at a time
-	childMu sync.Mutex // one creation of the picture window at a time
+	childMu sync.Mutex
 
 	mu           sync.Mutex
 	child        uintptr
 	last         placed
-	applied      placed // where the picture window was last put, in screen pixels
+	applied      placed
 	gen          int
 	started      bool
 	errMsg       string
@@ -380,10 +375,10 @@ type nativeLive struct {
 	muted        bool
 	audioLang    string
 	audioApplied bool
-	opts         vlc.PlayOptions // the player settings of the running channel
+	opts         vlc.PlayOptions
 	snap         stateOut
-	fit          string      // how the picture fills its window (vlc.Fit...)
-	fitTimer     *time.Timer // debounces a re-fit after the box changed size
+	fit          string
+	fitTimer     *time.Timer
 	lastVW       float64
 	lastVH       float64
 	cursorHidden atomic.Bool
@@ -400,7 +395,7 @@ type nativeLive struct {
 	resizingTill atomic.Int64
 	uiAlive      atomic.Int64
 	pageAlive    atomic.Int64 // unix nanos: last time the page called in
-	lastOp       atomic.Value // the request being handled, for the watchdog
+	lastOp       atomic.Value
 }
 
 func (n *nativeLive) vlc() (*vlc.Player, error) {
@@ -441,7 +436,7 @@ func (n *nativeLive) withPlayer(f func(p *vlc.Player)) {
 }
 
 func (n *nativeLive) ensureChild() error {
-	n.childMu.Lock() // the start-up call and the first play must not each make a window
+	n.childMu.Lock()
 	defer n.childMu.Unlock()
 	n.mu.Lock()
 	have := n.child != 0
@@ -455,7 +450,7 @@ func (n *nativeLive) ensureChild() error {
 	}
 	done := make(chan result, 1)
 	go func() {
-		runtime.LockOSThread() // the window and its message loop live and die on this thread
+		runtime.LockOSThread()
 		class, _ := windows.UTF16PtrFromString("STATIC")
 		empty, _ := windows.UTF16PtrFromString("")
 		var inst windows.Handle
@@ -593,7 +588,7 @@ func (n *nativeLive) insertAfter(host uintptr) (after uintptr, change bool) {
 	}
 	if above == 0 { // the page window is the top one
 		if ex, _, _ := procGetWindowLong.Call(n.parent, gwlExStyle); ex&wsExTopmost != 0 {
-			return ^uintptr(0), true // HWND_TOPMOST: the page window is always-on-top, so is the picture
+			return ^uintptr(0), true
 		}
 		return 0, true // HWND_TOP
 	}
@@ -657,7 +652,6 @@ func (n *nativeLive) overPicture(pt winPoint) bool {
 	return true
 }
 
-// cssPoint turns a screen point into the page's own CSS pixels.
 func (n *nativeLive) cssPoint(pt winPoint) (float64, float64) {
 	n.mu.Lock()
 	vw, vh := n.lastVW, n.lastVH
@@ -724,7 +718,7 @@ func (n *nativeLive) watchMouse() {
 		_, _, _ = procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 		left, right := uintptr(vkLButton), uintptr(vkRButton)
 		if sw, _, _ := procGetSystemMetrics.Call(smSwapButton); sw != 0 {
-			left, right = right, left // the buttons are swapped in the mouse settings
+			left, right = right, left
 		}
 		l, r := keyDown(left), keyDown(right)
 		inside := n.overPicture(pt)
@@ -800,8 +794,6 @@ func (n *nativeLive) setCursorHidden(hide bool) {
 	}
 }
 
-// ---- Full screen ----
-
 func (n *nativeLive) setFullscreen(on bool) {
 	n.view.Dispatch(func() {
 		hwnd := n.parent
@@ -837,8 +829,6 @@ func (n *nativeLive) setFullscreen(on bool) {
 		}
 	})
 }
-
-// ---- Fit: how the picture fills its window ----
 
 func validFit(mode string) string {
 	switch mode {
@@ -893,7 +883,7 @@ func (n *nativeLive) follow() {
 				continue
 			}
 			n.resizingTill.Store(0)
-			n.place(true) // settled: show it again at the page's latest box
+			n.place(true)
 			continue
 		}
 		n.place(false)
@@ -1192,7 +1182,7 @@ func (n *nativeLive) poll() {
 		case vlc.StateError:
 			out.State = "error"
 			out.Error = "VLC could not play this channel. The receiver may be in standby or busy, or the channel is encrypted and no tuner is free."
-		default: // idle and stopped: VLC needs a moment before it reports "opening"
+		default:
 			if since < 15*time.Second {
 				out.State = "opening"
 			} else {
@@ -1242,7 +1232,7 @@ func (n *nativeLive) poll() {
 					moved, movedAt = false, now
 				}
 			}
-			if !deintDone && out.Width > 0 { // the first frame exists: now the deinterlace choice can be applied
+			if !deintDone && out.Width > 0 {
 				deintDone = true
 				p.ApplyDeinterlace()
 				n.mu.Lock()
@@ -1251,14 +1241,14 @@ func (n *nativeLive) poll() {
 				p.SetFit(mode, int(fw), int(fh))
 			}
 		} else {
-			movedAt = now // paused, buffering or opening: the clock starts again
+			movedAt = now
 		}
 		if out.State != lastState {
 			lastState = out.State
 			nativeLog.Info("vlc state", "state", out.State, "video", fmt.Sprintf("%dx%d", out.Width, out.Height))
 		}
 		n.mu.Lock()
-		if n.started { // not stopped or replaced while VLC was being asked
+		if n.started {
 			n.snap = out
 		}
 		n.mu.Unlock()

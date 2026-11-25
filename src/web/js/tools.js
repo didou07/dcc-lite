@@ -1,12 +1,12 @@
 "use strict";
-const toolsState = { scope: "channels", busy: false, ui: "tools", ipkFile: null };
+const toolsState = { busy: false, ui: "tools", ipkFile: null };
 const toolsSessionURL = (tail) => sessionURL(files.sessionID, tail);
 const toolsDirValue = () => $("#bqDir").value.trim() || "/etc/enigma2";
 const toolsDirQuery = (lead) => (toolsDirValue() !== "/etc/enigma2" ? `${lead}dir=${encodeURIComponent(toolsDirValue())}` : "");
 function toolsError(message) { const box = $(`#${toolsState.ui}Error`); box.textContent = message || ""; box.hidden = !message; }
 function toolsBusy(busy, text = "") {
   toolsState.busy = busy;
-  for (const id of ["#toolsBackup", "#toolsRestore", "#toolsIpk"]) $(id).disabled = busy;
+  for (const id of ["#stBackup", "#stRestore", "#toolsIpk"]) $(id).disabled = busy;
   $(`#${toolsState.ui}Progress`).hidden = !busy;
   $(`#${toolsState.ui}ProgressText`).textContent = text;
   $(`#${toolsState.ui}Progress .tools-bar span`).style.width = "0";
@@ -79,40 +79,22 @@ function uploadFile(url, file, label, fileName = file.name) {
     xhr.send(form);
   });
 }
-async function toolsBackup() {
-  if (!requireSession()) return;
-  toolsState.ui = "tools";
-  toolsError(""); toolsBusy(true, "Reading the files from the receiver…");
-  try {
-    const response = await fetchChecked(toolsSessionURL(`enigma2/backup?scope=${toolsState.scope}${toolsDirQuery("&")}`));
-    const blob = await response.blob();
-    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "enigma2-backup.zip";
-    downloadBlob(blob, name);
-    toast(`Backup saved as ${name}`);
-  } catch (error) { toolsError(error.message); }
-  toolsBusy(false);
-}
-async function toolsRestore() {
+async function toolsRestoreZip(file) {
   if (!requireSession()) return;
   toolsState.ui = "tools";
   toolsError("");
-  const file = $("#toolsRestoreFile").files[0];
-  if (!file) { toast("Choose a backup .zip file first"); return; }
   const device = currentDevice();
-  const confirmed = await ask({ title: "Restore channel list", message: `The channel list in “${file.name}” replaces the one on ${device?.name || "the receiver"}.`, input: false, ok: "Restore", danger: true });
+  const confirmed = await ask({ title: "Restore channel list", message: `Replace the channel list on ${device?.name || "the receiver"} with “${file.name}”? The current list is saved first.`, input: false, ok: "Restore", danger: true });
   if (!confirmed) return;
-  const result = $("#toolsRestoreResult"); result.hidden = true;
-  toolsBusy(true, "Uploading the backup…");
+  stMessage("");
+  toolsBusy(true, "Uploading…");
   try {
     const data = await uploadFile(toolsSessionURL(`enigma2/restore${toolsDirQuery("?")}`), file, "Uploading");
-    const skipped = (data.skipped || []).length;
-    let text = `Restored ${data.restored.length} file${data.restored.length === 1 ? "" : "s"}.`;
-    if (skipped) text += ` ${skipped} other file${skipped === 1 ? " was" : "s were"} ignored (not part of the channel list).`;
-    text += data.reloaded ? " The receiver reloaded its channel lists." : ` The receiver could not reload them${data.reload_note ? ` (${data.reload_note})` : ""}.`;
-    result.textContent = text; result.hidden = false;
+    const n = data.restored.length;
+    stMessage([`Restored ${n} file${n === 1 ? "" : "s"}.`, data.reloaded ? "The receiver reloaded its lists." : `Reload failed${data.reload_note ? `: ${data.reload_note}` : "."}`]);
     ch.cache.clear(); ch.epg.clear();
     if (!$("#channelPane").hidden) loadChannels();
-    $("#toolsRestoreFile").value = ""; bkDropRefresh();
+    $("#stFile").value = ""; stPick(null);
     bqReset(); bqLoadLists();
   } catch (error) { toolsError(error.message); }
   toolsBusy(false);
@@ -146,8 +128,6 @@ async function toolsInstallIPK() {
   }
   toolsBusy(false);
 }
-$("#toolsBackup").addEventListener("click", toolsBackup);
-$("#toolsRestore").addEventListener("click", toolsRestore);
 $("#toolsIpk").addEventListener("click", toolsInstallIPK);
 {
   const drop = $("#ipkDrop"), input = $("#toolsIpkFile");
@@ -162,30 +142,6 @@ $("#toolsIpk").addEventListener("click", toolsInstallIPK);
   page.addEventListener("drop", (event) => { event.preventDefault(); if (!toolsState.busy) ipkSetFile(event.dataTransfer.files[0] || null); });
   $("#ipkConnect").addEventListener("click", () => { files.manualOff = false; fileConnect().then(ipkRefresh); });
 }
-$("#toolsScope").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-scope]");
-  if (!button) return;
-  toolsState.scope = button.dataset.scope;
-  for (const b of $$("#toolsScope button")) b.setAttribute("aria-checked", String(b === button));
-});
-
-function bkDropRefresh() {
-  const file = $("#toolsRestoreFile").files[0];
-  $("#toolsDropName").textContent = file ? file.name : "Choose a backup .zip";
-  $("#toolsDropHint").textContent = file ? `${(file.size / 1024).toFixed(file.size < 10240 ? 1 : 0)} KB · click to choose another` : "or drop it here";
-  $("#toolsDrop").classList.toggle("has-file", !!file);
-}
-$("#toolsRestoreFile").addEventListener("change", bkDropRefresh);
-for (const type of ["dragenter", "dragover"]) $("#toolsDrop").addEventListener(type, (event) => { event.preventDefault(); $("#toolsDrop").classList.add("drag"); });
-for (const type of ["dragleave", "drop"]) $("#toolsDrop").addEventListener(type, () => $("#toolsDrop").classList.remove("drag"));
-$("#toolsDrop").addEventListener("drop", (event) => {
-  event.preventDefault();
-  const file = event.dataTransfer.files[0];
-  if (!file) return;
-  const transfer = new DataTransfer(); transfer.items.add(file);
-  $("#toolsRestoreFile").files = transfer.files; bkDropRefresh();
-});
-
 const REASONS = { "bouquet-edit": "Before editing the channel lists", "before-restore": "Before a restore" };
 async function rpRefresh() {
   const list = $("#rpList"); if (!list) return;
@@ -197,7 +153,7 @@ async function rpRefresh() {
         h("strong", { text: new Date(p.created).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) }),
         h("span", { class: "muted small", text: `${REASONS[p.reason] || p.reason} · ${ipkSize(p.size)}` })),
       h("span", { class: "spacer" }),
-      h("button", { class: "btn", type: "button", title: "Put this copy of the channel list back on the receiver", onClick: () => rpRestore(p) }, icon("restore"), "Restore"),
+      h("button", { class: "btn", type: "button", title: "Put this copy back on the receiver", onClick: () => rpRestore(p) }, icon("restore"), "Restore"),
       iconButton("trash", "Delete this restore point", () => rpDelete(p)))));
     $("#rpEmpty").hidden = points.length > 0;
   } catch { list.replaceChildren(); $("#rpEmpty").hidden = true; }
@@ -207,14 +163,14 @@ async function rpRestore(point) {
   toolsState.ui = "tools"; toolsError("");
   const device = currentDevice();
   const when = new Date(point.created).toLocaleString();
-  const confirmed = await ask({ title: "Restore this copy", message: `The list saved on ${when} replaces the one on ${device?.name || "the receiver"}. The current list is saved first.`, input: false, ok: "Restore", danger: true });
+  const confirmed = await ask({ title: "Restore this copy", message: `Replace the list on ${device?.name || "the receiver"} with the copy from ${when}? The current list is saved first.`, input: false, ok: "Restore", danger: true });
   if (!confirmed) return;
-  const result = $("#toolsRestoreResult"); result.hidden = true;
-  toolsBusy(true, "Putting the saved copy back…");
+  stMessage("");
+  toolsBusy(true, "Restoring…");
   try {
     const data = await post(toolsSessionURL(`enigma2/restore-points/${encodeURIComponent(point.name)}/restore${toolsDirQuery("?")}`));
-    result.textContent = `Restored ${data.restored.length} file${data.restored.length === 1 ? "" : "s"}.` + (data.reloaded ? " The receiver reloaded its channel lists." : ` The receiver could not reload them${data.reload_note ? ` (${data.reload_note})` : ""}.`);
-    result.hidden = false;
+    const n = data.restored.length;
+    stMessage([`Restored ${n} file${n === 1 ? "" : "s"}.`, data.reloaded ? "The receiver reloaded its lists." : `Reload failed${data.reload_note ? `: ${data.reload_note}` : "."}`]);
     ch.cache.clear(); ch.epg.clear();
     if (!$("#channelPane").hidden) loadChannels();
     bqReset(); bqLoadLists();
@@ -224,97 +180,8 @@ async function rpRestore(point) {
 }
 async function rpDelete(point) {
   if (!requireSession()) return;
-  const confirmed = await ask({ title: "Delete restore point", message: `Delete the copy saved on ${new Date(point.created).toLocaleString()}? This cannot be undone.`, input: false, ok: "Delete", danger: true });
+  const confirmed = await ask({ title: "Delete restore point", message: `Delete the copy from ${new Date(point.created).toLocaleString()}?`, input: false, ok: "Delete", danger: true });
   if (!confirmed) return;
   try { await api(toolsSessionURL(`enigma2/restore-points/${encodeURIComponent(point.name)}`), { method: "DELETE" }); } catch (error) { toast(error.message, "error"); }
   rpRefresh();
 }
-
-// ---- Flash image backup (read-only) --------------------------------------------------------------
-const flashState = { busy: false };
-const flashSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(bytes % 1048576 ? 1 : 0)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-function flashMessage(text, bad = false) {
-  const box = $("#flashResult");
-  box.textContent = text; box.hidden = !text; box.classList.toggle("bad", bad);
-}
-function flashSetBusy(busy) {
-  flashState.busy = busy;
-  $("#flashRead").disabled = busy;
-  for (const b of $$("#flashList button")) b.disabled = busy;
-}
-async function flashRead() {
-  const device = currentDevice();
-  if (!device) { toast("Add or choose a device first (Devices tab)."); return; }
-  flashMessage(""); flashSetBusy(true);
-  try {
-    const { partitions } = await api(profileURL(device.id, "flash/partitions"));
-    $("#flashList").replaceChildren(...partitions.map((p) => h("li", { class: "rp-row" },
-      h("div", { class: "rp-info" },
-        h("strong", { text: `mtd${p.index} · ${p.name || "(no name)"}` }),
-        h("span", { class: "muted small", text: flashSize(p.size) })),
-      h("span", { class: "spacer" }),
-      h("button", { class: "btn", type: "button", title: `Save mtd${p.index} to this computer`, onClick: () => flashBackup(device, p) }, icon("download"), "Back up"))));
-  } catch (error) { $("#flashList").replaceChildren(); flashMessage(error.message, true); }
-  flashSetBusy(false);
-}
-async function flashBackup(device, part) {
-  const confirmed = await ask({
-    title: "Back up flash partition",
-    message: `mtd${part.index} (${part.name || "no name"}, ${flashSize(part.size)}) is copied from ${device.name} into its memory, downloaded, checked, and the copy on the receiver is deleted. Nothing is written to the flash.`,
-    input: false, ok: "Back up",
-  });
-  if (!confirmed) return;
-  flashMessage(""); flashSetBusy(true);
-  toast(`Backing up mtd${part.index}… this can take a few minutes`);
-  try {
-    const response = await fetchChecked(profileURL(device.id, `flash/backup?partition=${part.index}`), { method: "POST" });
-    const blob = await response.blob();
-    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || `flash-mtd${part.index}.bin`;
-    downloadBlob(blob, name);
-    const verified = response.headers.get("X-Flash-Verified") === "true";
-    flashMessage(`Saved ${name} (${flashSize(blob.size)}). MD5 ${response.headers.get("X-Flash-MD5") || ""}${verified ? ", matches the receiver's checksum." : ". The receiver has no md5sum, so only the size was checked."}`);
-  } catch (error) { flashMessage(error.message, true); }
-  flashSetBusy(false);
-}
-$("#flashRead").addEventListener("click", flashRead);
-
-// ---- recordings.epl (Enigma1) --------------------------------------------------------------------
-const eplState = { report: null };
-function eplMessage(text, bad = false) {
-  const box = $("#eplResult");
-  box.textContent = text; box.hidden = !text; box.classList.toggle("bad", bad);
-}
-const eplCount = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-async function eplCheck() {
-  if (!requireSession()) return;
-  eplMessage(""); $("#eplRebuild").disabled = true;
-  try {
-    const r = await api(toolsSessionURL("recordings/epl"));
-    eplState.report = r;
-    const lost = r.lost.length + (r.more || 0);
-    let text = `${eplCount(r.movies, "recording", "recordings")} in ${r.movie_dir}, ${eplCount(r.entries, "entry", "entries")} in the list. `;
-    text += lost ? `${eplCount(lost, "recording is", "recordings are")} missing from the list.` : "Every recording is listed.";
-    if (r.dangling.length) text += ` ${eplCount(r.dangling.length, "entry points", "entries point")} at a file that is gone.`;
-    if (!r.found) text += " There is no recordings.epl yet; it will be created.";
-    eplMessage(text);
-    $("#eplRebuild").disabled = !(lost || r.dangling.length && $("#eplPrune").checked || !r.found && r.movies);
-  } catch (error) { eplMessage(error.message, true); }
-}
-async function eplRebuild() {
-  if (!requireSession()) return;
-  const prune = $("#eplPrune").checked;
-  const confirmed = await ask({ title: "Rebuild recordings list", message: `Recordings missing from recordings.epl are added${prune ? ", and entries whose file is gone are removed" : ""}. The old list is kept as recordings.bak.`, input: false, ok: "Rebuild" });
-  if (!confirmed) return;
-  eplMessage(""); $("#eplRebuild").disabled = true;
-  try {
-    const r = await api(toolsSessionURL(`recordings/epl/rebuild${prune ? "?prune=1" : ""}`), { method: "POST" });
-    if (!r.changed) { eplMessage(r.message || "Nothing to change."); return; }
-    let text = `Added ${r.added}${r.removed ? `, removed ${r.removed}` : ""}.`;
-    text += r.backup ? " The old list was kept as recordings.bak." : "";
-    text += r.reloaded ? " The receiver reloaded its recordings." : ` The receiver could not reload them${r.reload_note ? ` (${r.reload_note})` : ""}.`;
-    eplMessage(text);
-  } catch (error) { eplMessage(error.message, true); }
-}
-$("#eplCheck").addEventListener("click", eplCheck);
-$("#eplRebuild").addEventListener("click", eplRebuild);
-$("#eplPrune").addEventListener("change", () => { if (eplState.report) eplCheck(); });

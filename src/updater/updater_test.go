@@ -28,8 +28,8 @@ type fakeRelease struct {
 	tag        string
 	prerelease bool
 	draft      bool
-	binary     string            // contents of DCCLite inside the zip
-	extraFiles map[string]string // additional zip entries (to test layout checks)
+	binary     string // contents of DCCLite inside the zip
+	extraFiles map[string]string
 	badSum     bool
 	noSums     bool
 	noPackage  bool
@@ -308,7 +308,6 @@ func TestNoticePreferencePersists(t *testing.T) {
 	}
 }
 
-// Older versions saved the choice as "auto"; it is still honoured.
 func TestOldPreferenceFileIsStillRead(t *testing.T) {
 	e := newEnv(t, "1.1.9", fakeRelease{tag: "v1.2.0"})
 	if err := os.MkdirAll(e.dataDir, 0o700); err != nil {

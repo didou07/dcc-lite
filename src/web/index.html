@@ -14,6 +14,8 @@
   <script src="/js/i18n-data.js" defer></script>
   <script src="/js/i18n.js" defer></script>
   <script src="/js/i18n-extra.js" defer></script>
+  <script src="/js/i18n-more.js" defer></script>
+  <script src="/js/i18n-fill.js" defer></script>
   <script src="/js/errors.js" defer></script>
   <script src="/js/dccimport.js" defer></script>
   <script src="/js/core.js" defer></script>
@@ -143,6 +145,17 @@
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
     <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM12 17v-6M9 14l3-3 3 3"/></symbol>
     <symbol id="i-backup" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM3 4h18v3H3zM12 10v6M9 13l3 3 3-3"/></symbol>
+    <symbol id="i-term-split-r" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M15.5 9.5l2.5 2.5-2.5 2.5"/></symbol>
+    <symbol id="i-term-split-d" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M9.5 15.5l2.5 2.5 2.5-2.5"/></symbol>
+    <symbol id="i-term-dock" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M6.5 9h5M6.5 12h5M6.5 15h5"/></symbol>
+    <symbol id="i-term-script" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12"/></symbol>
+    <symbol id="i-term-paste" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M12 10v6M9.5 13.5L12 16l2.5-2.5"/></symbol>
+    <symbol id="i-term-font-down" viewBox="0 0 24 24"><path d="M2.5 19l5-13 5 13M4.5 14h6M15 15h6"/></symbol>
+    <symbol id="i-term-font-up" viewBox="0 0 24 24"><path d="M2.5 19l5-13 5 13M4.5 14h6M18 12v6M15 15h6"/></symbol>
+    <symbol id="i-term-split-l" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M8.5 9.5L6 12l2.5 2.5"/></symbol>
+    <symbol id="i-term-split-u" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M9.5 8.5L12 6l2.5 2.5"/></symbol>
+    <symbol id="i-term-prompt" viewBox="0 0 24 24"><path d="M5 8l4 4-4 4M12 16h7"/></symbol>
+    <symbol id="i-term-classic" viewBox="0 0 24 24"><rect x="2.5" y="9" width="5" height="6" rx="1.2"/><rect x="9.5" y="9" width="5" height="6" rx="1.2"/><rect x="16.5" y="9" width="5" height="6" rx="1.2"/></symbol>
     <symbol id="i-split-h" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></symbol>
     <symbol id="i-split-v" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
@@ -191,6 +204,7 @@
     <button type="button" class="tab" role="tab" data-view="logs" aria-selected="false" title="Program log and faults"><svg class="ic" aria-hidden="true"><use href="#i-bug"/></svg><span>Logs</span></button>
   </nav>
   <div class="rail-foot">
+    <div class="rail-size" title="Interface size"><output id="apScaleVal" for="apScale">85%</output><input id="apScale" type="range" min="50" max="170" step="1" value="85" aria-label="Interface size"></div>
     <button class="icon-btn" id="themeOpen" type="button" title="Appearance" aria-label="Appearance"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg></button>
     <button class="icon-btn" id="themeToggle" type="button" title="Switch light / dark theme" aria-label="Switch light or dark theme"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg></button>
   </div>
@@ -505,26 +519,32 @@
 
     <div class="termframe" id="terminalFrame" data-theme="black">
       <div class="termtools" role="toolbar" aria-label="Terminal tools">
-        <button class="icon-btn" id="termSplitRight" type="button" title="Split right (Ctrl+Shift+D)" aria-label="Split right"><svg class="ic" aria-hidden="true"><use href="#i-split-h"/></svg></button>
-        <button class="icon-btn" id="termSplitDown" type="button" title="Split down (Ctrl+Shift+E)" aria-label="Split down"><svg class="ic" aria-hidden="true"><use href="#i-split-v"/></svg></button>
+        <button class="icon-btn" id="termSplitLeft" type="button" title="Split left" aria-label="Split left"><svg class="ic" aria-hidden="true"><use href="#i-term-split-l"/></svg></button>
+        <button class="icon-btn" id="termSplitRight" type="button" title="Split right (Ctrl+Shift+D)" aria-label="Split right"><svg class="ic" aria-hidden="true"><use href="#i-term-split-r"/></svg></button>
+        <button class="icon-btn" id="termSplitUp" type="button" title="Split up" aria-label="Split up"><svg class="ic" aria-hidden="true"><use href="#i-term-split-u"/></svg></button>
+        <button class="icon-btn" id="termSplitDown" type="button" title="Split down (Ctrl+Shift+E)" aria-label="Split down"><svg class="ic" aria-hidden="true"><use href="#i-term-split-d"/></svg></button>
         <span class="vr"></span>
-        <button class="icon-btn" id="termDockToggle" type="button" title="Hide command tools" aria-label="Hide command tools" aria-controls="termCommandDock" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg></button>
-        <button class="icon-btn" id="termScripts" type="button" title="Scripts (saved commands)" aria-label="Scripts" hidden><svg class="ic" aria-hidden="true"><use href="#i-file"/></svg></button>
+        <button class="icon-btn" id="termDockToggle" type="button" title="Hide command tools" aria-label="Hide command tools" aria-controls="termCommandDock" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-term-dock"/></svg></button>
+        <button class="icon-btn" id="termScripts" type="button" title="Scripts (saved commands)" aria-label="Scripts" hidden><svg class="ic" aria-hidden="true"><use href="#i-term-script"/></svg></button>
         <button class="icon-btn" id="termHistory" type="button" title="Previous commands (Ctrl+Shift+H)" aria-label="Previous commands" hidden><svg class="ic" aria-hidden="true"><use href="#i-history"/></svg></button>
         <span class="vr"></span>
         <button class="icon-btn" id="termCopy" type="button" title="Copy selection (Ctrl+Shift+C), or all output" aria-label="Copy"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
-        <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg></button>
+        <button class="icon-btn" id="termPaste" type="button" title="Paste (Ctrl+V or Ctrl+Shift+V)" aria-label="Paste"><svg class="ic" aria-hidden="true"><use href="#i-term-paste"/></svg></button>
         <button class="icon-btn" id="termClear" type="button" title="Clear screen" aria-label="Clear screen"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg></button>
-        <button class="icon-btn" id="termSave" type="button" title="Save output to a file" aria-label="Save output"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg></button>
+        <button class="icon-btn" id="termSave" type="button" title="Save output to a file" aria-label="Save output"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></button>
         <span class="vr"></span>
-        <button class="icon-btn" id="termFontDown" type="button" title="Smaller text" aria-label="Smaller text"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button>
+        <button class="icon-btn" id="termFontDown" type="button" title="Smaller text" aria-label="Smaller text"><svg class="ic" aria-hidden="true"><use href="#i-term-font-down"/></svg></button>
         <span class="font-size" id="termFontLabel">13</span>
-        <button class="icon-btn" id="termFontUp" type="button" title="Larger text" aria-label="Larger text"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+        <button class="icon-btn" id="termFontUp" type="button" title="Larger text" aria-label="Larger text"><svg class="ic" aria-hidden="true"><use href="#i-term-font-up"/></svg></button>
         <div class="term-swatches" id="termTheme" role="radiogroup" aria-label="Terminal theme">
           <button type="button" class="term-swatch dark" role="radio" data-v="black" aria-checked="true" title="Black" aria-label="Black terminal"></button>
           <button type="button" class="term-swatch light" role="radio" data-v="light" aria-checked="false" title="White" aria-label="White terminal"></button>
         </div>
         <button class="icon-btn" id="termCustomize" type="button" title="Terminal appearance: colors, font, size, cursor" aria-label="Terminal appearance"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg></button>
+        <div class="term-cmdmode" id="termCmdMode" role="radiogroup" aria-label="Command list">
+          <button class="icon-btn" type="button" role="radio" data-v="panel" aria-checked="true" title="Side panel (System, History, Scripts)" aria-label="Side panel (System, History, Scripts)"><svg class="ic" aria-hidden="true"><use href="#i-panel-right-close"/></svg></button>
+          <button class="icon-btn" type="button" role="radio" data-v="classic" aria-checked="false" title="Classic: three icons" aria-label="Classic: three icons"><svg class="ic" aria-hidden="true"><use href="#i-term-classic"/></svg></button>
+        </div>
         <span class="spacer"></span>
         <div class="filterbar compact">
           <svg class="ic sm"><use href="#i-search"/></svg>
@@ -582,7 +602,7 @@
           </section>
         </aside>
       </div>
-      <div class="quickkeys" id="quickKeys" aria-label="Quick keys">
+      <div class="quickkeys" id="quickKeys" aria-label="Quick keys" data-no-i18n>
         <button type="button" data-key="ctrl-c">Ctrl+C</button><button type="button" data-key="ctrl-d">Ctrl+D</button>
         <button type="button" data-key="tab">Tab</button><button type="button" data-key="escape">Esc</button>
         <button type="button" data-key="up" aria-label="Up">↑</button><button type="button" data-key="down" aria-label="Down">↓</button>
@@ -793,7 +813,7 @@
           <button class="remote-top" id="remoteMessage" type="button" title="Show a message on the TV" aria-label="Send a message to the TV"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></button>
           <button class="remote-top" id="remoteHide" type="button" title="Hide the remote" aria-label="Hide the remote"><svg class="ic" aria-hidden="true"><use href="#i-panel-left-close"/></svg></button>
         </header>
-        <div class="remote-keys" id="remoteKeys"></div>
+        <div class="remote-keys" id="remoteKeys" data-no-i18n></div>
         <div class="remote-sel">
           <label class="remote-layout"><span class="sr-only">Remote layout</span><select id="remoteLayout" aria-label="Remote layout" title="Remote layout: Auto follows the receiver model"></select></label>
           <label class="remote-layout"><span class="sr-only">Send keys through</span><select id="remoteMode" aria-label="Send keys through" title="How keys reach the receiver. Telnet acts like the real remote (works inside apps such as YouTube) but needs Telnet and takes about a second per key."><option value="web">Web</option><option value="telnet">Telnet</option></select></label>
@@ -1136,9 +1156,6 @@
       <label class="field"><span>Cursor</span><select id="termCfgShape"><option value="bar">Bar</option><option value="block">Block</option><option value="underline">Underline</option></select></label>
     </div>
     <div class="tc-last">
-      <label class="field"><span>Command list</span>
-        <select id="termCfgCmdStyle"><option value="panel">Side panel (System, History, Scripts)</option><option value="classic">Classic: three icons</option></select>
-      </label>
       <label class="check"><input type="checkbox" id="termCfgBlink"> Blinking cursor</label>
     </div>
     <div class="dialog-actions">
@@ -1174,7 +1191,6 @@
       <div class="ap-row"><span class="ap-l">Edges</span><div class="seg ap-seg" data-ap="edge" role="radiogroup"><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="default" aria-checked="false">Normal</button><button type="button" role="radio" data-v="strong" aria-checked="false">Strong</button></div></div>
       <div class="ap-row"><span class="ap-l">Corners</span><div class="seg ap-seg" data-ap="radius" role="radiogroup"><button type="button" role="radio" data-v="sharp" aria-checked="false">Sharp</button><button type="button" role="radio" data-v="soft" aria-checked="false">Soft</button><button type="button" role="radio" data-v="round" aria-checked="false">Round</button></div></div>
       <div class="ap-row"><span class="ap-l">Density</span><div class="seg ap-seg" data-ap="density" role="radiogroup"><button type="button" role="radio" data-v="compact" aria-checked="false">Compact</button><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="roomy" aria-checked="false">Roomy</button></div></div>
-      <div class="ap-row"><span class="ap-l">Interface size</span><div class="ap-range"><input id="apScale" type="range" min="50" max="170" step="1" value="85" aria-label="Interface size"><output id="apScaleVal" for="apScale">85%</output></div></div>
       <div class="ap-row"><span class="ap-l">Icon weight</span><div class="seg ap-seg" data-ap="icons" role="radiogroup"><button type="button" role="radio" data-v="thin" aria-checked="false">Thin</button><button type="button" role="radio" data-v="default" aria-checked="false">Regular</button><button type="button" role="radio" data-v="bold" aria-checked="false">Bold</button></div></div>
       <div class="ap-row"><span class="ap-l">Font</span><div class="seg ap-seg" data-ap="font" role="radiogroup"><button type="button" role="radio" data-v="default" aria-checked="false">Default</button><button type="button" role="radio" data-v="system" aria-checked="false">System</button><button type="button" role="radio" data-v="rounded" aria-checked="false">Rounded</button><button type="button" role="radio" data-v="serif" aria-checked="false">Serif</button><button type="button" role="radio" data-v="mono" aria-checked="false">Mono</button></div></div>
       <div class="ap-row"><span class="ap-l">Rows</span><div class="seg ap-seg" data-ap="rows" role="radiogroup"><button type="button" role="radio" data-v="plain" aria-checked="false">Plain</button><button type="button" role="radio" data-v="striped" aria-checked="false">Striped</button></div></div>
@@ -1247,6 +1263,7 @@
       <datalist id="scanRanges"></datalist>
       <button class="btn primary" id="scanStart" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>Scan</button>
     </form>
+    <div class="scan-nets" id="scanNets" role="group" aria-label="Detected networks" hidden><div class="empty-ranges" id="scanNetList" data-no-i18n></div></div>
     <p class="form-error" id="scanError" role="alert" hidden></p>
     <p class="muted" id="scanStatus" role="status" aria-live="polite"></p>
     <ul class="scan-results" id="scanResults"></ul>

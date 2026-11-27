@@ -65,7 +65,14 @@
   }
 
   const dialog = document.getElementById("themeDialog");
+  function syncScale() {
+    const range = document.getElementById("apScale");
+    if (!range) return;
+    range.value = String(scalePct(state.scale));
+    document.getElementById("apScaleVal").textContent = `${range.value}%`;
+  }
   function sync() {
+    syncScale();
     if (!dialog) return;
     const mode = THEMES.includes(root.dataset.theme) ? root.dataset.theme : readMode();
     const values = { ...state, mode };
@@ -78,8 +85,6 @@
       for (const b of group.querySelectorAll("button.ap-sw")) b.setAttribute("aria-pressed", String(!hex && b.dataset.v === state[key]));
       group.querySelector(".ap-custom").classList.toggle("on", !!hex);
     }
-    const range = dialog.querySelector("#apScale");
-    if (range) { range.value = String(scalePct(state.scale)); dialog.querySelector("#apScaleVal").textContent = `${range.value}%`; }
     if (state.accentHex) dialog.querySelector("#apAccentCustom").value = state.accentHex;
     if (state.folderHex) dialog.querySelector("#apFolderCustom").value = state.folderHex;
   }
@@ -88,6 +93,9 @@
   apply();
   new MutationObserver(() => { syncChrome(); sync(); }).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (root.dataset.theme === "auto") syncChrome(); });
+  const apScale = document.getElementById("apScale");
+  apScale?.addEventListener("input", () => { document.getElementById("apScaleVal").textContent = `${apScale.value}%`; });
+  apScale?.addEventListener("change", () => { state.scale = scaleStr(Number(apScale.value) / 100); save(); apply(); });
   if (!dialog) return;
 
   document.getElementById("themeOpen")?.addEventListener("click", () => { sync(); dialog.showModal(); });
@@ -114,9 +122,6 @@
   for (const [id, key] of [["apAccentCustom", "accent"], ["apFolderCustom", "folder"]]) {
     document.getElementById(id).addEventListener("input", (event) => { state[`${key}Hex`] = event.target.value; save(); apply(); });
   }
-  const apScale = document.getElementById("apScale");
-  apScale?.addEventListener("input", () => { document.getElementById("apScaleVal").textContent = `${apScale.value}%`; });
-  apScale?.addEventListener("change", () => { state.scale = scaleStr(Number(apScale.value) / 100); save(); apply(); });
 
   document.getElementById("apReset")?.addEventListener("click", () => { state = { ...DEFAULTS }; writeMode(DEFAULT_THEME); save(); apply(); });
 })();

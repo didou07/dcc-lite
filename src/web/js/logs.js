@@ -13,6 +13,7 @@ function logTime(iso) {
   const d = new Date(iso);
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad2(d.getMilliseconds(), 3)}`;
 }
+function logClock(iso) { return logTime(iso).slice(0, 8); }
 function logDateTime(iso) { return new Date(iso).toLocaleString(); }
 
 function logVisible(entry) {
@@ -25,17 +26,121 @@ function logVisible(entry) {
   return true;
 }
 
+const LOG_ID = /^[0-9a-f]{16,}$/i;
+const LOG_QUIET_FIELDS = new Set(["req"]);
+const LOG_VOLATILE = new Set(["req", "ms", "bytes", "took"]);
+
+function logStamp(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${logTime(iso)}`;
+}
+function logDuration(ms) { return ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 0 : 1)} s` : `${ms} ms`; }
+
+function logMessage(entry) {
+  if (entry.component !== "http") return entry.message;
+  const m = /^([A-Z]+) \/api\/v1\/(.*)$/.exec(entry.message);
+  const text = m ? `${m[1]} ${m[2]}` : entry.message;
+  return text
+    .replace(/profiles\/([0-9a-f]{32})(\/|$)/g, (_, id, tail) => `${deviceByID(id)?.name || `${id.slice(0, 8)}…`}${tail ? " · " : ""}`)
+    .replace(/\b[0-9a-f]{32}\b/g, (id) => `${id.slice(0, 8)}…`);
+}
+
+const LOG_PLAIN = new Set(["device", "host", "url", "route", "path", "error", "client", "detail", "dir"]);
+
+function logValue(key, raw, all = false) {
+  const value = String(raw);
+  const num = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (key === "req") return { text: `#${value}`, label: false, cls: "lg-dim" };
+  if (LOG_ID.test(value)) {
+    const short = value.slice(0, 8);
+    return { text: key === "session" ? `#${short}` : `${short}…`, label: key !== "session", copy: value, cls: "lg-id" };
+  }
+  switch (key) {
+    case "status":
+      if (num >= 200 && num < 300 && !all) return null;
+      return { text: value, label: false, cls: num >= 500 ? "lg-err" : num >= 400 ? "lg-slow" : "" };
+    case "ms": return Number.isNaN(num) ? null : { text: logDuration(num), label: false, cls: num >= 2000 ? "lg-slow" : "", title: `${value} ms` };
+    case "bytes": return Number.isNaN(num) ? null : { text: formatBytes(num), label: false, title: `${value} bytes` };
+    case "port": return { text: `:${value}`, label: false };
+    case "version": return { text: `v${value}`, label: false };
+    case "error": return { text: value, label: false, cls: "lg-err" };
+  }
+  return { text: value, label: !LOG_PLAIN.has(key) };
+}
+
+function logFieldNode(key, raw, all = false) {
+  const v = logValue(key, raw, all);
+  if (!v) return null;
+  const node = h("b", { class: v.cls || "", text: v.text });
+  if (v.copy) { node.title = v.copy; node.addEventListener("click", async () => { if (await clipboardWrite(v.copy)) toast("Copied"); }); }
+  else if (v.title) node.title = v.title;
+  return h("span", { class: "lg-field" }, v.label ? h("i", { text: `${key}=` }) : null, node);
+}
+
+function logFieldNodes(entry) {
+  const quiet = logRank(entry.level) < logRank("warn");
+  return (entry.fields || [])
+    .filter((f) => !(quiet && LOG_QUIET_FIELDS.has(f.k)))
+    .map((f) => logFieldNode(f.k, f.v))
+    .filter(Boolean);
+}
+
+function logPlain(entry) {
+  const parts = [logStamp(entry.time), entry.level.toUpperCase().padEnd(5), entry.component.padEnd(8), logMessage(entry).replace(/\s*\n\s*/g, " ")];
+  for (const f of entry.fields || []) {
+    const v = logValue(f.k, f.v, true);
+    if (v) parts.push(v.label ? `${f.k}=${v.copy || v.text}` : (v.copy || v.text).replace(/\s*\n\s*/g, " "));
+  }
+  if (entry.stack) parts.push(`stack=${entry.stack.split("\n").map((l) => l.trim()).filter(Boolean).join(" > ")}`);
+  return parts.join("  ");
+}
+
+function logKey(entry) {
+  if (entry.stack) return "";
+  const rest = (entry.fields || []).filter((f) => !LOG_VOLATILE.has(f.k)).map((f) => `${f.k}=${f.v}`).join("|");
+  return `${entry.level}|${entry.component}|${entry.message}|${rest}`;
+}
+
+function logMerge(row, entry) {
+  const n = (Number(row.dataset.count) || 1) + 1;
+  row.dataset.count = String(n);
+  const time = row.querySelector(".lg-time");
+  time.textContent = logClock(entry.time);
+  time.title = `${row.dataset.first} → ${logStamp(entry.time)}`;
+  const rep = row.querySelector(".lg-rep");
+  rep.hidden = false;
+  rep.textContent = `×${n}`;
+  row.querySelector(".lg-fields")?.replaceChildren(...logFieldNodes(entry));
+}
+
 function logRow(entry) {
-  const fields = (entry.fields || []).map((f) => h("span", { class: "lg-field" },
-    h("i", { text: `${f.k}=` }), h("b", { class: f.k === "error" ? "lg-err" : "", text: f.v })));
+  const fields = logFieldNodes(entry);
   const stack = entry.stack ? stackBlock(entry.stack) : null;
-  const row = h("div", { class: "lg-row", dataset: { level: entry.level, id: entry.id } },
-    h("span", { class: "lg-time", title: logDateTime(entry.time), text: logTime(entry.time) }),
+  const req = entry.fields?.find((f) => f.k === "req")?.v;
+  const row = h("div", { class: "lg-row", dataset: { level: entry.level, id: entry.id, key: logKey(entry), first: logStamp(entry.time) } },
+    h("span", { class: "lg-time", title: logStamp(entry.time), text: logClock(entry.time) }),
     h("span", { class: "lg-level", text: entry.level.toUpperCase() }),
     h("span", { class: "lg-comp", text: entry.component }),
-    h("div", { class: "lg-msg" }, h("span", { class: "lg-text", text: entry.message }), fields.length ? h("span", { class: "lg-fields" }, fields) : null, stack?.button));
+    h("div", { class: "lg-msg" },
+      h("span", { class: "lg-text", title: req ? `${entry.message}\nreq=${req}` : entry.message, text: logMessage(entry) }),
+      h("span", { class: "badge lg-rep", hidden: true }),
+      fields.length ? h("span", { class: "lg-fields" }, fields) : null,
+      stack?.button));
   if (!stack) return row;
   return h("div", { class: "lg-group" }, row, stack.pre);
+}
+
+function logPush(list, entries) {
+  let prev = list.lastElementChild;
+  const frag = document.createDocumentFragment();
+  for (const entry of entries) {
+    const key = logKey(entry);
+    if (key && prev?.dataset?.key === key) { logMerge(prev, entry); continue; }
+    const node = logRow(entry);
+    frag.append(node);
+    prev = node;
+  }
+  list.append(frag);
 }
 
 function stackBlock(text, buttonClass = "lg-stack-btn") {
@@ -55,7 +160,8 @@ function logsRender(full = true) {
   const visible = logs.entries.filter(logVisible);
   const stick = logs.follow;
   if (full) {
-    list.replaceChildren(...visible.map(logRow));
+    list.replaceChildren();
+    logPush(list, visible);
   }
   $("#logsEmpty").hidden = visible.length > 0;
   $("#logsShown").textContent = `${visible.length} of ${logs.entries.length}`;
@@ -66,7 +172,7 @@ function logsAppend(entries) {
   const list = $("#logsList");
   const fresh = entries.filter(logVisible);
   if (fresh.length) {
-    list.append(...fresh.map(logRow));
+    logPush(list, fresh);
     while (list.childElementCount > LOG_MAX) list.firstElementChild.remove();
   }
   $("#logsEmpty").hidden = list.childElementCount > 0;
@@ -156,7 +262,7 @@ function faultCount(stats) {
 }
 
 function faultCard(f) {
-  const ctx = (f.context || []).map((c) => h("span", { class: "lg-field" }, h("i", { text: `${c.k}=` }), h("b", { text: c.v })));
+  const ctx = (f.context || []).filter((c) => c.k !== "req").map((c) => logFieldNode(c.k, c.v)).filter(Boolean);
   const stack = f.stack ? stackBlock(f.stack, "btn sm sq") : null;
   const buttons = h("div", { class: "ft-actions" },
     stack?.button,
@@ -224,12 +330,7 @@ function logsDownload() {
   window.location.assign(`/api/v1/logs/download?${q}`);
 }
 async function logsCopy() {
-  const text = logs.entries.filter(logVisible).map((e) => {
-    const parts = [logDateTime(e.time), e.level.toUpperCase().padEnd(5), e.component.padEnd(8), e.message.replace(/\s*\n\s*/g, " ")];
-    for (const x of e.fields || []) parts.push(`${x.k}=${String(x.v).replace(/\s*\n\s*/g, " ")}`);
-    if (e.stack) parts.push(`stack=${e.stack.split("\n").map((l) => l.trim()).filter(Boolean).join(" > ")}`);
-    return parts.join(" ");
-  }).join("\n");
+  const text = logs.entries.filter(logVisible).map(logPlain).join("\n");
   if (await clipboardWrite(text)) toast("Log copied"); else toast("Could not copy", "error");
 }
 

@@ -24,6 +24,16 @@ var quietPrefixes = []string{
 	"/api/v1/auth/status",
 }
 
+const slowRequest = 2 * time.Second
+
+func isPolled(path string) bool {
+	return strings.HasSuffix(path, "/current") || strings.HasSuffix(path, "/softcam/info")
+}
+
+func isStream(path string) bool {
+	return strings.Contains(path, "/live/") || strings.HasSuffix(path, "/screen") || strings.HasPrefix(path, "/api/v1/logs")
+}
+
 func isQuiet(path string) bool {
 	if path == "/" || path == "/index.html" {
 		return true
@@ -124,11 +134,15 @@ func observe(next http.Handler) http.Handler {
 			if status < 400 && r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/api/v1/logs") || strings.HasPrefix(r.URL.Path, "/api/v1/faults")) {
 				return
 			}
-			level := levelForStatus(status, isQuiet(r.URL.Path))
+			took := time.Since(start)
+			level := levelForStatus(status, isQuiet(r.URL.Path) || isPolled(r.URL.Path))
+			if level < logx.LevelInfo && took >= slowRequest && !isStream(r.URL.Path) {
+				level = logx.LevelInfo
+			}
 			if !httpLog.Enabled(r.Context(), level) {
 				return
 			}
-			args := []any{"status", status, "ms", time.Since(start).Milliseconds(), "req", id}
+			args := []any{"status", status, "ms", took.Milliseconds(), "req", id}
 			if rt := routeOf(r); rt != "" && status >= 400 {
 				args = append(args, "route", rt)
 			}

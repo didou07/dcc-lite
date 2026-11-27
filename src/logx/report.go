@@ -49,7 +49,6 @@ func faultLine(f Fault) string {
 		padRight(f.Component, componentWidth),
 		fmt.Sprintf("x%d", f.Count),
 		oneLine(f.Message),
-		token("id", f.ID),
 		token("first", f.First.Format(timeLayoutFile)),
 		token("last", f.Last.Format(timeLayoutFile)),
 	}

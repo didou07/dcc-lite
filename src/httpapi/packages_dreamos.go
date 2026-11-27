@@ -105,7 +105,7 @@ func telnetFailure(w http.ResponseWriter, profile config.Profile, err error) {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "The receiver's Telnet service did not give a command prompt. Check the user name and password saved for it.", "code": "web_auth"})
 	default:
 		var netErr net.Error
-		msg := "The receiver's Telnet service (port " + strconv.Itoa(profile.EffectiveTelnetPort()) + ") did not answer. On DreamOS, packages are managed through it."
+		msg := "Telnet (port " + strconv.Itoa(profile.EffectiveTelnetPort()) + ") did not answer. Check that it is enabled on the receiver."
 		if errors.As(err, &netErr) || strings.Contains(err.Error(), "refused") {
 			writeJSON(w, http.StatusBadGateway, map[string]any{"error": msg, "code": "no_telnet"})
 			return

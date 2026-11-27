@@ -380,8 +380,9 @@
   function applyCommandStyle() {
     const on = classic();
     document.body.classList.toggle("cmd-classic", on);
+    for (const b of document.querySelectorAll("#termCmdMode button")) b.setAttribute("aria-checked", String((b.dataset.v === "classic") === on));
     const toggle = $id("termDockToggle");
-    toggle.querySelector("use")?.setAttribute("href", on ? "#i-bolt" : "#i-list");
+    toggle.querySelector("use")?.setAttribute("href", on ? "#i-bolt" : "#i-term-dock");
     $id("termHistory").hidden = !on;
     $id("termScripts").hidden = !on;
     if (on) {
@@ -397,8 +398,12 @@
   $id("termHistory").addEventListener("click", (event) => classicOpen("history", event.currentTarget));
   $id("termScripts").addEventListener("click", (event) => classicOpen("scripts", event.currentTarget));
   $id("termDockToggle").addEventListener("click", (event) => { if (classic()) classicOpen("system", event.currentTarget); else toggleDock(); });
-  $id("termCustomize").addEventListener("click", () => { const sel = $id("termCfgCmdStyle"); if (sel) sel.value = classic() ? "classic" : "panel"; });
-  $id("termCfgCmdStyle")?.addEventListener("change", (event) => { store.set("termCmdStyle", event.target.value === "classic" ? "classic" : "panel"); applyCommandStyle(); });
+  $id("termCmdMode").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-v]");
+    if (!button || (button.dataset.v === "classic") === classic()) return;
+    store.set("termCmdStyle", button.dataset.v === "classic" ? "classic" : "panel");
+    applyCommandStyle();
+  });
   $id("termDockClose").addEventListener("click", () => toggleDock(false));
   $id("systemCommandFilter").addEventListener("input", renderSystemCommands);
   $id("commandAdd").addEventListener("click", () => editSavedCommand());

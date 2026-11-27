@@ -155,9 +155,9 @@ function tabTitle(tab) {
 const leaf = (tabId) => ({ kind: "leaf", tabId });
 const treeHas = (node, id) => (node.kind === "leaf" ? node.tabId === id : treeHas(node.a, id) || treeHas(node.b, id));
 function treeLeaves(node, out = []) { if (node.kind === "leaf") out.push(node.tabId); else { treeLeaves(node.a, out); treeLeaves(node.b, out); } return out; }
-function treeSplit(node, id, dir, newId) {
-  if (node.kind === "leaf") return node.tabId === id ? { kind: "split", dir, ratio: 0.5, a: node, b: leaf(newId) } : node;
-  return { ...node, a: treeSplit(node.a, id, dir, newId), b: treeSplit(node.b, id, dir, newId) };
+function treeSplit(node, id, dir, newId, before = false) {
+  if (node.kind === "leaf") return node.tabId === id ? { kind: "split", dir, ratio: 0.5, a: before ? leaf(newId) : node, b: before ? node : leaf(newId) } : node;
+  return { ...node, a: treeSplit(node.a, id, dir, newId, before), b: treeSplit(node.b, id, dir, newId, before) };
 }
 function treeRemove(node, id) {
   if (node.kind === "leaf") return node.tabId === id ? null : node;
@@ -260,11 +260,11 @@ function buildLayoutNode(node) {
   el.append(a, bar, b);
   return el;
 }
-function splitActive(dir) {
+function splitActive(dir, before = false) {
   const tab = activeTab();
   if (!tab) { createTerminalTab({ profileID: currentDevice()?.id || "", autoConnect: false }); return; }
   if (treeLeaves(groupOfTab(tab.id).root).length >= 8) { toast("A tab holds at most 8 panels"); return; }
-  createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port, directory: tab.directory, split: { of: tab.id, dir }, autoConnect: !!tab.profileID });
+  createTerminalTab({ profileID: tab.profileID, protocol: tab.protocol, port: tab.port, directory: tab.directory, split: { of: tab.id, dir, before }, autoConnect: !!tab.profileID });
 }
 function focusNeighbour(dir) {
   const group = groupOfTab(term.active);
@@ -392,7 +392,7 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
   terminal.writeln("DCC Lite · Terminal");
   term.tabs.set(id, tab);
   const host = split ? groupOfTab(split.of) : null;
-  if (host) { host.root = treeSplit(host.root, split.of, split.dir, id); }
+  if (host) { host.root = treeSplit(host.root, split.of, split.dir, id, !!split.before); }
   else term.groups.push({ id: `g${id}`, root: leaf(id), focus: id });
   setActive(id);
   renderTabs();
@@ -638,6 +638,8 @@ function terminalEnter() {
 $("#terminalNewTab").addEventListener("click", newTabFromActive);
 $("#termSplitRight").addEventListener("click", () => splitActive("row"));
 $("#termSplitDown").addEventListener("click", () => splitActive("col"));
+$("#termSplitLeft").addEventListener("click", () => splitActive("row", true));
+$("#termSplitUp").addEventListener("click", () => splitActive("col", true));
 $("#terminalLauncher").addEventListener("click", (event) => {
   const rect = event.currentTarget.getBoundingClientRect();
   const items = [{ heading: "Open in a new tab" }];
@@ -728,6 +730,8 @@ function openTabMenu(tab, x, y) {
     "-",
     { label: "Split right", icon: "split-h", sub: "Ctrl+Shift+D", run: () => { activateTab(tab.id); splitActive("row"); } },
     { label: "Split down", icon: "split-v", sub: "Ctrl+Shift+E", run: () => { activateTab(tab.id); splitActive("col"); } },
+    { label: "Split left", icon: "term-split-l", run: () => { activateTab(tab.id); splitActive("row", true); } },
+    { label: "Split up", icon: "term-split-u", run: () => { activateTab(tab.id); splitActive("col", true); } },
     { label: "Close this panel", icon: "x", sub: "Ctrl+Shift+W", disabled: panels < 2, run: () => closeTab(tab.id) },
     "-",
     { label: panels > 1 ? "Close tab and all its panels" : "Close tab", icon: "x", run: () => group && closeGroup(group) },
@@ -949,7 +953,15 @@ async function openScanDialog(presetRange = "", autoStart = false) {
     const { ranges } = await api("/api/v1/network/ranges");
     $("#scanRanges").replaceChildren(...ranges.map((range) => Object.assign(document.createElement("option"), { value: range })));
     if (!$("#scanRange").value && ranges.length) $("#scanRange").value = ranges[0];
-  } catch { }
+    $("#scanNetList").replaceChildren(...ranges.map((range) => {
+      const button = document.createElement("button");
+      button.type = "button"; button.className = "btn sm"; button.textContent = range;
+      button.title = `Scan ${range}`;
+      button.addEventListener("click", () => { $("#scanRange").value = range; if (!scan.busy) $("#scanForm").requestSubmit(); });
+      return button;
+    }));
+    $("#scanNets").hidden = !ranges.length;
+  } catch { $("#scanNets").hidden = true; }
   if (presetRange) $("#scanRange").value = presetRange;
   $("#scanRange").focus();
   if (autoStart && $("#scanRange").value.trim() && !scan.busy) $("#scanForm").requestSubmit();

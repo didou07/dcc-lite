@@ -225,7 +225,8 @@ func (m *remoteManager) start() (remotePlan, error) {
 	_, m.port, _ = net.SplitHostPort(raw.Addr().String())
 	m.lastErr = ""
 	m.hosts = hosts
-	remoteLog.Info("remote access is on (HTTPS)", "port", m.port, "certificate", plan.Certificate.Source, "sha256", plan.Certificate.Fingerprint)
+	remoteLog.Info("remote access is on (HTTPS)", "port", m.port, "certificate", plan.Certificate.Source)
+	remoteLog.Debug("remote access certificate", "sha256", plan.Certificate.Fingerprint)
 	for _, url := range m.links() {
 		remoteLog.Info("remote access address", "url", url)
 	}

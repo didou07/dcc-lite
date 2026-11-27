@@ -301,13 +301,19 @@ async function scLoad({ quiet = false } = {}) {
 }
 
 function scWatch() {
-  clearInterval(sc.timer);
-  sc.timer = setInterval(() => {
-    if (view.current !== "softcam" || document.hidden || sc.busy) return;
-    scLoad({ quiet: true });
-  }, SC_POLL_MS);
+  scUnwatch();
+  const tick = async () => {
+    let took = 0;
+    if (view.current === "softcam" && !document.hidden && !sc.busy) {
+      const began = performance.now();
+      await scLoad({ quiet: true });
+      took = performance.now() - began;
+    }
+    sc.timer = setTimeout(tick, Math.max(SC_POLL_MS, took * 3));
+  };
+  sc.timer = setTimeout(tick, SC_POLL_MS);
 }
-function scUnwatch() { clearInterval(sc.timer); sc.timer = 0; }
+function scUnwatch() { clearTimeout(sc.timer); sc.timer = 0; }
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && view.current === "softcam" && !sc.busy) scLoad({ quiet: true });
 });

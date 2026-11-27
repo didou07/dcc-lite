@@ -217,17 +217,26 @@ func TestSettingsPackCommandPerScope(t *testing.T) {
 
 func TestSoftcamFilesMatchBackupPaths(t *testing.T) {
 	for _, p := range []string{"/etc/tuxbox/config/oscam.conf", "/var/tuxbox/config/oscam.server", "/etc/CCcam.cfg", "/var/etc/CCcam.cfg", "/var/keys/SoftCam.Key", "/usr/keys/SoftCam.Key"} {
-		if !softcamFileRe.MatchString(p) {
+		if !softcamFileOK(p) {
 			t.Errorf("%s should be listed", p)
 		}
 	}
-	for _, p := range []string{"/etc/passwd", "/etc/tuxbox/config/../x", "/var/etc/other.cfg"} {
-		if softcamFileRe.MatchString(p) {
+	for _, p := range []string{"/etc/tuxbox/config/oscam-emu/oscam.conf", "/etc/tuxbox/config/a/b/c.cfg"} {
+		if !softcamFileOK(p) {
+			t.Errorf("%s should be listed (subfolder)", p)
+		}
+	}
+	for _, p := range []string{"/etc/passwd", "/etc/tuxbox/config/../x", "/etc/tuxbox/config/a/../../../etc/passwd", "/var/etc/other.cfg", "/etc/tuxbox/config/a/b/c/d.cfg"} {
+		if softcamFileOK(p) {
 			t.Errorf("%s must not be listed", p)
 		}
 	}
 	out := parseSoftcamInfo("@@files\nfile=/var/etc/CCcam.cfg 12\nfile=/var/tuxbox/config/ncam.conf 40\nfile=/etc/shadow 1\n")
 	if len(out.Files) != 2 {
+		t.Fatalf("files: %+v", out.Files)
+	}
+	out = parseSoftcamInfo("cfg=/etc/init.d/softcam.sup /usr/local/etc/\n@@files\nfile=/usr/local/etc/oscam.conf 10\nfile=/usr/local/etc/sub/x 1\nfile=/usr/local/other/y 1\nfile=/usr/local/etc/oscam.conf 10\nfile=/etc/tuxbox/config/oscam-emu/oscam.server 7\n")
+	if len(out.Files) != 2 || out.Files[0].Path != "/usr/local/etc/oscam.conf" || out.Files[1].Path != "/etc/tuxbox/config/oscam-emu/oscam.server" {
 		t.Fatalf("files: %+v", out.Files)
 	}
 }

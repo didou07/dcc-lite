@@ -77,6 +77,7 @@ async function pkRun(command, p) {
     const ok = await ask({ title: label, message, input: false, ok: command === "remove" ? "Remove" : command === "install" ? (p.installed ? "Update" : "Install") : "Upgrade all", danger: command === "remove" });
     if (!ok) return;
   }
+  if (!opBegin("packages", pk.profileID, "A package operation")) return;
   pkError("");
   let problem = "";
   pkSetBusy(true);
@@ -92,6 +93,7 @@ async function pkRun(command, p) {
     problem = error.message;
   } finally {
     pkSetBusy(false);
+    opEnd("packages");
     await pkLoad(command === "update");
     if (problem) pkError(problem);
   }

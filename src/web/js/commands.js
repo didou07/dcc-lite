@@ -21,14 +21,20 @@
   const classic = () => store.get("termCmdStyle", "panel") === "classic";
   const overlay = () => window.matchMedia("(max-width: 760px)").matches;
 
+  const isAlt = (item) => Array.isArray(item.lines) && item.lines.length > 1 && (item.mode || 1) >= 2;
+
   function typeCommand(item, run = false) {
     const tab = activeTab();
     if (!tab || tab.state !== "connected") { toast("Connect a receiver first"); return; }
-    if (!replaceTerminalInput(tab, item.command, run)) return;
-    if (run) rememberCommand(tab.profileID, item.command);
+    const alt = isAlt(item);
+    const first = alt ? item.lines[0] : item.command;
+    if (!replaceTerminalInput(tab, first, run && !alt)) return;
+    if (run && !alt) rememberCommand(tab.profileID, first);
+    tab.alt = alt ? { lines: item.lines, index: 0 } : null;
     if (classic() || overlay()) toggleDock(false);
     focusTab(tab);
-    toast(run ? "Command executed" : "Command typed — press Enter to execute");
+    if (alt) toast(`Option 1 of ${item.lines.length} — ↑/↓ to switch, Enter to run`);
+    else toast(run ? "Command executed" : "Command typed — press Enter to execute");
   }
 
   function selectPanel(name, focusSearch = false) {
@@ -150,7 +156,7 @@
   function renderLibrary() {
     if (!list) return;
     const query = $id("commandFilter").value.trim().toLowerCase();
-    const visible = state.commands.filter((item) => !query || `${item.name}\n${item.command}`.toLowerCase().includes(query));
+    const visible = state.commands.filter((item) => !query || `${item.name}\n${(item.lines || [item.command]).join("\n")}`.toLowerCase().includes(query));
     list.replaceChildren();
     $id("commandCount").textContent = `${state.commands.length} saved`;
     $id("commandPath").textContent = state.error
@@ -166,7 +172,7 @@
     visible.forEach((item) => {
       const index = state.commands.findIndex((entry) => entry.id === item.id);
       const row = h("div", {
-        class: "saved-command-row",
+        class: `saved-command-row${item.hidden ? " is-hidden" : ""}`,
         role: "listitem",
         draggable: true,
         dataset: { commandId: item.id },
@@ -206,10 +212,11 @@
       },
         h("span", { class: "command-drag", title: "Drag to reorder", "aria-hidden": "true" }, icon("more")),
         h("div", { class: "command-info" },
-          h("strong", { class: "command-name", text: item.name }),
-          h("code", { class: "command-preview", text: item.command, title: item.command })),
+          h("strong", { class: "command-name", text: item.name + (item.hidden ? " (hidden)" : "") + (isAlt(item) ? ` · ${item.lines.length} options` : "") }),
+          h("code", { class: "command-preview", text: item.command, title: (item.lines || [item.command]).join("\n") })),
         h("div", { class: "command-actions" },
-          iconButton("play", "Run now", () => typeCommand(item, true)),
+          iconButton("eye", item.hidden ? "Show in menus" : "Hide from menus", () => toggleHidden(item.id)),
+          iconButton("play", isAlt(item) ? "Type (choose option with ↑/↓)" : "Run now", () => typeCommand(item, true)),
           iconButton("chev-up", "Move up", () => moveCommand(item.id, -1), "command-move"),
           iconButton("chev-down", "Move down", () => moveCommand(item.id, 1), "command-move"),
           iconButton("edit", "Edit script", () => editSavedCommand(item)),
@@ -218,6 +225,11 @@
       row.querySelector('[aria-label="Move down"]').disabled = index < 0 || index >= state.commands.length - 1;
       list.append(row);
     });
+  }
+
+  async function toggleHidden(id) {
+    const next = state.commands.map((item) => (item.id === id ? { ...item, hidden: !item.hidden } : item));
+    await persist(next);
   }
 
   async function moveCommand(id, offset) {
@@ -232,7 +244,8 @@
   function editDialog(item = null) {
     $id("commandEditTitle").textContent = item ? "Edit script" : "Add script";
     $id("commandEditName").value = item?.name || "";
-    $id("commandEditText").value = item?.command || "";
+    $id("commandEditText").value = (item?.lines || [item?.command || ""]).join("\n");
+    $id("commandEditAlt").checked = item ? isAlt(item) : false;
     $id("commandEditError").hidden = true;
     openDialog(editor);
     $id("commandEditName").focus();
@@ -250,17 +263,19 @@
       };
       const save = () => {
         const name = $id("commandEditName").value.trim();
-        const command = $id("commandEditText").value.trim();
+        const lines = $id("commandEditText").value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const alt = $id("commandEditAlt").checked && lines.length > 1;
+        const command = alt ? lines[0] : lines.join(" ; ");
         let problem = "";
         if (!name) problem = "Enter a name for this script.";
         else if (name.length > 80) problem = "The name must be 80 characters or fewer.";
-        else if (!validCommand(command)) problem = "Enter a single-line command (up to 1,000 characters).";
+        else if (!lines.length || !lines.every(validCommand) || command.length > 1000) problem = "Enter at least one command (up to 1,000 characters per line).";
         if (problem) {
           $id("commandEditError").textContent = problem;
           $id("commandEditError").hidden = false;
           return;
         }
-        finish({ name, command });
+        finish({ name, command, lines: lines.length > 1 ? lines : undefined, mode: alt ? Math.max(2, item?.mode || 2) : 1 });
       };
       const cancel = (event) => { event?.preventDefault?.(); finish(null); };
       const closed = () => finish(null);
@@ -278,7 +293,7 @@
     if (item) {
       const index = next.findIndex((entry) => entry.id === item.id);
       if (index < 0) return;
-      next[index] = { ...item, ...value };
+      next[index] = { ...item, ...value, lines: value.lines };
     } else {
       next.push({ id: makeID(), ...value });
     }
@@ -313,13 +328,14 @@
       toast(parsed.skipped?.length ? "No usable user scripts in that file" : "No [UserScripts] section found — is this a dccscript.ini?", "error");
       return;
     }
-    const seen = new Set(state.commands.map((item) => `${item.name}\0${item.command}`));
+    const keyOf = (item) => `${item.name}\0${(item.lines || [item.command]).join("\n")}`;
+    const seen = new Set(state.commands.map(keyOf));
     const imported = [];
     for (const script of scripts) {
-      const key = `${script.name}\0${script.command}`;
+      const key = keyOf(script);
       if (seen.has(key)) continue;
       seen.add(key);
-      imported.push({ id: makeID(), name: script.name, command: script.command });
+      imported.push({ id: makeID(), name: script.name, command: script.command, lines: script.lines, mode: script.mode, hidden: script.hidden });
     }
     if (!imported.length) { toast("Those scripts are already in the library"); return; }
     const note = [`${scripts.length} command${scripts.length === 1 ? "" : "s"} found.`, `${state.commands.length} currently saved.`, "Merge adds new scripts and keeps the current library. Replace clears the current library first.", "Imported commands are typed into the terminal; they are never run automatically."];
@@ -351,8 +367,9 @@
       { label: "Manage scripts (reorder)…", icon: "list", run: () => selectPanel("library", true) },
     ];
     const build = () => {
-      const items = [{ heading: `Scripts (${state.commands.length})` }];
-      if (state.commands.length) items.push(...state.commands.map((c) => row(c, true)));
+      const shown = state.commands.filter((c) => !c.hidden);
+      const items = [{ heading: `Scripts (${shown.length})` }];
+      if (shown.length) items.push(...shown.map((c) => row(c, true)));
       else items.push({ label: "No scripts yet", disabled: true });
       items.push("-", ...manage);
       if (name === "system") items.push("-", { heading: "System commands" }, ...builtinCommands().map((c) => row(c, false)));

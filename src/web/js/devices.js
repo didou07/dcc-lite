@@ -493,9 +493,9 @@ $("#deviceAdd").addEventListener("click", () => openDeviceDialog());
 $("#deviceAddEmpty").addEventListener("click", () => openDeviceDialog());
 $("#devicesRefresh").addEventListener("click", testAllDevices);
 
-function openDevice(id, targetView) {
+async function openDevice(id, targetView) {
+  if ((await setCurrentDevice(id, Boolean(targetView))) === false) return;
   touchSite(id);
-  setCurrentDevice(id, Boolean(targetView));
   if (targetView) showView(targetView);
 }
 function refreshCurrentDeviceView() {
@@ -508,9 +508,19 @@ function refreshCurrentDeviceView() {
     case "signal": signalEnter(); break;
     case "packages": packagesEnter(); break;
     case "softcam": softcamEnter(); break;
+    case "disks": disksEnter(); break;
   }
 }
 function setCurrentDevice(id, deferViewRefresh = false) {
+  if (id !== devices.currentID && typeof bqDirty === "function" && bqDirty()) {
+    return bqDiscardOK("Switch device?").then((ok) => {
+      if (!ok) { $("#deviceSelect").value = devices.currentID || ""; return false; }
+      return applyCurrentDevice(id, deferViewRefresh);
+    });
+  }
+  return applyCurrentDevice(id, deferViewRefresh);
+}
+function applyCurrentDevice(id, deferViewRefresh = false) {
   const changed = id !== devices.currentID;
   devices.currentID = id;
   store.set("device", id);
@@ -537,6 +547,7 @@ const TOOL_PAGES = [
   { id: "packages", label: "Packages", icon: "box", view: "packages" },
   { id: "ipk", label: "Install .ipk", icon: "upload", view: "ipk" },
   { id: "signal", label: "Signal meter", icon: "signal", view: "signal" },
+  { id: "disks", label: "Disks", icon: "ft-disc", view: "disks" },
   { id: "softcam", label: "Softcam", icon: "key", view: "softcam" },
 ];
 const toolKnown = (id) => TOOL_PAGES.some((t) => t.id === id);
@@ -546,7 +557,7 @@ function rememberTool() {
   store.set("tool", tools.current);
   if (devices.currentID) store.set(`tool.${devices.currentID}`, tools.current);
 }
-const toolViews = ["lists", "ipk", "signal", "packages", "softcam"];
+const toolViews = ["lists", "ipk", "signal", "packages", "disks", "softcam"];
 function updateToolsNav() {
   for (const nav of $$("[data-toolsnav]")) {
     nav.replaceChildren(...TOOL_PAGES.map((t) => h("button", {
@@ -570,8 +581,8 @@ function showView(name) {
   if (view.current === "signal" && name !== "signal") signalStop();
   if (view.current === "logs" && name !== "logs") logsLeave();
   view.current = name;
-  if (name === "ipk" || name === "signal" || name === "packages" || name === "softcam") tools.current = name;
-  else if (name === "lists" && ["ipk", "signal", "packages", "softcam"].includes(tools.current)) tools.current = "editor";
+  if (name === "ipk" || name === "signal" || name === "packages" || name === "softcam" || name === "disks") tools.current = name;
+  else if (name === "lists" && ["ipk", "signal", "packages", "softcam", "disks"].includes(tools.current)) tools.current = "editor";
   document.body.dataset.view = name;
   const top = toolViews.includes(name) ? "tools" : name;
   for (const tab of $$("#mainTabs .tab")) tab.setAttribute("aria-selected", String(tab.dataset.view === top));
@@ -586,6 +597,7 @@ function showView(name) {
   if (name === "signal") signalEnter();
   if (name === "packages") packagesEnter();
   if (name === "softcam") softcamEnter();
+  if (name === "disks") disksEnter();
   if (name === "logs") logsEnter();
 }
 for (const tab of $$("#mainTabs .tab")) tab.addEventListener("click", () => showView(tab.dataset.view));

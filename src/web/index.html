@@ -36,11 +36,13 @@
   <script src="/js/live-osd.js" defer></script>
   <script src="/js/guide.js" defer></script>
   <script src="/js/guide-extras.js" defer></script>
+  <script src="/js/movies-edit.js" defer></script>
   <script src="/js/guide-grid.js" defer></script>
   <script src="/js/guide-auto.js" defer></script>
   <script src="/js/guide-epgrefresh.js" defer></script>
   <script src="/js/packages.js" defer></script>
   <script src="/js/softcam.js" defer></script>
+  <script src="/js/disks.js" defer></script>
   <script src="/js/settings-backup.js" defer></script>
   <script src="/js/logs.js" defer></script>
   <script src="/js/remote-access.js" defer></script>
@@ -73,6 +75,7 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-broom" viewBox="0 0 24 24"><path d="M20 4l-7.5 7.5M9 10l5 5M9 10c-3.5.5-5 3.5-5.5 10 6.5 0 9.5-1.5 10.5-5"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
     <symbol id="i-newfolder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9 13h6"/></symbol>
@@ -280,6 +283,7 @@
             <button type="button" class="icon-btn" data-act="up" title="Parent folder (Backspace)" aria-label="Parent folder"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg></button>
             <button type="button" class="icon-btn" data-act="root" title="Root folder" aria-label="Root folder"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></button>
             <button type="button" class="icon-btn" data-act="refresh" title="Refresh (Ctrl+R)" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+            <button type="button" class="icon-btn" data-act="clean" title="Remove unfinished uploads on the receiver" aria-label="Remove unfinished uploads"><svg class="ic" aria-hidden="true"><use href="#i-broom"/></svg></button>
             <input class="path-input" id="remotePath" type="text" spellcheck="false" autocomplete="off" aria-label="Remote path" value="/">
             <button type="button" class="icon-btn" data-act="bookmarks" title="Bookmarks" aria-label="Bookmarks"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
           </div>
@@ -631,6 +635,40 @@
       <p class="muted logs-empty" id="faultsEmpty" hidden>No faults recorded.</p>
     </div>
   </section>
+  <section class="view" id="view-disks" aria-label="Disks" hidden>
+    <div class="tools-top">
+      <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
+    </div>
+    <div class="sc-wrap dk-wrap">
+      <div class="sc-wait" aria-hidden="true"><i></i></div>
+      <header class="sc-head">
+        <div class="sc-heading">
+          <h2>Disks</h2>
+          <span class="sc-spin" id="dkSpin" role="status" hidden><i class="sc-spin-ring" aria-hidden="true"></i><span id="dkSpinText"></span></span>
+        </div>
+        <div class="sc-tools">
+          <button class="btn sm" id="dkAddShare" type="button" data-dk="1" title="Mount a folder from a computer or NAS on the network"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Add network share</button>
+          <button class="icon-btn" id="dkReload" type="button" data-dk="1" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+        </div>
+      </header>
+      <p class="sc-result small" id="dkResult" role="status" hidden></p>
+      <p class="form-error" id="dkError" role="alert" hidden></p>
+
+      <div class="dk-stats" id="dkMemory" aria-label="Memory and storage"></div>
+
+      <section class="dk-sec" aria-label="Drives">
+        <div class="dk-sec-head"><h3>Drives</h3><span class="sc-count" id="dkDriveCount"></span></div>
+        <div class="dk-grid" id="dkDrives"></div>
+        <p class="muted small sc-empty" id="dkNoDrives" hidden>No hard disk or USB drive was found on this receiver.</p>
+      </section>
+
+      <section class="dk-sec" aria-label="Network shares">
+        <div class="dk-sec-head"><h3>Network shares</h3><span class="sc-count" id="dkShareCount"></span></div>
+        <div class="dk-grid" id="dkShares"></div>
+        <p class="muted small sc-empty" id="dkNoShares" hidden>No network share is mounted.</p>
+      </section>
+    </div>
+  </section>
   <section class="view" id="view-softcam" aria-label="Softcam" hidden>
     <div class="tools-top">
       <nav class="toolsnav" data-toolsnav aria-label="Tools"></nav>
@@ -800,6 +838,7 @@
               <button class="live-btn" id="livePlay" type="button" title="Pause / play (Space)" aria-label="Pause"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg></button>
               <button class="live-btn" id="liveMute" type="button" title="Mute this player" aria-label="Mute"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg></button>
               <input class="live-vol" id="liveVol" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume">
+              <span class="live-vol-pct" id="liveVolPct" aria-hidden="true"></span>
               <button class="live-btn live-audio-btn" id="liveAudioBtn" type="button" title="Audio track" aria-label="Audio track" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-headphones"/></svg><span id="liveAudioLabel"></span></button>
               <button class="live-btn" id="liveSettingsBtn" type="button" title="Player settings" aria-label="Player settings" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg></button>
               <button class="live-btn live-osd-btn" id="liveOsdBtn" type="button" title="Show the receiver menus (OSD) over the video" aria-label="Receiver menus over the video" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-screen"/></svg><span>OSD</span></button>
@@ -1063,7 +1102,8 @@
   <div class="dialog-card command-edit-card">
     <h2 id="commandEditTitle">Add command</h2>
     <label class="field"><span>Name</span><input id="commandEditName" maxlength="80" autocomplete="off" spellcheck="false" placeholder="e.g. Restart Enigma2"></label>
-    <label class="field"><span>Terminal command</span><textarea id="commandEditText" rows="4" maxlength="1000" spellcheck="false" placeholder="Enter a single-line shell command"></textarea></label>
+    <label class="field"><span>Terminal command (one per line)</span><textarea id="commandEditText" rows="4" spellcheck="false" placeholder="Enter a shell command. Add more lines for Line2, Line3…"></textarea></label>
+    <label class="check"><input type="checkbox" id="commandEditAlt"> <span>Lines are alternatives — choose one with ↑/↓ (otherwise all run in order)</span></label>
     <p class="muted small" data-help>The command is typed into the active terminal. DCC Lite does not press Enter automatically.</p>
     <p class="form-error" id="commandEditError" role="alert" hidden></p>
     <div class="dialog-actions">
@@ -1212,6 +1252,106 @@
     <ul class="scan-results" id="scanResults"></ul>
     <div class="dialog-actions"><span class="spacer"></span><button class="btn" id="scanClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button></div>
   </div>
+</dialog>
+
+<dialog id="mvInfoDialog" aria-labelledby="mvInfoTitle">
+  <form method="dialog" id="mvInfoForm" class="dialog-card dk-dialog" autocomplete="off">
+    <h2 id="mvInfoTitle">Edit recording</h2>
+    <code id="mvInfoFile" class="ellipsis"></code>
+    <label class="field"><span>Title</span><input id="mvTitle" maxlength="150"></label>
+    <label class="field"><span>Description</span><textarea id="mvDesc" rows="3" maxlength="300"></textarea></label>
+    <label class="field"><span>Tags</span><input id="mvTags" spellcheck="false" placeholder="Separate tags with a space"></label>
+    <div class="mv-chips" id="mvTagChips" role="group" aria-label="Tags used on this receiver"></div>
+    <label class="check"><input type="checkbox" id="mvRename"> Also rename the file to match the title</label>
+    <p class="muted small" id="mvInfoNote">The receiver's own screen shows the change after it reloads its recordings.</p>
+    <p class="form-error" id="mvInfoError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" id="mvInfoCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="mvInfoOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="mvFolderDialog" aria-labelledby="mvFolderTitle">
+  <form method="dialog" class="dialog-card dk-dialog" onsubmit="return false" autocomplete="off">
+    <h2 id="mvFolderTitle">Folders</h2>
+    <code id="mvFolderDir" class="ellipsis"></code>
+    <section class="mv-sec">
+      <h3>New folder here</h3>
+      <div class="mv-row"><input id="mvNewName" maxlength="100" placeholder="Folder name" aria-label="New folder name" spellcheck="false"><button class="btn" id="mvCreate" type="button"><svg class="ic" aria-hidden="true"><use href="#i-newfolder"/></svg>Create</button></div>
+      <label class="check"><input type="checkbox" id="mvNewBookmark" checked> Add to the receiver's recording folders</label>
+    </section>
+    <section class="mv-sec" id="mvThisSec">
+      <h3>This folder</h3>
+      <div class="mv-row"><input id="mvRenameName" maxlength="100" aria-label="Folder name" spellcheck="false"><button class="btn" id="mvRenameDir" type="button"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg>Rename</button></div>
+      <div class="mv-row mv-btns">
+        <button class="btn" id="mvBookmark" type="button"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span></span></button>
+        <button class="btn danger" id="mvDeleteDir" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>Delete empty folder</button>
+      </div>
+    </section>
+    <p class="form-error" id="mvFolderError" role="alert" hidden></p>
+    <div class="dialog-actions"><span class="spacer"></span>
+      <button class="btn" id="mvFolderClose" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dkShareDialog" aria-labelledby="dkShareTitle">
+  <form method="dialog" id="dkShareForm" class="dialog-card dk-dialog" autocomplete="off">
+    <h2 id="dkShareTitle">Add network share</h2>
+    <div class="seg" id="dkShareKind" role="radiogroup" aria-label="Share type">
+      <button type="button" role="radio" data-kind="cifs" aria-checked="true">Windows / Samba (CIFS)</button>
+      <button type="button" role="radio" data-kind="nfs" aria-checked="false">NFS</button>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Server</span><input id="dkHost" maxlength="100" spellcheck="false" placeholder="192.168.1.20"></label>
+      <label class="field"><span id="dkShareLabel">Share name</span><input id="dkShare" maxlength="150" spellcheck="false" placeholder="Movies"></label>
+    </div>
+    <label class="field"><span>Mount folder on the receiver</span><input id="dkMount" maxlength="150" spellcheck="false" placeholder="/media/net/movies"></label>
+    <div id="dkCifsPane" class="dk-pane">
+      <div class="grid2">
+        <label class="field"><span>User name</span><input id="dkUser" maxlength="64" spellcheck="false" placeholder="Empty for guest access"></label>
+        <label class="field"><span>Password</span><input id="dkPass" type="password" maxlength="128" spellcheck="false" autocomplete="new-password"></label>
+      </div>
+    </div>
+    <details class="advanced">
+      <summary>Advanced</summary>
+      <div class="grid2">
+        <label class="field"><span id="dkVersionLabel">SMB version</span>
+          <select id="dkVersion"></select>
+        </label>
+        <label class="field" id="dkDomainField"><span>Domain</span><input id="dkDomain" maxlength="64" spellcheck="false" placeholder="Optional"></label>
+      </div>
+      <label class="field adv-start"><span>Extra mount options</span><input id="dkOptions" maxlength="120" spellcheck="false" placeholder="Optional, comma separated"></label>
+    </details>
+    <label class="check"><input type="checkbox" id="dkPersist" checked> Mount again at every start</label>
+    <p class="form-error" id="dkShareError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" id="dkShareCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn primary" id="dkShareOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>Mount</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dkFormatDialog" aria-labelledby="dkFormatTitle">
+  <form method="dialog" id="dkFormatForm" class="dialog-card dk-dialog" autocomplete="off">
+    <h2 id="dkFormatTitle">Format partition</h2>
+    <p class="dk-format-target"><code id="dkFormatDev"></code><span class="muted small" id="dkFormatInfo"></span></p>
+    <div class="grid2">
+      <label class="field"><span>File system</span><select id="dkFormatFS"></select></label>
+      <label class="field"><span>Name</span><input id="dkFormatLabel" maxlength="16" spellcheck="false" placeholder="Optional"></label>
+    </div>
+    <p class="dk-warn"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><span>Formatting erases everything on this partition. It cannot be undone.</span></p>
+    <label class="check"><input type="checkbox" id="dkFormatSure"> I understand that all files on it will be lost</label>
+    <p class="form-error" id="dkFormatError" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button class="btn" id="dkFormatCancel" type="button"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>Cancel</button>
+      <button class="btn danger" id="dkFormatOk" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg>Continue</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="bqAddDialog" aria-labelledby="bqAddTitle">
@@ -1470,6 +1610,7 @@
       <select id="guideMovieTag" class="gd-narrow" hidden></select>
       <label class="sr-only" for="guideMovieSort">Sort by</label>
       <select id="guideMovieSort" class="gd-narrow"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="name">Name</option><option value="size">Largest first</option><option value="length">Longest first</option><option value="unseen">Not watched first</option></select>
+      <button class="btn sq" id="guideFolderTools" type="button" title="Folders: create, rename, delete, recording folders" aria-label="Folders"><svg class="ic" aria-hidden="true"><use href="#i-newfolder"/></svg></button>
       <button class="btn sq" id="guideMoviesRefresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button>
     </div>
     <div class="gd-body" id="guideList" data-tab="epg" tabindex="-1" autofocus aria-live="polite"></div>

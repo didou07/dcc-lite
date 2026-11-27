@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	crashlog "github.com/didou07/dcc-lite/src/aaacrash"
 	"github.com/didou07/dcc-lite/src/app"
 	"github.com/didou07/dcc-lite/src/config"
 	"github.com/didou07/dcc-lite/src/httpapi"
@@ -117,6 +118,7 @@ func main() {
 		if r := recover(); r != nil {
 			logx.Panic(appLog, r, "DCC Lite")
 			logx.Close()
+			crashlog.Notify("DCC Lite", fmt.Sprintf("DCC Lite crashed: %v\n\nDetails were saved in:\n%s", r, hub.Dir()))
 			os.Exit(2)
 		}
 	}()

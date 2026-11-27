@@ -338,7 +338,7 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
     lastSize: null, manualOff: !autoConnect, subs: [], observer: null, findRow: -1, name: "", line: "", dirty: false, histIndex: -1, histDraft: "", selTimer: 0,
     wsPath: "", rx: 0, sessionEnded: false, reconnecting: false, watchdog: 0, wake: null, lastRx: 0, pingSentAt: 0,
   };
-  tab.subs.push(terminal.onData((data) => { if (tab.state === "connected") { trackTypedInput(tab, data); termSend(tab, data); } }));
+  tab.subs.push(terminal.onData((data) => { if (tab.state === "connected") { tab.alt = null; trackTypedInput(tab, data); termSend(tab, data); } }));
   tab.subs.push(terminal.onResize(({ cols, rows }) => {
     if (tab.state !== "connected" || tab.protocol !== "telnet" || tab.socket?.readyState !== WebSocket.OPEN) return;
     if (tab.lastSize?.cols === cols && tab.lastSize?.rows === rows) return;
@@ -353,6 +353,13 @@ function createTerminalTab({ profileID = "", protocol = term.protocol, port = nu
     if (event.ctrlKey && event.shiftKey && !event.altKey && key === "e") { event.preventDefault(); splitActive("col"); return false; }
     if (event.ctrlKey && event.shiftKey && !event.altKey && key === "w") { event.preventDefault(); closeTab(tab.id); return false; }
     if (event.altKey && event.shiftKey && !event.ctrlKey && event.key.startsWith("Arrow")) { event.preventDefault(); focusNeighbour(event.key.slice(5).toLowerCase()); return false; }
+    if (tab.alt && (event.key === "ArrowUp" || event.key === "ArrowDown") && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+      event.preventDefault();
+      const n = tab.alt.lines.length;
+      tab.alt.index = (tab.alt.index + (event.key === "ArrowDown" ? 1 : n - 1)) % n;
+      if (replaceTerminalInput(tab, tab.alt.lines[tab.alt.index])) toast(`Option ${tab.alt.index + 1} of ${n} — ↑/↓ to switch, Enter to run`);
+      return false;
+    }
     if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey && canRecallHistory(tab)) {
       event.preventDefault(); historyStep(tab, event.key === "ArrowUp" ? 1 : -1); return false;
     }

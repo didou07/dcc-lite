@@ -3,6 +3,7 @@ async function powerAction(action, doing, confirm = null, report = remoteError) 
   const id = screenView.profileID;
   if (!id) return false;
   if (confirm && !(await ask({ title: confirm.title, message: confirm.message, input: false, ok: confirm.ok, danger: true }))) return false;
+  if (confirm && opBusy(id)) return false;
   report("");
   try {
     const data = await post(profileURL(id, "power"), { action });
@@ -108,7 +109,7 @@ async function powerBoot(id, slot) {
     message: `The receiver restarts into “${slot.label}”.`,
     input: false, ok: "Restart", danger: true,
   });
-  if (!ok) return false;
+  if (!ok || opBusy(id)) return false;
   try {
     await post(profileURL(id, "multiboot"), { slot: slot.slot, code: slot.code });
     toast(`Restarting into ${slot.label}…`);

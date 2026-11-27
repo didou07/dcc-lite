@@ -94,7 +94,7 @@
     deviceDialog: "tv", termCfgDialog: "sliders", pasteDialog: "paste", raDialog: "lock",
     scanDialog: "search", bqAddDialog: "plus", bqStreamDialog: "link", editorDialog: "edit", powerDialog: "power",
     guideDialog: "calendar", timerDialog: "bell", atDialog: "bolt", erDialog: "calendar", svcDialog: "info", askDialog: "info", themeDialog: "palette", diagDialog: "plug", keysDialog: "keyboard",
-    updDialog: "refresh", chmodDialog: "lock", commandEditDialog: "terminal", previewDialog: "eye",
+    mvInfoDialog: "sliders", mvFolderDialog: "newfolder", dkShareDialog: "plug", dkFormatDialog: "eraser", updDialog: "refresh", chmodDialog: "lock", commandEditDialog: "terminal", previewDialog: "eye",
   };
   for (const id of ["diagDialog", "svcDialog"]) {
     const dialog = document.getElementById(id);

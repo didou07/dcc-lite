@@ -30,8 +30,7 @@ function scSetBusy(busy) {
   $("#scSpin").hidden = !busy;
   if (!busy) scStatus("");
   $("#view-softcam .sc-wait")?.classList.toggle("on", busy);
-  // The Tools tab gear turns while this page works.
-  $('#mainTabs .tab[data-view="tools"]')?.classList.toggle("busy", busy);
+  syncToolsBusy();
   for (const button of $$("#view-softcam button[data-sc]")) button.disabled = busy;
   $("#scKillAll").disabled = busy || !(sc.info?.procs || []).length;
 }
@@ -212,18 +211,64 @@ function scRender(info) {
   $("#scKillAll").disabled = sc.busy;
 
   const files = [...(info.files || [])].sort((a, b) => a.path.localeCompare(b.path));
-  $("#scFilesCount").textContent = files.length ? String(files.length) : "0";
-  $("#scFiles").replaceChildren(...files.map((file) => {
+  $("#scFilesCount").textContent = String(files.length);
+  $("#scFiles").replaceChildren(...scTreeNodes(files, info));
+}
+
+// Configuration files are grouped by folder.
+sc.closed = new Set();
+
+function scFileRow(file) {
+  return h("div", { class: "sc-file" },
+    icon(/key|\.bin$|\.cw$/i.test(file.name) ? "ft-key" : "ft-config"),
+    h("span", { class: "sc-path", title: file.path }, h("b", { text: file.name })),
+    h("span", { class: "sc-size", text: scSize(file.size || 0) }),
+    h("button", { class: "icon-btn xs", type: "button", title: "Copy path", "aria-label": "Copy path", onClick: () => scCopy(file.path) }, icon("copy")),
+    h("button", { class: "icon-btn xs", type: "button", title: "Edit", "aria-label": "Edit", dataset: { sc: "1" }, onClick: () => scEdit(file.path) }, icon("edit")));
+}
+
+// One section per folder: the full path as the title, its own files directly below.
+function scFolder(dir, list, owners) {
+  const split = dir.lastIndexOf("/");
+  const details = h("details", { class: "sc-dir" },
+    h("summary", { class: "sc-dir-head", title: dir },
+      h("span", { class: "sc-disclosure", "aria-hidden": "true", text: "▸" }),
+      icon("folder"),
+      h("span", { class: "sc-dir-name" },
+        h("span", { class: "muted", text: dir.slice(0, split + 1) }),
+        h("b", { text: dir.slice(split + 1) })),
+      ...owners.map((name) => h("span", { class: "sc-tag active", text: name })),
+      h("span", { class: "sc-count", text: String(list.length) })),
+    h("div", { class: "sc-dir-body" }, ...list.map(scFileRow)));
+  details.open = !sc.closed.has(dir);
+  details.addEventListener("toggle", () => {
+    if (details.open) sc.closed.delete(dir);
+    else sc.closed.add(dir);
+  });
+  return details;
+}
+
+function scTreeNodes(files, info) {
+  const groups = new Map();
+  for (const file of files) {
     const split = file.path.lastIndexOf("/");
-    return h("div", { class: "sc-file" },
-      icon(/key|\.bin$|\.cw$/i.test(file.path.slice(split + 1)) ? "ft-key" : "ft-config"),
-      h("span", { class: "sc-path" },
-        h("span", { class: "muted", text: file.path.slice(0, split + 1) }),
-        h("b", { text: file.path.slice(split + 1) })),
-      h("span", { class: "sc-size", text: scSize(file.size || 0) }),
-      h("button", { class: "icon-btn xs", type: "button", title: "Copy path", "aria-label": "Copy path", onClick: () => scCopy(file.path) }, icon("copy")),
-      h("button", { class: "icon-btn xs", type: "button", title: "Edit", "aria-label": "Edit", dataset: { sc: "1" }, onClick: () => scEdit(file.path) }, icon("edit")));
-  }));
+    const dir = file.path.slice(0, split) || "/";
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push({ ...file, name: file.path.slice(split + 1) });
+  }
+  // Which cams use each folder: the same config folder that the cam row shows.
+  const owners = new Map();
+  const assigned = scAssign(info);
+  const active = scActiveName(info);
+  for (const name of info.cams || []) {
+    if (name === "softcam" && active && (info.cams || []).includes(active)) continue;
+    const processes = assigned.get(name) || [];
+    const conf = scDir(processes.find((process) => process.conf)?.conf || (info.confs || {})[name]);
+    if (!conf) continue;
+    if (!owners.has(conf)) owners.set(conf, []);
+    owners.get(conf).push(scLabel(name));
+  }
+  return [...groups.keys()].sort().map((dir) => scFolder(dir, groups.get(dir).sort((a, b) => a.name.localeCompare(b.name)), owners.get(dir) || []));
 }
 
 async function scLoad({ quiet = false } = {}) {
@@ -284,6 +329,7 @@ async function scAction(action, cam) {
     if (!accepted) return;
   }
 
+  if (!opBegin("softcam", device.id, "Another operation")) return;
   scError("");
   scResult("");
   scSetBusy(true);
@@ -294,10 +340,12 @@ async function scAction(action, cam) {
   } catch (error) {
     scError(error.message);
     scSetBusy(false);
+    opEnd("softcam");
     return;
   }
 
   scSetBusy(false);
+  opEnd("softcam");
   const info = await scLoad();
   const state = info || sc.info || {};
   const live = scProcsOf(state, target).length > 0;
@@ -330,6 +378,7 @@ async function scKill(pids, label, all = false) {
     danger: true,
   });
   if (!accepted) return;
+  if (!opBegin("softcam", device.id, "Another operation")) return;
   scError("");
   scResult("");
   scSetBusy(true);
@@ -347,6 +396,7 @@ async function scKill(pids, label, all = false) {
     scError(error.message);
   } finally {
     scSetBusy(false);
+    opEnd("softcam");
   }
   // Reload without wiping the message just shown.
   const node = $("#scResult");

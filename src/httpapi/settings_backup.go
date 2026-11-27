@@ -29,13 +29,45 @@ const (
 	scopeChannels = "channels"
 	scopeSettings = "settings"
 	scopeSoftcam  = "softcam"
+	scopeEmus     = "emus"
 )
 
 var settingsScopeIDs = []string{scopeChannels, scopeSettings, scopeSoftcam}
 
+var settingsAllScopeIDs = []string{scopeChannels, scopeSettings, scopeSoftcam, scopeEmus}
+
 var settingsChannelExtras = []string{"etc/tuxbox/satellites.xml", "etc/tuxbox/terrestrial.xml", "etc/tuxbox/cables.xml"}
 
-var settingsSoftcamPaths = []string{"etc/tuxbox/config", "var/tuxbox/config", "etc/CCcam.cfg", "var/etc/CCcam.cfg", "var/keys", "usr/keys"}
+var settingsSoftcamPaths = []string{"etc/tuxbox/config", "var/tuxbox/config", "etc/CCcam.cfg", "var/etc/CCcam.cfg", "var/keys", "usr/keys", "etc/oscam", "etc/ncam", "var/etc/oscam", "var/etc/ncam"}
+
+var (
+	settingsLooseConfDirs = []string{"etc", "var/etc", "usr/local/etc"}
+	settingsEmuDirs       = []string{"usr/softcams", "var/emu", "usr/emu"}
+	settingsEmuNamedDirs  = []string{"usr/bin", "usr/sbin", "var/bin", "usr/local/bin", "etc/init.d"}
+)
+
+func softcamLooseCase() string { return "[Ss][Oo][Ff][Tt][Cc][Aa][Mm]*|" + softcamCase() }
+
+var softcamLooseRe = func() *regexp.Regexp {
+	parts := []string{`softcam[\w.+-]*`}
+	for _, n := range softcamNames {
+		if n == "camd" {
+			parts = append(parts, `[\w.+-]*camd[\w.+-]*`)
+		} else {
+			parts = append(parts, n+`[\w.+-]*`)
+		}
+	}
+	return regexp.MustCompile(`(?i)^(` + strings.Join(parts, "|") + `)$`)
+}()
+
+func inList(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
 
 const channelNamePattern = "lamedb|lamedb5|bouquets.tv|bouquets.radio|blacklist|whitelist|whitelist_streamrelay|userbouquet.*.tv|userbouquet.*.radio|alternatives.*.tv|alternatives.*.radio"
 
@@ -64,7 +96,7 @@ var (
 const settingsSafetyKeep = 15
 
 func settingsScopeKnown(id string) bool {
-	for _, k := range settingsScopeIDs {
+	for _, k := range settingsAllScopeIDs {
 		if k == id {
 			return true
 		}
@@ -89,6 +121,20 @@ func settingsScopeOf(name string) string {
 	}
 	for _, p := range settingsSoftcamPaths {
 		if underPath(name, p) {
+			return scopeSoftcam
+		}
+	}
+	for _, p := range settingsEmuDirs {
+		if underPath(name, p) {
+			return scopeEmus
+		}
+	}
+	dir, base := path.Dir(name), path.Base(name)
+	if softcamLooseRe.MatchString(base) {
+		if inList(settingsEmuNamedDirs, dir) {
+			return scopeEmus
+		}
+		if inList(settingsLooseConfDirs, dir) {
 			return scopeSoftcam
 		}
 	}
@@ -126,11 +172,19 @@ func settingsPackCommand(root string, scopes []string, remote string) (string, e
 	add := func(paths []string, test string) {
 		b.WriteString("for f in " + strings.Join(paths, " ") + "; do [ " + test + " \"$f\" ] && set -- \"$@\" \"$f\"; done; ")
 	}
+	named := func(dirs []string) {
+		b.WriteString("for d in " + strings.Join(dirs, " ") + "; do for f in \"$d\"/*; do [ -f \"$f\" ] && [ ! -L \"$f\" ] || continue; case \"${f##*/}\" in " + softcamLooseCase() + ") set -- \"$@\" \"$f\";; esac; done; done; ")
+	}
 	if want[scopeChannels] {
 		add(settingsChannelExtras, "-f")
 	}
 	if want[scopeSoftcam] {
 		add(settingsSoftcamPaths, "-e")
+		named(settingsLooseConfDirs)
+	}
+	if want[scopeEmus] {
+		add(settingsEmuDirs, "-e")
+		named(settingsEmuNamedDirs)
 	}
 	b.WriteString("[ $# -gt 0 ] || { echo NOFILES; exit 0; }; tar -czf " + remote + " \"$@\" 2>/dev/null; echo \"rc=$?\"; md5sum " + remote + "; wc -c < " + remote)
 	return b.String(), nil

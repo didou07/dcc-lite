@@ -463,6 +463,7 @@ func (n *nativeLive) ensureChild() error {
 		}
 		done <- result{h: h}
 		go n.watchMouse()
+		defer n.installWheelHook()()
 		var msg winMsg
 		for {
 			r, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)

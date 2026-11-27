@@ -6,7 +6,9 @@ const toolsDirQuery = (lead) => (toolsDirValue() !== "/etc/enigma2" ? `${lead}di
 function toolsError(message) { const box = $(`#${toolsState.ui}Error`); box.textContent = message || ""; box.hidden = !message; }
 function toolsBusy(busy, text = "") {
   toolsState.busy = busy;
-  for (const id of ["#stBackup", "#stRestore", "#toolsIpk"]) $(id).disabled = busy;
+  if (!busy) opEnd("tools");
+  $("#toolsIpk").disabled = busy;
+  if (typeof stSyncButtons === "function") stSyncButtons();
   $(`#${toolsState.ui}Progress`).hidden = !busy;
   $(`#${toolsState.ui}ProgressText`).textContent = text;
   $(`#${toolsState.ui}Progress .tools-bar span`).style.width = "0";
@@ -86,6 +88,7 @@ async function toolsRestoreZip(file) {
   const device = currentDevice();
   const confirmed = await ask({ title: "Restore channel list", message: `Replace the channel list on ${device?.name || "the receiver"} with “${file.name}”? The current list is saved first.`, input: false, ok: "Restore", danger: true });
   if (!confirmed) return;
+  if (!opBegin("tools", device.id, "A channel list restore")) return;
   stMessage("");
   toolsBusy(true, "Uploading…");
   try {
@@ -111,6 +114,7 @@ async function toolsInstallIPK() {
   const name = ipkSafeName(file.name);
   const confirmed = await ask({ title: "Install package", message: `“${name}” is installed on ${device?.name || "the receiver"}. Install only packages you trust.`, input: false, ok: "Upload and install" });
   if (!confirmed) return;
+  if (!opBegin("tools", device.id, "A package installation")) return;
   toolsBusy(true, "Uploading the package…");
   try {
     const flags = [$("#toolsIpkForce").checked && "force=1", $("#toolsIpkRestart").checked && "restart=1"].filter(Boolean);
@@ -165,6 +169,7 @@ async function rpRestore(point) {
   const when = new Date(point.created).toLocaleString();
   const confirmed = await ask({ title: "Restore this copy", message: `Replace the list on ${device?.name || "the receiver"} with the copy from ${when}? The current list is saved first.`, input: false, ok: "Restore", danger: true });
   if (!confirmed) return;
+  if (!opBegin("tools", device.id, "A channel list restore")) return;
   stMessage("");
   toolsBusy(true, "Restoring…");
   try {

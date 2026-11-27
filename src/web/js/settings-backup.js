@@ -1,6 +1,6 @@
 "use strict";
 const stState = { busy: false };
-const stNames = { channels: "Channels", settings: "Settings", softcam: "Softcam" };
+const stNames = { channels: "Channels", settings: "Settings", softcam: "Softcam", emus: "Softcam programs" };
 const stIsZip = (file) => /\.zip$/i.test(file?.name || "");
 function stMessage(text, bad = false) {
   const n = $("#stResult"), parts = [].concat(text || []).filter(Boolean);
@@ -8,13 +8,15 @@ function stMessage(text, bad = false) {
   n.replaceChildren(...parts.flatMap((p, i) => [i ? " " : "", h("span", { text: p })]).filter((x) => x !== ""));
   n.classList.toggle("is-error", Boolean(bad));
 }
-function stScopes() { return $$("#stScopes input:checked").map((i) => i.value); }
+// "Softcam" covers both the configuration and the softcam programs.
+function stScopes() { return $$("#stScopes input:checked").flatMap((i) => (i.value === "softcam" ? ["softcam", "emus"] : [i.value])); }
 function stPick(file) {
   $("#stDropName").textContent = file ? file.name : "Choose a backup file";
   $("#stDrop").classList.toggle("has-file", Boolean(file));
   $("#stAfterField").hidden = stIsZip(file);
 }
-function stBusy(busy) { stState.busy = busy; for (const id of ["#stBackup", "#stRestore"]) $(id).disabled = busy; }
+function stSyncButtons() { const off = stState.busy || (typeof toolsState !== "undefined" && toolsState.busy); for (const id of ["#stBackup", "#stRestore"]) $(id).disabled = off; }
+function stBusy(busy) { stState.busy = busy; if (!busy) opEnd("backup"); stSyncButtons(); }
 
 async function stDownloadBackup(device, scopes) {
   const response = await fetchChecked(profileURL(device.id, "settings/backup"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scopes }) });
@@ -30,6 +32,7 @@ async function stBackup() {
   if (!device) { toast("Choose a device first"); return; }
   const scopes = stScopes();
   if (!scopes.length) { toast("Choose what to back up", "error"); return; }
+  if (!opBegin("backup", device.id, "A backup or restore")) return;
   stBusy(true); stMessage("Backing up…");
   try { stMessage(await stDownloadBackup(device, scopes)); } catch (error) { stMessage(error.message, true); }
   stBusy(false);
@@ -41,13 +44,16 @@ async function stRestore() {
   if (!device) { toast("Choose a device first"); return; }
   if (!file) { toast("Choose a backup file first"); return; }
   if (stIsZip(file)) { await toolsRestoreZip(file); return; }
+  if (!opBegin("backup", device.id, "A backup or restore")) return;
   stBusy(true); stMessage("Checking the backup…");
   let preview;
   try {
     const form = new FormData(); form.append("file", file, file.name);
     preview = await (await fetchChecked(profileURL(device.id, "settings/preview"), { method: "POST", body: form })).json();
   } catch (error) { stMessage(error.message, true); stBusy(false); return; }
-  const parts = Object.entries(preview.scopes || {}).map(([k, n]) => `${DCC_I18N.t(stNames[k] || k)}: ${n}`).join(" · ");
+  const merged = {};
+  for (const [k, n] of Object.entries(preview.scopes || {})) merged[k === "emus" ? "softcam" : k] = (merged[k === "emus" ? "softcam" : k] || 0) + n;
+  const parts = Object.entries(merged).map(([k, n]) => `${DCC_I18N.t(stNames[k] || k)}: ${n}`).join(" · ");
   const reboot = $("#stAfter").value === "reboot", T = DCC_I18N.t;
   const ok = await ask({
     title: "Restore backup",
@@ -78,3 +84,5 @@ $("#stFile").addEventListener("change", () => stPick($("#stFile").files[0]));
     stPick(file);
   });
 }
+
+window.DCC_I18N?.add?.("ar", { "Softcam programs": "برامج السوفتكام", "The softcam programs themselves (oscam, ncam…) and their start scripts. Larger; not needed when the same image is reinstalled.": "برامج السوفتكام نفسها (oscam وncam…) وسكربتات تشغيلها. حجمها أكبر، ولا حاجة لها إذا أُعيد تثبيت الصورة نفسها." });

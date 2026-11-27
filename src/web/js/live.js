@@ -364,6 +364,7 @@ function livePopClose() {
   const pop = $("#livePop");
   if (pop) pop.remove();
   live.popKind = "";
+  live.setPage = "";
   if (live.popup) { live.popup = false; liveSyncNative(); }
   if (live.settingsDirty) {
     live.settingsDirty = false;
@@ -424,17 +425,47 @@ function liveEngineParts(again) {
   ];
 }
 
+const livePopRow = (label, value, onClick, toggle = null) => h("button", { type: "button", role: toggle === null ? "menuitem" : "menuitemcheckbox", class: "pop-row", "aria-checked": toggle === null ? null : String(toggle), onClick },
+  h("span", { class: "pop-lbl", text: label }),
+  toggle === null
+    ? h("span", { class: "pop-val" }, h("span", { text: value }), h("i", { class: "pop-chev", "aria-hidden": "true", text: "›" }))
+    : h("span", { class: "pop-sw", "aria-hidden": "true" }));
+
 function liveSettingsRender() {
   const pop = $("#livePop");
   if (!pop || live.popKind !== "settings") return;
-  const title = livePopTitle, item = livePopItem;
-  const parts = [...liveFitParts(liveSettingsRender), ...liveEngineParts(liveSettingsRender)];
-  if (live.rx.length > 1) {
-    parts.push(title("Receiver audio"));
-    for (const t of live.rx) {
-      parts.push(item(!!t.active, t.description || `Track ${t.index + 1}`, "", async () => {
-        try { await post(profileURL(screenView.profileID, "audio"), { index: t.index }); toast("Receiver audio changed"); liveRxAudio(); } catch (error) { toastError(error); }
-      }, "Changes the audio on the receiver / TV, not in this player"));
+  const page = live.setPage || "";
+  const go = (name) => () => { live.setPage = name; liveSettingsRender(); };
+  const back = () => { live.setPage = ""; liveSettingsRender(); };
+  const pick = (apply) => () => { apply(); live.setPage = ""; liveSettingsRender(); };
+  const change = (apply) => pick(() => { apply(); live.settingsDirty = true; });
+  const nameOf = (list, value) => (list.find((x) => x[0] === value) || list[0])[1];
+  const sub = (title, items) => [
+    h("button", { type: "button", role: "menuitem", class: "pop-back", onClick: back }, h("i", { "aria-hidden": "true", text: "‹" }), h("span", { text: title })),
+    ...items,
+  ];
+  let parts;
+  if (page === "fit") {
+    parts = sub("Video size", LIVE_FIT.map(([v, l]) => livePopItem(live.fit === v, l, "", pick(() => liveSetFit(v)))));
+  } else if (page === "deint") {
+    parts = sub("Deinterlace", LIVE_DEINT.map(([v, l]) => livePopItem(live.deint === v, l, "", change(() => { live.deint = v; store.set("live.deint", v); }))));
+  } else if (page === "cache") {
+    parts = sub("Buffering", LIVE_CACHE.map(([v, l]) => livePopItem(live.caching === v, l, "", change(() => { live.caching = v; store.set("live.caching", v); }))));
+  } else if (page === "rx") {
+    parts = sub("Receiver audio", live.rx.map((t) => livePopItem(!!t.active, t.description || `Track ${t.index + 1}`, "", async () => {
+      try { await post(profileURL(screenView.profileID, "audio"), { index: t.index }); toast("Receiver audio changed"); await liveRxAudio(); } catch (error) { toastError(error); }
+      back();
+    })));
+  } else {
+    parts = [
+      livePopRow("Video size", nameOf(LIVE_FIT, live.fit), go("fit")),
+      livePopRow("Deinterlace", nameOf(LIVE_DEINT, live.deint), go("deint")),
+      livePopRow("Buffering", nameOf(LIVE_CACHE, live.caching), go("cache")),
+      livePopRow("Hardware decoding", "", change(() => { live.hw = !live.hw; store.set("live.hw", live.hw); }), !!live.hw),
+    ];
+    if (live.rx.length > 1) {
+      const cur = live.rx.find((t) => t.active);
+      parts.push(livePopRow("Receiver audio", cur ? (cur.description || `Track ${cur.index + 1}`) : "", go("rx")));
     }
   }
   const keep = pop.scrollTop;
@@ -446,6 +477,7 @@ function liveSettingsMenu() {
   const pop = h("div", { class: "live-pop live-pop-settings", id: "livePop", role: "menu", "aria-label": "Player settings" });
   $("#liveBar").append(pop);
   live.popKind = "settings";
+  live.setPage = "";
   live.popup = true;
   liveSyncNative();
   liveSettingsRender();
@@ -507,25 +539,50 @@ function liveCtxPlace() {
   pop.style.left = `${Math.max(gap, Math.min(live.ctxAt.x, window.innerWidth - box.width - gap))}px`;
   pop.style.top = `${Math.max(gap, Math.min(live.ctxAt.y, window.innerHeight - box.height - gap))}px`;
 }
+const liveIcon = (id) => {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ic"); svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#${id}`); svg.append(use);
+  return svg;
+};
 function liveCtxRender() {
   const pop = $("#livePop");
   if (!pop || live.popKind !== "ctx") return;
+  const page = live.ctxPage || "";
   const then = (fn) => () => { livePopClose(); fn(); };
-  const parts = [
-    livePopAction(live.paused ? "Play" : "Pause", then(liveTogglePlay), "Space"),
-    livePopAction(live.muted || live.volume === 0 ? "Unmute" : "Mute", then(liveToggleMute)),
-    livePopAction(live.fs ? "Exit full screen" : "Full screen", then(liveFullToggle), "F"),
-    livePopAction("Save a snapshot", then(liveSnapshot)),
-    ...(typeof liveOsdCtxItems === "function" ? liveOsdCtxItems(then) : []),
-    ...liveFitParts(liveCtxRender),
+  const go = (name) => () => { live.ctxPage = name; liveCtxRender(); };
+  const back = () => { live.ctxPage = ""; liveCtxRender(); };
+  const sub = (title, items) => [
+    h("button", { type: "button", role: "menuitem", class: "pop-back", onClick: back }, h("i", { "aria-hidden": "true", text: "‹" }), h("span", { text: title })),
+    ...items,
   ];
-  if (live.audio.length > 1) {
-    parts.push(livePopTitle("Audio track"));
-    for (const t of live.audio) parts.push(livePopItem(t.id === live.audioCur, t.name, "", async () => { await liveSelectAudio(t.id); liveCtxRender(); }));
+  let parts;
+  if (page === "fit") {
+    parts = sub("Video size", LIVE_FIT.map(([v, l]) => livePopItem(live.fit === v, l, "", () => { liveSetFit(v); back(); })));
+  } else if (page === "audio") {
+    parts = sub("Audio track", live.audio.map((t) => livePopItem(t.id === live.audioCur, t.name, "", async () => { await liveSelectAudio(t.id); back(); })));
+  } else {
+    const off = live.muted || live.volume === 0;
+    const quick = (icon, label, fn) => h("button", { type: "button", role: "menuitem", class: "pop-q", title: label, "aria-label": label, onClick: then(fn) }, liveIcon(icon));
+    const vol = h("input", { type: "range", class: "live-vol pop-vol", min: "0", max: "1", step: "0.02", "aria-label": "Volume" });
+    vol.value = String(off ? 0 : live.volume / 100);
+    vol.addEventListener("input", () => { live.volume = Math.round(Number(vol.value) * 100); live.muted = live.volume === 0; livePushVolume(); });
+    parts = [
+      h("div", { class: "pop-quick" },
+        quick(live.paused ? "i-play" : "i-pause", live.paused ? "Play" : "Pause", liveTogglePlay),
+        quick(off ? "i-volume-off" : "i-volume", off ? "Unmute" : "Mute", liveToggleMute),
+        quick("i-camera", "Save a snapshot", liveSnapshot),
+        quick(live.fs ? "i-collapse" : "i-expand", live.fs ? "Exit full screen" : "Full screen", liveFullToggle)),
+      h("div", { class: "pop-volrow" }, liveIcon("i-volume"), vol),
+      livePopRow("Video size", (LIVE_FIT.find((x) => x[0] === live.fit) || LIVE_FIT[0])[1], go("fit")),
+    ];
+    if (live.audio.length > 1) parts.push(livePopRow("Audio track", (live.audio.find((t) => t.id === live.audioCur) || {}).name || "", go("audio")));
+    if (typeof liveOsdToggle === "function" && !$("#liveOsdBtn").hidden) parts.push(livePopRow("OSD", "", () => { liveOsdToggle(); liveCtxRender(); }, !!(liveOsd.on && !liveOsd.blocked)));
+    parts.push(h("div", { class: "pop-sep", role: "separator" }),
+      livePopRow("Player settings", "", then(liveSettingsMenu)),
+      h("button", { type: "button", role: "menuitem", class: "pop-row pop-danger", onClick: then(liveStop) }, h("span", { class: "pop-lbl", text: "Stop watching" }), h("span", { class: "pop-val" }, h("span", { text: "L" }))));
   }
-  parts.push(h("div", { class: "pop-sep", role: "separator" }),
-    livePopAction("Player settings", then(liveSettingsMenu)),
-    livePopAction("Stop watching", then(liveStop), "L"));
   const keep = pop.scrollTop;
   pop.replaceChildren(...parts);
   pop.scrollTop = keep;
@@ -537,6 +594,7 @@ function liveContextMenu(x, y) {
   pop.addEventListener("contextmenu", (event) => event.preventDefault());
   $("#screenStage").append(pop);
   live.popKind = "ctx";
+  live.ctxPage = "";
   live.ctxAt = { x, y };
   live.popup = true;
   liveSyncNative();
@@ -656,6 +714,7 @@ function liveSyncPlay() {
 }
 function liveSyncVolume() {
   $("#liveVol").value = String(live.muted ? 0 : live.volume / 100);
+  $("#liveVolPct").textContent = `${live.muted ? 0 : live.volume}%`;
   const off = live.muted || live.volume === 0;
   $("#liveMute use").setAttribute("href", off ? "#i-volume-off" : "#i-volume");
   $("#liveMute").setAttribute("aria-label", off ? "Unmute" : "Mute");
@@ -664,6 +723,13 @@ async function liveTogglePlay() {
   if (!live.on || !live.hasPicture) return;
   const paused = !live.paused;
   try { await liveCall("pause", { paused }); live.paused = paused; liveSyncPlay(); } catch (error) { toast(liveMessage(error), "error"); }
+}
+function liveVolStep(dir) {
+  if (!live.on) return;
+  const base = live.muted ? 0 : live.volume;
+  live.volume = Math.min(100, Math.max(0, base + dir * 5));
+  live.muted = live.volume === 0;
+  livePushVolume();
 }
 function livePushVolume() {
   store.set("live.volume", live.volume);
@@ -684,7 +750,7 @@ if (liveNative) {
     if (kind === "dbl") { if (once("dbl")) liveFullToggle(); }
     else if (kind === "menu") { if (once("menu")) liveContextMenu(x, y); }
     else if (kind === "move") liveFsWake();
-    else if (kind === "wheel") { const view = $("#liveVideo").closest(".view"); if (view) view.scrollBy({ top: y }); }
+    else if (kind === "wheel") liveVolStep(y > 0 ? -1 : 1);
   };
   let mouseBusy = false;
   window.setInterval(async () => {
@@ -707,6 +773,7 @@ if (liveNative) {
     live.muted = live.volume === 0;
     livePushVolume();
   });
+  for (const sel of ["#liveVideo", "#liveVol", "#liveMute"]) $(sel).addEventListener("wheel", (event) => { if (!live.on) return; event.preventDefault(); liveVolStep(event.deltaY > 0 ? -1 : 1); }, { passive: false });
   $("#liveSnap").addEventListener("click", liveSnapshot);
   $("#livePanelBtn").addEventListener("click", liveTogglePanel);
   $("#livePanelClose").addEventListener("click", liveTogglePanel);
@@ -719,7 +786,11 @@ if (liveNative) {
     $("#liveFull use").setAttribute("href", document.fullscreenElement || live.fs ? "#i-collapse" : "#i-expand");
     window.setTimeout(() => liveSyncNative(true), 120);
   });
-  document.addEventListener("click", (event) => { if (!event.target.closest("#livePop, #liveAudioBtn, #liveSettingsBtn")) livePopClose(); });
+  document.addEventListener("click", (event) => {
+    const path = event.composedPath();
+    if (path.some((el) => el.id === "livePop" || el.id === "liveAudioBtn" || el.id === "liveSettingsBtn")) return;
+    livePopClose();
+  });
   document.addEventListener("keydown", (event) => {
     if (view.current !== "screen" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
     if (document.querySelector("dialog[open]")) return;

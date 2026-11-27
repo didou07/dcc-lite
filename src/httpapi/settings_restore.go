@@ -187,7 +187,14 @@ func (s *Server) settingsRestore(w http.ResponseWriter, r *http.Request) {
 	if after == "reboot" {
 		finish = "reboot"
 	}
-	body := "sleep 2; (systemctl stop enigma2 2>/dev/null || init 4); sleep 4; tar -xzf " + remote + " -C / ; rm -f " + remote + "; sync; " + finish
+	stopCams, startCams := "", ""
+	if rev.Scopes[scopeEmus] > 0 {
+		stopCams = "R=0; for P in /proc/[0-9]*; do E=$(readlink $P/exe 2>/dev/null); N=${E##*/}; N=${N% (deleted)}; case \"$N\" in " + softcamLooseCase() + ") kill ${P#/proc/} 2>/dev/null; R=1;; esac; done; sleep 2; "
+		if after != "reboot" {
+			startCams = "[ $R = 1 ] && [ -x /etc/init.d/softcam ] && /etc/init.d/softcam start >/dev/null 2>&1; "
+		}
+	}
+	body := "sleep 2; (systemctl stop enigma2 2>/dev/null || init 4); sleep 4; " + stopCams + "tar -xzf " + remote + " -C / ; rm -f " + remote + "; sync; " + startCams + finish
 	cmd := "nohup sh -c '" + body + "' > /dev/null 2>&1 & echo started"
 	if _, _, err := run.run(ctx, 30*time.Second, cmd, 2<<10); err != nil {
 		telnetFailure(w, profile, err)

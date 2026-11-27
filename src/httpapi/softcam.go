@@ -14,17 +14,18 @@ import (
 )
 
 var (
-	softcamInitRe  = regexp.MustCompile(`^/etc/init\.d/[A-Za-z0-9._-]{1,48}$`)
-	softcamFileRe  = regexp.MustCompile(`^(/(etc/tuxbox/config|var/tuxbox/config|var/keys|usr/keys)/[A-Za-z0-9._+-]{1,64}|/(etc|var/etc)/CCcam\.cfg)$`)
-	softcamLogRe   = regexp.MustCompile(`^/(tmp|var/log)(/[A-Za-z0-9._-]{1,48}){0,2}/[A-Za-z0-9._-]{1,64}\.log$`)
-	softcamWebRe   = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,100}/(oscam|ncam)(-[A-Za-z0-9._-]+)?\.conf$`)
-	softcamProcRe  = regexp.MustCompile(`(?i)^(oscam[\w.-]*|ncam[\w.-]*|cccam[\w.-]*|[\w.-]*camd[\w.-]*|gcam[\w.-]*|doscam[\w.-]*|gbox|sbox|newcs|spcs|mpcs|wicardd|cardserver)$`)
-	softcamNameRe  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,48}$`)
-	softcamBinRe   = regexp.MustCompile(`^/(usr/bin|usr/softcams|usr/sbin|var/bin|usr/local/bin|bin|var/emu|usr/emu)/[A-Za-z0-9._-]{1,48}$`)
-	softcamDirRe   = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,100}$`)
-	softcamConfArg = regexp.MustCompile(`(?:^|\s)(?:-c|--config-dir|--config)[ =]+(/[A-Za-z0-9._/-]{1,100})`)
-	softcamRCRe    = regexp.MustCompile(`^S[0-9]{2}(.+)$`)
-	softcamActions = map[string]bool{"start": true, "stop": true, "restart": true, "switch": true}
+	softcamInitRe     = regexp.MustCompile(`^/etc/init\.d/[A-Za-z0-9._-]{1,48}$`)
+	softcamFileRe     = regexp.MustCompile(`^(/(etc/tuxbox/config|var/tuxbox/config)(/[A-Za-z0-9._+-]{1,64}){1,3}|/(var/keys|usr/keys)/[A-Za-z0-9._+-]{1,64}|/(etc|var/etc)/CCcam\.cfg)$`)
+	softcamNameFileRe = regexp.MustCompile(`^[A-Za-z0-9._+-]{1,64}$`)
+	softcamLogRe      = regexp.MustCompile(`^/(tmp|var/log)(/[A-Za-z0-9._-]{1,48}){0,2}/[A-Za-z0-9._-]{1,64}\.log$`)
+	softcamWebRe      = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,100}/(oscam|ncam)(-[A-Za-z0-9._-]+)?\.conf$`)
+	softcamProcRe     = regexp.MustCompile(`(?i)^(oscam[\w.-]*|ncam[\w.-]*|cccam[\w.-]*|[\w.-]*camd[\w.-]*|gcam[\w.-]*|doscam[\w.-]*|gbox|sbox|newcs|spcs|mpcs|wicardd|cardserver)$`)
+	softcamNameRe     = regexp.MustCompile(`^[A-Za-z0-9._-]{1,48}$`)
+	softcamBinRe      = regexp.MustCompile(`^/(usr/bin|usr/softcams|usr/sbin|var/bin|usr/local/bin|bin|var/emu|usr/emu)/[A-Za-z0-9._-]{1,48}$`)
+	softcamDirRe      = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,100}$`)
+	softcamConfArg    = regexp.MustCompile(`(?:^|\s)(?:-c|--config-dir|--config)[ =]+(/[A-Za-z0-9._/-]{1,100})`)
+	softcamRCRe       = regexp.MustCompile(`^S[0-9]{2}(.+)$`)
+	softcamActions    = map[string]bool{"start": true, "stop": true, "restart": true, "switch": true}
 )
 
 var softcamNames = []string{"oscam", "ncam", "cccam", "camd", "gcam", "doscam", "gbox", "sbox", "newcs", "spcs", "mpcs", "wicardd", "cardserver"}
@@ -211,8 +212,21 @@ for F in /etc/rc[S2-5].d/S*; do
   [ -e "$F" ] && case "$F" in *cam*|*Cam*|*CAM*) echo "rc=$(basename "$F") $(readlink "$F" 2>/dev/null)";; esac
 done
 echo "@@files"
-for F in /etc/tuxbox/config/* /var/tuxbox/config/* /etc/CCcam.cfg /var/etc/CCcam.cfg /var/keys/* /usr/keys/*; do
-  [ -f "$F" ] && echo "file=$F $(wc -c < "$F")"
+N=0
+for F in /etc/tuxbox/config/* /etc/tuxbox/config/*/* /etc/tuxbox/config/*/*/* /var/tuxbox/config/* /var/tuxbox/config/*/* /var/tuxbox/config/*/*/* /etc/CCcam.cfg /var/etc/CCcam.cfg /var/keys/* /usr/keys/*; do
+  [ -f "$F" ] || continue
+  N=$((N+1)); [ $N -gt 400 ] && break
+  echo "file=$F $(wc -c < "$F")"
+done
+for D in $DIRS; do
+  D=${D%/}
+  case "$D" in /*/*) ;; *) continue;; esac
+  case "$D" in /proc*|/sys*|/dev*|/tmp*|/etc/tuxbox/config*|/var/tuxbox/config*) continue;; esac
+  for F in "$D"/*; do
+    [ -f "$F" ] || continue
+    N=$((N+1)); [ $N -gt 600 ] && break
+    echo "file=$F $(wc -c < "$F")"
+  done
 done
 echo "@@logs"
 for F in /tmp/*.log /var/log/*.log /tmp/*/*.log /var/log/*/*.log; do
@@ -253,6 +267,39 @@ type softcamInfo struct {
 	Procs   []softcamProc     `json:"procs"`
 	Boot    []string          `json:"boot"`
 	Web     []softcamWeb      `json:"web"`
+}
+
+// softcamFileOK accepts files in the known softcam configuration folders.
+func softcamFileOK(p string) bool {
+	if !softcamFileRe.MatchString(p) {
+		return false
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." || seg == "." {
+			return false
+		}
+	}
+	return true
+}
+
+// softcamConfDirFile accepts a file inside a folder named by a start script.
+func softcamConfDirFile(confs map[string]string, p string) bool {
+	dir, name := path.Split(p)
+	dir = strings.TrimRight(dir, "/")
+	if !softcamNameFileRe.MatchString(name) || name == "." || name == ".." || strings.Count(dir, "/") < 2 {
+		return false
+	}
+	for _, prefix := range []string{"/proc", "/sys", "/dev", "/tmp"} {
+		if dir == prefix || strings.HasPrefix(dir, prefix+"/") {
+			return false
+		}
+	}
+	for _, conf := range confs {
+		if conf == dir {
+			return true
+		}
+	}
+	return false
 }
 
 func softcamLogOK(name string) bool {
@@ -428,7 +475,8 @@ func parseSoftcamInfo(out string) softcamInfo {
 			if err != nil {
 				continue
 			}
-			if key == "file" && softcamFileRe.MatchString(fields[0]) {
+			if key == "file" && !seen["f"+fields[0]] && len(info.Files) < 600 && (softcamFileOK(fields[0]) || softcamConfDirFile(info.Confs, fields[0])) {
+				seen["f"+fields[0]] = true
 				info.Files = append(info.Files, softcamFile{Path: fields[0], Size: size})
 			}
 			if key == "log" && softcamLogOK(fields[0]) {

@@ -399,3 +399,24 @@ applyTheme(store.get("theme", "light"));
 $("#themeToggle").addEventListener("click", () => applyTheme(effectiveTheme() === "dark" ? "light" : "dark"));
 
 const protoName = (p) => ({ ftp: "FTP", telnet: "Telnet" })[p] || String(p || "");
+
+// One receiver-changing operation at a time per device (backup, restore, softcam, disks).
+const receiverOps = new Map();
+function syncToolsBusy() {
+  const on = receiverOps.size > 0 || (typeof sc !== "undefined" && sc.busy) || (typeof dk !== "undefined" && dk.busy);
+  $('#mainTabs .tab[data-view="tools"]')?.classList.toggle("busy", on);
+}
+function opBegin(key, deviceID, label) {
+  for (const [other, op] of receiverOps) {
+    if (other !== key && op.device === deviceID) { toast(`${op.label} is still running on this receiver.`, "error"); return false; }
+  }
+  if (key !== "disks" && typeof dkFormatting === "function" && dkFormatting() && dk.profileID === deviceID) { toast("A disk format is still running on this receiver.", "error"); return false; }
+  receiverOps.set(key, { device: deviceID, label });
+  syncToolsBusy();
+  return true;
+}
+function opEnd(key) { receiverOps.delete(key); syncToolsBusy(); }
+function opBusy(deviceID) {
+  for (const op of receiverOps.values()) if (op.device === deviceID) { toast(`${op.label} is still running on this receiver.`, "error"); return true; }
+  return false;
+}

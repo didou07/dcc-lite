@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -23,9 +24,26 @@ const (
 )
 
 type savedCommand struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Command string `json:"command"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Lines   []string `json:"lines,omitempty"`
+	Mode    int      `json:"mode,omitempty"`
+	Hidden  bool     `json:"hidden,omitempty"`
+}
+
+func (c savedCommand) lines() []string {
+	if len(c.Lines) > 0 {
+		return c.Lines
+	}
+	return []string{c.Command}
+}
+
+func (c savedCommand) mode() int {
+	if c.Mode < 1 {
+		return 1
+	}
+	return c.Mode
 }
 
 type commandsRequest struct {
@@ -100,6 +118,30 @@ func (s *Server) putCommands(w http.ResponseWriter, r *http.Request) {
 		if item.Name == "" || !utf8.ValidString(item.Name) || strings.ContainsAny(item.Name, "\r\n\x00") || len([]rune(item.Name)) > maxCommandName {
 			writeError(w, 400, fmt.Sprintf("command %d has an invalid name (1–%d characters)", i+1, maxCommandName))
 			return
+		}
+		if item.Mode < 0 || item.Mode > 9 {
+			item.Mode = 1
+		}
+		clean := make([]string, 0, len(item.Lines))
+		for _, line := range item.Lines {
+			if line = strings.TrimSpace(line); line != "" {
+				if !utf8.ValidString(line) || len(line) > maxCommandText || strings.ContainsAny(line, "\r\n\x00") {
+					writeError(w, 400, fmt.Sprintf("%q has an invalid line (single line, up to %d characters)", item.Name, maxCommandText))
+					return
+				}
+				clean = append(clean, line)
+			}
+		}
+		if len(clean) > 0 {
+			item.Lines = clean
+			if len(clean) > 1 && item.mode() >= 2 {
+				item.Command = clean[0]
+			} else {
+				item.Command = strings.Join(clean, " ; ")
+			}
+		}
+		if len(item.Lines) < 2 {
+			item.Lines = nil
 		}
 		if item.Command == "" || !utf8.ValidString(item.Command) || len(item.Command) > maxCommandText || strings.ContainsAny(item.Command, "\r\n\x00") {
 			writeError(w, 400, fmt.Sprintf("%q has an invalid command (1–%d characters, single line)", item.Name, maxCommandText))
@@ -199,8 +241,17 @@ func encodeCommandINI(commands []savedCommand) []byte {
 			}
 			section = fmt.Sprintf("%s (%d)", base, n)
 		}
-		sections = append(sections, section+"=1")
-		blocks = append(blocks, fmt.Sprintf("[%s]\r\nname=%s\r\nid=%s\r\nline1=%s", section, item.Name, item.ID, item.Command))
+		flag := item.mode()
+		if item.Hidden {
+			flag = 0
+		}
+		sections = append(sections, fmt.Sprintf("%s=%d", section, flag))
+		var body strings.Builder
+		fmt.Fprintf(&body, "[%s]\r\nname=%s\r\nid=%s", section, item.Name, item.ID)
+		for i, line := range item.lines() {
+			fmt.Fprintf(&body, "\r\nline%d=%s", i+1, line)
+		}
+		blocks = append(blocks, body.String())
 	}
 	var out strings.Builder
 	out.WriteString("[UserScripts]\r\n")
@@ -261,8 +312,10 @@ func parseCommandINI(data []byte) ([]savedCommand, error) {
 	commands := make([]savedCommand, 0, len(listedOrder))
 	seen := make(map[string]bool, len(listedOrder))
 	for _, key := range listedOrder {
-		if listed.values[key] == "0" {
-			continue
+		hidden := listed.values[key] == "0"
+		mode, _ := strconv.Atoi(listed.values[key])
+		if mode < 1 {
+			mode = 1
 		}
 		item := sections[key]
 		if item == nil {
@@ -283,6 +336,9 @@ func parseCommandINI(data []byte) ([]savedCommand, error) {
 			}
 		}
 		command := strings.Join(lines, " ; ")
+		if mode >= 2 && len(lines) > 1 {
+			command = lines[0]
+		}
 		if command == "" || len(command) > maxCommandText {
 			continue
 		}
@@ -295,7 +351,11 @@ func parseCommandINI(data []byte) ([]savedCommand, error) {
 			}
 		}
 		seen[id] = true
-		commands = append(commands, savedCommand{ID: id, Name: name, Command: command})
+		entry := savedCommand{ID: id, Name: name, Command: command, Mode: mode, Hidden: hidden}
+		if len(lines) > 1 {
+			entry.Lines = lines
+		}
+		commands = append(commands, entry)
 	}
 	return commands, nil
 }

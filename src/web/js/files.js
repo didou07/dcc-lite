@@ -100,6 +100,8 @@ function updateFileUI() {
     if (parentButton) parentButton.disabled = off || !pane.loaded || atRoot;
     if (rootButton) rootButton.disabled = off || !pane.loaded || (pane.kind === "remote" ? atRoot : pane.path === "." || pane.path === "");
     if (refreshButton) refreshButton.disabled = off || !pane.loaded;
+    const cleanButton = $('.pathbar .icon-btn[data-act="clean"]', pane.root);
+    if (cleanButton) cleanButton.disabled = off || !pane.loaded;
   }
 }
 
@@ -185,7 +187,7 @@ function entryIcon(entry) {
     const type = fileType(entry.name, entry.mode);
     base = type ? icon(`ft-${type}`, `file-ic fi-${type}${hidden}`) : icon("file", `file-ic${hidden}`);
   }
-  return isLinkEntry(entry) ? h("span", { class: "ic-link" }, base) : base;
+  return isLinkEntry(entry) ? h("i", { class: "ic-link" }, base, icon("link", "link-badge")) : base;
 }
 function paneAtRoot(pane) {
   if (pane.kind === "remote") return pane.path === pane.rootPath || (!pane.rootPath && (pane.path === "/" || pane.path === "."));
@@ -200,9 +202,9 @@ function renderPane(pane) {
   }
   visible.forEach((entry, index) => {
     fragment.append(h("tr", {
-      class: `row${pane.selected.has(entry.path) ? " selected" : ""}${index === pane.cursor ? " focus" : ""}`, dataset: { index }, draggable: "true",
+      class: `row${pane.selected.has(entry.path) ? " selected" : ""}${index === pane.cursor ? " focus" : ""}${isLinkEntry(entry) ? " is-link" : ""}`, dataset: { index }, draggable: "true",
     },
-      h("td", { class: "name", title: isLinkEntry(entry) && entry.link_target && entry.link_target !== "?" ? `${entry.name} → ${entry.link_target}` : entry.name }, entryIcon(entry), h("span", { text: entry.name })),
+      h("td", { class: "name", title: isLinkEntry(entry) ? (entry.link_target && entry.link_target !== "?" ? `${entry.name} → ${entry.link_target}` : `${entry.name} (link)`) : entry.name }, entryIcon(entry), h("span", { text: entry.name })),
       h("td", { class: "num muted", text: entry.is_dir ? "—" : formatBytes(entry.size) }),
       h("td", { class: "muted hide-sm", text: formatDate(entry.modified_at) }),
       h("td", { class: "mode hide-sm", text: permissionOctal(entry.mode) })));
@@ -538,6 +540,7 @@ for (const pane of Object.values(panes)) {
   $$(".pathbar .icon-btn", pane.root).forEach((button) => button.addEventListener("click", (event) => {
     const act = button.dataset.act;
     if (act === "up") goUp(pane.kind); else if (act === "root") goRoot(pane.kind); else if (act === "refresh") refreshPane(pane.kind);
+    else if (act === "clean") cmdCleanPartials();
     else if (act === "bookmarks") { const rect = button.getBoundingClientRect(); openBookmarks(pane.kind, rect.left, rect.bottom + 4); }
   }));
   pane.root.addEventListener("pointerdown", () => { if (files.active !== pane.kind) setActivePane(pane.kind); });
@@ -589,7 +592,7 @@ $$("#paneSwitch button").forEach((button) => button.addEventListener("click", ()
 function rowEntry(pane, row) { return row && row.dataset.index !== undefined ? pane.visible[Number(row.dataset.index)] : null; }
 function openEntry(pane, entry) {
   if (!entry) return;
-  const fileAction = () => (pane.kind === "remote" ? transferSelection("download", [entry]) : transferSelection("upload", [entry]));
+  const fileAction = () => openEditor(pane.kind, entry.path);
   if (entry.is_dir) loadPane(pane.kind, entry.path);
   else if (isLinkEntry(entry)) {
     const mine = pane.loadSeq + 1;
@@ -804,6 +807,16 @@ document.addEventListener("pointerdown", (event) => {
     const entry = row && pane.rows.contains(row) ? rowEntry(pane, row) : null;
     if (!entry || entry.path !== pane.renamePendingPath || !event.target.closest("td.name")) cancelPendingRename(pane);
   }
+}, true);
+
+// Clicking outside the panes clears the selection.
+document.addEventListener("pointerdown", (event) => {
+  const view = $("#view-files");
+  if (!view || view.hidden || event.button !== 0) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || target.closest(".pane, dialog, [role=menu], [role=dialog], #menu, .toast")) return;
+  if (view.contains(target) && target.closest("button, a, input, select, textarea, label")) return;
+  for (const pane of Object.values(panes)) if (pane.selected.size) clearPaneSelection(pane);
 }, true);
 
 function dropFolder(pane, event) {
@@ -1121,6 +1134,43 @@ async function cmdDelete() {
   if (kind === "local" || isFileSessionCurrent(sessionID, sessionKey)) await refreshPane(kind);
   if (failed) { toast(`${failed} item(s) could not be deleted: ${last.message}`, "error"); if (kind === "remote" && sessionLost(last)) handleSessionLost(sessionID); }
   else toast(`${sel.length} item${sel.length === 1 ? "" : "s"} deleted`);
+}
+async function cmdCleanPartials() {
+  const id = currentDevice()?.id || files.profileID;
+  if (!id) { toast("Select a receiver first"); return; }
+  const button = $('#remotePane .icon-btn[data-act="clean"]');
+  if (button?.dataset.busy) return;
+  const busy = (on) => { if (!button) return; button.classList.toggle("busy", on); if (on) button.dataset.busy = "1"; else delete button.dataset.busy; };
+  let found = [];
+  busy(true);
+  try {
+    toast("Searching the whole receiver for unfinished uploads…");
+    found = (await api(profileURL(id, "partials")))?.files || [];
+  } catch (error) { toast(error.message, "error"); return; }
+  finally { busy(false); }
+  if (!found.length) { toast("No unfinished uploads found"); return; }
+  const total = found.reduce((sum, e) => sum + (Number(e.size) || 0), 0);
+  const names = found.slice(0, 6).map((e) => `• ${e.path} (${formatBytes(Number(e.size) || 0)})`).join("\n") + (found.length > 6 ? `\n… and ${found.length - 6} more` : "");
+  const confirmed = await ask({
+    icon: "broom", title: `Remove ${found.length === 1 ? "1 unfinished upload" : `${found.length} unfinished uploads`}?`,
+    message: `${names}\n\n${formatBytes(total)} will be freed. Only files not changed for 10 minutes or more are removed.`,
+    input: false, ok: "Remove", danger: true,
+  });
+  if (!confirmed) return;
+  let deleted = 0, failed = 0, last = null;
+  busy(true);
+  try {
+    for (let i = 0; i < found.length; i += 50) {
+      const part = found.slice(i, i + 50);
+      try {
+        const result = await post(profileURL(id, "partials/delete"), { paths: part.map((e) => e.path) });
+        deleted += result?.deleted || 0; failed += result?.failed || 0;
+      } catch (error) { failed += found.length - i; last = error; break; }
+    }
+  } finally { busy(false); }
+  if (panes.remote.loaded && files.sessionID) { try { await refreshPane("remote"); } catch { } }
+  if (failed) toast(`${deleted} removed, ${failed} could not be removed${last ? `: ${last.message}` : ""}`, "error");
+  else toast(`${deleted} unfinished upload${deleted === 1 ? "" : "s"} removed`);
 }
 function askPermissions(title, info, initial, hasFolder = false) {
   const dialog = $("#chmodDialog"), input = $("#chmodInput"), error = $("#chmodError"), form = $("#chmodForm");
@@ -2332,3 +2382,9 @@ async function cmdUndo() {
   else toast(`Undone: ${item.label}`);
 }
 
+
+window.DCC_I18N?.add?.("ar", {
+  "Remove unfinished uploads on the receiver": "حذف الرفع غير المكتمل في الجهاز كاملاً", "Remove unfinished uploads": "حذف الرفع غير المكتمل",
+  "Select a receiver first": "اختر جهازاً أولاً", "Searching the whole receiver for unfinished uploads…": "جارٍ البحث في الجهاز كاملاً عن رفع غير مكتمل…",
+  "No unfinished uploads found": "لا يوجد رفع غير مكتمل", "Remove": "حذف",
+});

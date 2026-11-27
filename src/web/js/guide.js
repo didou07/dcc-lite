@@ -312,6 +312,7 @@ function gdMovieNode(m) {
         downloadLink(guideURL(`movie.m3u?file=${encodeURIComponent(m.file)}&name=${encodeURIComponent(m.title)}`));
         toast("Playlist saved: open it with VLC or your media player");
       }),
+      iconButton("sliders", recording ? "Not available while this is recording" : "Edit title, description and tags", (event) => { event.stopPropagation(); if (!recording) mvEditInfo(m); }, recording ? "disabled-look" : ""),
       iconButton("edit", "Rename this recording", (event) => { event.stopPropagation(); gdRenameMovie(m); }),
       iconButton("folder", "Move this recording to another folder", (event) => { event.stopPropagation(); gdMoveMovie(m); }),
       iconButton("trash", "Delete this recording", (event) => { event.stopPropagation(); gdDeleteMovie(m); })));

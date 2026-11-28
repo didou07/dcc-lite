@@ -3,7 +3,7 @@ const assert = require("assert");
 globalThis.requestAnimationFrame = (f) => f();
 globalThis.document = { activeElement: null, createElement: () => ({ style: {}, className: "", appendChild() {}, remove() {}, getBoundingClientRect: () => ({ height: 40 }), set textContent(v) {} }) };
 const host = { clientHeight: 400, scrollTop: 0, listeners: {}, addEventListener(n, f) { this.listeners[n] = f; }, replaceChildren() {}, appendChild() {}, classList: { toggle() {} }, focus() {} };
-const src = fs.readFileSync(require("path").join(__dirname, "../src/web/js/hexview.js"), "utf8");
+const src = fs.readFileSync(require("path").join(__dirname, "../../src/web/js/hexview.js"), "utf8");
 const { HexView } = new Function(src + "; return { HexView };")();
 const v = new HexView(host);
 v.pre = { style: {}, set innerHTML(h) { this.html = h; }, set textContent(t) { this.html = t; } };
@@ -136,7 +136,7 @@ for (let trial = 0; trial < 180; trial++) {
   assert.strictEqual(actualPrev?.index ?? -1, expectedPrev, "backward search matches a linear scan");
 }
 
-const html = fs.readFileSync(require("path").join(__dirname, "../src/web/index.html"), "utf8");
+const html = fs.readFileSync(require("path").join(__dirname, "../../src/web/index.html"), "utf8");
 for (const id of ["previewHexSearchMode", "previewHexSearch", "previewHexFindPrev", "previewHexFindNext", "previewHexSave", "previewHexRevert"]) {
   assert(html.includes(`id="${id}"`), `hex toolbar is missing ${id}`);
 }

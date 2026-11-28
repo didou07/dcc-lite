@@ -1,5 +1,5 @@
 const fs = require("fs"), assert = require("assert");
-const root = require("path").join(__dirname, "../src/web");
+const root = require("path").join(__dirname, "../../src/web");
 const js = fs.readFileSync(root + "/js/devices.js", "utf8");
 const html = fs.readFileSync(root + "/index.html", "utf8");
 const a = js.indexOf("function cleanHost"), b = js.indexOf("function openDeviceDialog");

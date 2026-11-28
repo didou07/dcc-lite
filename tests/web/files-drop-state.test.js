@@ -1,5 +1,5 @@
 const fs = require("fs"), assert = require("assert");
-const root = require("path").join(__dirname, "../src/web");
+const root = require("path").join(__dirname, "../../src/web");
 const files = fs.readFileSync(root + "/js/files.js", "utf8");
 const devices = fs.readFileSync(root + "/js/devices.js", "utf8");
 const css = fs.readFileSync(root + "/app.css", "utf8");

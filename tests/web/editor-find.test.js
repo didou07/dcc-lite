@@ -1,7 +1,7 @@
 const { JSDOM } = require("jsdom");
 const fs = require("fs");
 const assert = require("assert");
-const root = require("path").join(__dirname, "../src/web");
+const root = require("path").join(__dirname, "../../src/web");
 const html = fs.readFileSync(root + "/index.html", "utf8");
 const dom = new JSDOM(html, { runScripts: "outside-only", pretendToBeVisual: true });
 const { window } = dom;

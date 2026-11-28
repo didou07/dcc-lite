@@ -22,3 +22,4 @@ go.work.sum
 Thumbs.db
 dcc-lite.ini
 .dcc-lite-*.tmp
+node_modules/

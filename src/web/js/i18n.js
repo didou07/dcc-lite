@@ -18,16 +18,16 @@
   const tpl = {};
   function templates(code) {
     return tpl[code] ||= Object.entries(data[code] || {}).filter(([k]) => k.includes("{")).map(([k, v]) => {
-      let n = 0;
-      const esc = k.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{\d\}/g, () => `(?<g${++n}>[\\s\\S]+?)`);
-      return [new RegExp("^" + esc + "$"), v];
+      const order = []; // placeholder numbers in the order they appear in the key, so {0}-based and {1}-based keys both work
+      const esc = k.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{(\d)\}/g, (_, d) => { order.push(d); return `(?<g${order.length}>[\\s\\S]+?)`; });
+      return [new RegExp("^" + esc + "$"), v, order];
     });
   }
   function lookup(text) {
     const m = /^(\s*)([\s\S]*?)(\s*)$/.exec(text);
     if (lang === "en" || !m[2]) return text;
     let hit = data[lang]?.[m[2]];
-    if (!hit) for (const [re, v] of templates(lang)) { const x = re.exec(m[2]); if (x) { hit = v.replace(/\{(\d)\}/g, (_, n) => x.groups["g" + n] ?? ""); break; } }
+    if (!hit) for (const [re, v, order] of templates(lang)) { const x = re.exec(m[2]); if (x) { hit = v.replace(/\{(\d)\}/g, (_, d) => { const i = order.indexOf(d); return i < 0 ? "" : x.groups["g" + (i + 1)] ?? ""; }); break; } }
     return hit ? m[1] + hit + m[3] : text;
   }
   function text(node) {

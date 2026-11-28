@@ -1,6 +1,6 @@
 const fs = require("fs");
 const assert = require("assert");
-const root = require("path").join(__dirname, "../src/web");
+const root = require("path").join(__dirname, "../../src/web");
 const files = fs.readFileSync(root + "/js/files.js", "utf8");
 const html = fs.readFileSync(root + "/index.html", "utf8");
 

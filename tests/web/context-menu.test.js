@@ -1,9 +1,9 @@
 const { JSDOM } = require("jsdom");
 const fs = require("fs");
 const assert = require("assert");
-const root = require("path").join(__dirname, "../src/web");
+const root = require("path").join(__dirname, "../../src/web");
 const core = fs.readFileSync(root + "/js/core.js", "utf8");
-const a = core.indexOf("// A menu opened with keepFocus");
+const a = core.indexOf("let menuKeys = null;");
 const b = core.indexOf("function applyTheme");
 const code = core.slice(a, b);
 const dom = new JSDOM(`<body><textarea id="t">hello world</textarea><div id="menu" hidden></div></body>`, { runScripts: "outside-only" });

@@ -91,7 +91,13 @@ for target in "${TARGETS[@]}"; do
   if [[ $os == windows ]]; then
     "$go" run src/dcclite/embed_windows_icon.go "$stage/$exe$ext" packaging/DCCLite.ico
   fi
-  zip -qj9 "dist/$name.zip" "$stage/$exe$ext" "$stage/README.txt"
+  files=("$stage/$exe$ext" "$stage/README.txt")
+  if [[ $os == linux ]]; then
+    # Launcher that installs GTK and WebKitGTK when they are missing, then starts the program.
+    cp packaging/start.sh "$stage/start.sh" && chmod +x "$stage/start.sh"
+    files+=("$stage/start.sh")
+  fi
+  zip -qj9 "dist/$name.zip" "${files[@]}"
   if [[ -n $isgui && $os == windows ]]; then
     # Optional Windows 7/8 bundle with an unpacked WebView2 109 folder.
     case $arch in amd64) wv="${WEBVIEW2_X64_DIR:-}" ;; 386) wv="${WEBVIEW2_X86_DIR:-}" ;; *) wv="" ;; esac
@@ -102,7 +108,7 @@ for target in "${TARGETS[@]}"; do
       rm -rf "$stage/bundle"
     fi
   fi
-  rm -f "$stage/$exe$ext"
+  rm -f "$stage/$exe$ext" "$stage/start.sh"
 done
 
 (cd dist && { sha256sum ./*.zip 2>/dev/null || shasum -a 256 ./*.zip; } | sed 's| \./| |' > SHA256SUMS.txt)

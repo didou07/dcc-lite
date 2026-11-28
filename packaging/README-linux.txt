@@ -1,5 +1,8 @@
 DCC Lite - Linux (amd64, arm64, 386, arm)
 
+Requires glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or newer). The 32-bit packages
+need glibc 2.36 or newer (Debian 12).
+
 Run:
   unzip DCC-Lite-*-linux-*.zip
   chmod +x DCCLite

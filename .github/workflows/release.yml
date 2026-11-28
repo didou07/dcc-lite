@@ -23,7 +23,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned to the oldest supported Ubuntu on purpose. The Linux package is linked against the
+    # glibc of the machine that builds it, so building on a newer image (ubuntu-latest moves to
+    # 26.04) would stop it from starting on older systems. The glibc check below enforces this.
+    runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.meta.outputs.version }}
       exists: ${{ steps.meta.outputs.exists }}
@@ -88,6 +91,16 @@ jobs:
           set -euo pipefail
           while IFS= read -r -d '' file; do node --check "$file"; done < <(find src/web -type f -name '*.js' ! -path 'src/web/vendor/*' -print0)
 
+      - name: Front-end tests
+        shell: bash
+        env:
+          REQUIRE_ALL: '1'
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/jsdeps" jsdom playwright
+          "$RUNNER_TEMP/jsdeps/node_modules/.bin/playwright" install --with-deps chromium
+          NODE_PATH="$RUNNER_TEMP/jsdeps/node_modules" sh tests/run.sh
+
       - name: Build all release packages
         if: github.event_name != 'pull_request'
         shell: bash
@@ -107,7 +120,10 @@ jobs:
             [[ -f "$file" ]] || { echo "No release archives found" >&2; exit 1; }
             [[ "$file" == *-bundle.zip ]] && continue
             entries="$(unzip -Z1 "$file")"
-            [[ "$(printf '%s\n' "$entries" | wc -l | tr -d ' ')" == "2" ]] && printf '%s\n' "$entries" | grep -qx 'README.txt' || { echo "$file must contain the program and README.txt" >&2; exit 1; }
+            # Linux packages also carry start.sh (the launcher that installs missing libraries).
+            want=2; [[ "$file" == *-linux-* ]] && want=3
+            [[ "$(printf '%s\n' "$entries" | wc -l | tr -d ' ')" == "$want" ]] && printf '%s\n' "$entries" | grep -qx 'README.txt' || { echo "$file must contain the program, README.txt and (Linux) start.sh" >&2; exit 1; }
+            [[ "$want" == 3 ]] && { printf '%s\n' "$entries" | grep -qx 'start.sh' || { echo "$file is missing start.sh" >&2; exit 1; }; }
             count=$((count + 1))
           done
           for pkg in windows-amd64 windows-386 linux-amd64; do
@@ -121,6 +137,9 @@ jobs:
           unzip -p "dist/DCC-Lite-${VERSION}-linux-amd64.zip" DCCLite > "$tmp/DCCLite"
           chmod +x "$tmp/DCCLite"
           "$tmp/DCCLite" --version | grep -F "DCC Lite ${VERSION} (linux/amd64)"
+          # The Linux package must run on glibc 2.35 (Ubuntu 22.04) and newer.
+          max="$(objdump -T "$tmp/DCCLite" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu | tail -1)"
+          [[ "$(printf '%s\n' "${max#GLIBC_}" 2.35 | sort -V | tail -1)" == 2.35 ]] || { echo "linux-amd64 needs ${max}, newer than glibc 2.35" >&2; exit 1; }
 
       - name: Upload build artifacts
         if: github.event_name != 'pull_request'
@@ -132,8 +151,9 @@ jobs:
           retention-days: 14
 
   linux-arm64:
-    # GTK needs cgo, so arm64 is built natively on an arm64 runner.
-    runs-on: ubuntu-24.04-arm
+    # GTK needs cgo, so arm64 is built natively on an arm64 runner. Pinned to 22.04 for the same
+    # glibc reason as the build job.
+    runs-on: ubuntu-22.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -162,12 +182,15 @@ jobs:
           set -euo pipefail
           version="$(tr -d '[:space:]' < VERSION)"
           file="dist/DCC-Lite-${version}-linux-arm64.zip"
-          [[ "$(unzip -Z1 "$file" | wc -l | tr -d ' ')" == "2" ]] && unzip -Z1 "$file" | grep -qx 'README.txt' || { echo "$file must contain the program and README.txt" >&2; exit 1; }
+          [[ "$(unzip -Z1 "$file" | wc -l | tr -d ' ')" == "3" ]] && unzip -Z1 "$file" | grep -qx 'README.txt' && unzip -Z1 "$file" | grep -qx 'start.sh' || { echo "$file must contain the program, README.txt and start.sh" >&2; exit 1; }
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           unzip -p "$file" DCCLite > "$tmp/DCCLite"
           chmod +x "$tmp/DCCLite"
           "$tmp/DCCLite" --version | grep -F "DCC Lite ${version} (linux/arm64)"
+          # The Linux package must run on glibc 2.35 (Ubuntu 22.04) and newer.
+          max="$(objdump -T "$tmp/DCCLite" | grep -o 'GLIBC_[0-9][0-9.]*' | sort -Vu | tail -1)"
+          [[ "$(printf '%s\n' "${max#GLIBC_}" 2.35 | sort -V | tail -1)" == 2.35 ]] || { echo "linux-arm64 needs ${max}, newer than glibc 2.35" >&2; exit 1; }
 
       - name: Upload Linux arm64 package
         if: github.event_name != 'pull_request'
@@ -218,7 +241,7 @@ jobs:
               export PATH="$PATH:/usr/local/go/bin"
               bash build.sh "linuxgui/${CPU}"
               file="dist/DCC-Lite-${VERSION}-linux-${CPU}.zip"
-              [[ "$(unzip -Z1 "$file" | wc -l | tr -d " ")" == "2" ]] && unzip -Z1 "$file" | grep -qx README.txt
+              [[ "$(unzip -Z1 "$file" | wc -l | tr -d " ")" == "3" ]] && unzip -Z1 "$file" | grep -qx README.txt && unzip -Z1 "$file" | grep -qx start.sh
               unzip -p "$file" DCCLite > /tmp/DCCLite && chmod +x /tmp/DCCLite
               /tmp/DCCLite --version | grep -F "DCC Lite ${VERSION} (linux/${CPU})"
             '

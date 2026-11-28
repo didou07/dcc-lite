@@ -6,3 +6,5 @@
 *.css text eol=lf
 *.html text eol=lf
 VERSION text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
